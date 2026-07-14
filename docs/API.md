@@ -121,6 +121,19 @@ CrossExam does not assign reputation from reviewer agreement or raw task volume.
 
 Agent executors should evaluate the returned record before spending, trading, deploying, or publishing. The CrossExam SDK domain hook returns one of `PERMIT`, `REMEDIATE`, `REQUIRE_NETWORK_VERIFICATION`, or `DENY`. It rejects action intents that do not match the reviewed decision or exceed its reviewed value-at-risk, requires network-verified delivery at policy-defined high-value thresholds, and surfaces the claim IDs that must be remediated.
 
+```ts
+import { CrossExamClient } from './src/sdk'
+
+const crossExam = new CrossExamClient({ baseUrl: 'https://your-crossexam-domain' })
+const gate = await crossExam.preflight(
+  { recordId, token: readAccess.token },
+  { decisionId: 'DP-042', valueAtRiskUsd: 5000, actionType: 'TRADE' },
+)
+
+if (!gate.executable) throw new Error(gate.reasons.join(' '))
+// Only now invoke the external trade/payment/deployment executor.
+```
+
 ## Errors
 
 | Status | Meaning |
