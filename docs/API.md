@@ -121,6 +121,8 @@ The network-verified endpoint is the first implementation of that mode: the sign
 
 CrossExam does not assign reputation from reviewer agreement or raw task volume. A reviewer becomes `ESTABLISHED` only after at least five independently adjudicated claim outcomes. The resulting signal weights material accuracy, evidence completeness, and timeliness; material misconduct is penalized. Prior to that threshold, the profile remains `PROVISIONAL` and has no ranking score.
 
+An outcome adjudication is bound to one persisted assurance record, one claim, a named outcome authority, and traceable ex-post evidence. Only deliveries in a `NETWORK_VERIFIED` record may feed reviewer reliability. This prevents a caller from manufacturing favorable history for self-declared reviewer identities. An authority-signed ingestion endpoint is intentionally not exposed until the authority registry and signing policy are deployed.
+
 ## Blind challenger task
 
 Before a reviewer is selected or paid, CrossExam creates a `BlindReviewTask` from the Decision Package and the reviewer scope. It carries only scope-specific claims, evidence requirements, and the permitted verdict vocabulary. The source recommendation, peer findings, and aggregate verdict are explicitly withheld during the first review round.
