@@ -101,6 +101,8 @@ Every procurement scope must be `DELIVERED`. Each delivery must originate from t
 
 `recordId` is derived from a SHA-256 hash of the record content. Changing the input, evidence, delivery, or outcome changes the identifier.
 
+Every `REFUTED` or `UNRESOLVED` claim generates a reversal condition. It specifies the class of independently verifiable evidence needed before an action can be reconsidered; it does not fabricate a favorable resolution.
+
 After a successful paid aggregation, the record is atomically persisted before the API responds. The response includes `persistence: "CREATED"` or `"EXISTING"`; a persistence failure returns `500` rather than presenting an unrecorded result as an audit artifact.
 
 The response also includes a time-limited `readAccess` bearer token. Retrieve a persisted record with `GET /api/v1/assurance/records/{recordId}` and `Authorization: Bearer {token}`. The server stores only a SHA-256 token hash and returns `404` for absent, invalid, expired, or unauthorized requests to avoid disclosing record existence.

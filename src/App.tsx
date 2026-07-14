@@ -217,6 +217,12 @@ function App() {
               <span><b>{counts.unresolved}</b> unresolved</span>
               <span><b>{counts.survived}</b> survived</span>
             </div>
+            {result.reversalConditions.length > 0 && (
+              <div className="reversal-list">
+                <span>To reverse this action</span>
+                {result.reversalConditions.map((condition) => <p key={condition.claimId}><b>{condition.claimId}</b>{condition.requirement}</p>)}
+              </div>
+            )}
           </aside>
         </div>
       </section>

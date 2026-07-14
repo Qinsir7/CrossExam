@@ -32,6 +32,7 @@ const result: CrossExamResult = {
   effectiveIndependence: 0.9,
   materialRefutations: 0,
   materialUnresolved: 0,
+  reversalConditions: [],
 }
 
 describe('issueDecisionAssuranceRecord', () => {

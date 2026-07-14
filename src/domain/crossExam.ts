@@ -4,6 +4,7 @@ import type {
   CrossExamResult,
   DecisionPackage,
   Finding,
+  ReversalCondition,
   Reviewer,
 } from './types'
 
@@ -37,6 +38,28 @@ function recommendation(refutations: number, unresolved: number): ActionRecommen
   if (refutations >= 1) return 'HOLD'
   if (unresolved >= 1) return 'CONDITIONAL'
   return 'PROCEED'
+}
+
+function reversalCondition(claimText: string, claimId: string, verdict: ClaimVerdict, findings: Finding[]): ReversalCondition | null {
+  if (verdict === 'SURVIVED') return null
+  const relevant = findings.filter((finding) => verdict === 'REFUTED' ? finding.verdict === 'CONTRADICTS' : finding.verdict === 'INSUFFICIENT_EVIDENCE')
+  const lead = [...relevant].sort((left, right) => right.confidence * right.materiality - left.confidence * left.materiality)[0]
+  const basedOnEvidence = lead?.evidence ?? 'No independent evidence was delivered for this claim.'
+
+  if (verdict === 'REFUTED') {
+    return {
+      claimId,
+      kind: 'OVERTURN_CONTRADICTION',
+      requirement: `Provide independently verifiable evidence that directly overturns the documented contradiction to: ${claimText}`,
+      basedOnEvidence,
+    }
+  }
+  return {
+    claimId,
+    kind: 'RESOLVE_UNCERTAINTY',
+    requirement: `Provide a traceable primary source or independent tool output that resolves the uncertainty in: ${claimText}`,
+    basedOnEvidence,
+  }
 }
 
 /**
@@ -79,6 +102,11 @@ export function runCrossExam(
 
   const materialRefutations = examinedClaims.filter((claim) => claim.verdict === 'REFUTED').length
   const materialUnresolved = examinedClaims.filter((claim) => claim.verdict === 'UNRESOLVED').length
+  const reversalConditions = decision.claims.flatMap((claim) => {
+    const examined = examinedClaims.find((candidate) => candidate.id === claim.id)!
+    const condition = reversalCondition(claim.statement, claim.id, examined.verdict, findings.filter((finding) => finding.claimId === claim.id))
+    return condition ? [condition] : []
+  })
 
   return {
     claims: examinedClaims,
@@ -86,5 +114,6 @@ export function runCrossExam(
     effectiveIndependence: effectiveIndependence(reviewers),
     materialRefutations,
     materialUnresolved,
+    reversalConditions,
   }
 }

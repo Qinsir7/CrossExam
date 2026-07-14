@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const decision: DecisionPackage = { id: 'DP-STORE', title: 'Persist record', valueAtRiskUsd: 1, claims: [] }
 const dispatch: ReviewDispatch = { id: 'RD-STORE', decisionId: 'DP-STORE', status: 'DELIVERED', assignments: [] }
-const result: CrossExamResult = { claims: [], action: 'PROCEED', effectiveIndependence: 0, materialRefutations: 0, materialUnresolved: 0 }
+const result: CrossExamResult = { claims: [], action: 'PROCEED', effectiveIndependence: 0, materialRefutations: 0, materialUnresolved: 0, reversalConditions: [] }
 
 describe('FileAssuranceRecordStore', () => {
   it('persists and retrieves an assurance record', async () => {

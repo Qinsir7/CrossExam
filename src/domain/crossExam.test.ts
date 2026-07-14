@@ -27,6 +27,9 @@ describe('runCrossExam', () => {
 
     expect(result.claims[0].verdict).toBe('REFUTED')
     expect(result.action).toBe('HOLD')
+    expect(result.reversalConditions).toEqual([expect.objectContaining({
+      claimId: 'C-01', kind: 'OVERTURN_CONTRADICTION', basedOnEvidence: 'Material contradiction',
+    })])
   })
 
   it('does not turn duplicate reviewers into false independence', () => {
@@ -55,5 +58,8 @@ describe('runCrossExam', () => {
 
     expect(result.claims[0].verdict).toBe('UNRESOLVED')
     expect(result.action).toBe('CONDITIONAL')
+    expect(result.reversalConditions[0]).toMatchObject({
+      kind: 'RESOLVE_UNCERTAINTY', basedOnEvidence: 'Primary evidence is unavailable',
+    })
   })
 })

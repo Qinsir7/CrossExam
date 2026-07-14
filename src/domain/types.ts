@@ -40,10 +40,18 @@ export type ExaminedClaim = {
   challenger: string
 }
 
+export type ReversalCondition = {
+  claimId: string
+  kind: 'OVERTURN_CONTRADICTION' | 'RESOLVE_UNCERTAINTY'
+  requirement: string
+  basedOnEvidence: string
+}
+
 export type CrossExamResult = {
   claims: ExaminedClaim[]
   action: ActionRecommendation
   effectiveIndependence: number
   materialRefutations: number
   materialUnresolved: number
+  reversalConditions: ReversalCondition[]
 }
