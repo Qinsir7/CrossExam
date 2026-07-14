@@ -27,6 +27,24 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   app.get('/health', (_request, response) => {
     response.json({ service: 'crossexam-asp', x402: 'enabled', network: 'eip155:196', recordStore: 'enabled' })
   })
+  app.get('/api/v1/assurance/records/:recordId', async (request, response) => {
+    const authorization = request.header('authorization')
+    const token = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : ''
+    try {
+      if (!await recordStore.canRead(request.params.recordId, token)) {
+        response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+        return
+      }
+      const record = await recordStore.find(request.params.recordId)
+      if (!record) {
+        response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+        return
+      }
+      response.json(record)
+    } catch {
+      response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+    }
+  })
   const paidRoutes = {
     [assuranceRoute]: {
       accepts: {
@@ -76,7 +94,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
     try {
       const persistence = await recordStore.save(assurance)
-      response.status(200).json({ ...assurance, persistence })
+      const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
+      response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
       response.status(500).json({ error: 'RECORD_PERSISTENCE_FAILED', message: 'The assurance result was not persisted.' })
     }
@@ -95,7 +114,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
     try {
       const persistence = await recordStore.save(assurance)
-      response.status(200).json({ ...assurance, persistence })
+      const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
+      response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
       response.status(500).json({ error: 'RECORD_PERSISTENCE_FAILED', message: 'The assurance result was not persisted.' })
     }

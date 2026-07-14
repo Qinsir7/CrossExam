@@ -46,4 +46,15 @@ describe('FileAssuranceRecordStore', () => {
 
     await expect(recordStore.find('../secrets')).rejects.toThrow('Invalid')
   })
+
+  it('issues expiring record-specific read access without storing the bearer token itself', async () => {
+    const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z')
+    const recordStore = await store()
+    await recordStore.save(record)
+    const grant = await recordStore.issueReadAccess(record.recordId, 60, new Date('2026-07-15T00:00:00.000Z'))
+
+    await expect(recordStore.canRead(record.recordId, grant.token, new Date('2026-07-15T00:00:30.000Z'))).resolves.toBe(true)
+    await expect(recordStore.canRead(record.recordId, `${grant.token}wrong`, new Date('2026-07-15T00:00:30.000Z'))).resolves.toBe(false)
+    await expect(recordStore.canRead(record.recordId, grant.token, new Date('2026-07-15T00:01:00.000Z'))).resolves.toBe(false)
+  })
 })

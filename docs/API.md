@@ -103,6 +103,8 @@ Every procurement scope must be `DELIVERED`. Each delivery must originate from t
 
 After a successful paid aggregation, the record is atomically persisted before the API responds. The response includes `persistence: "CREATED"` or `"EXISTING"`; a persistence failure returns `500` rather than presenting an unrecorded result as an audit artifact.
 
+The response also includes a time-limited `readAccess` bearer token. Retrieve a persisted record with `GET /api/v1/assurance/records/{recordId}` and `Authorization: Bearer {token}`. The server stores only a SHA-256 token hash and returns `404` for absent, invalid, expired, or unauthorized requests to avoid disclosing record existence.
+
 ## Truth and attribution boundary
 
 In `0.1`, an API caller may submit its own reviewer information. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam. A later network-verified mode will require registry identity proofs and reviewer-signed deliveries.

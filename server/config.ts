@@ -8,6 +8,7 @@ export type X402ServerConfig = {
   syncFacilitatorOnStart: boolean
   reviewerWallets: Record<string, `0x${string}`>
   dataDirectory: string
+  recordAccessTtlSeconds: number
 }
 
 type Environment = Record<string, string | undefined>
@@ -54,6 +55,12 @@ function reviewerWalletRegistry(value: string | undefined): Record<string, `0x${
   return registry
 }
 
+function recordAccessTtl(value: string | undefined) {
+  const ttl = Number(value ?? '2592000')
+  if (!Number.isInteger(ttl) || ttl < 60 || ttl > 31_536_000) throw new Error('CROSSEXAM_RECORD_ACCESS_TTL_SECONDS must be between 60 and 31536000.')
+  return ttl
+}
+
 /** Reads the seller-only configuration. Do not expose any of these values to Vite. */
 export function loadX402ServerConfig(env: Environment = process.env): X402ServerConfig {
   const payTo = required(env, 'CROSSEXAM_PAY_TO')
@@ -76,5 +83,6 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     syncFacilitatorOnStart: booleanEnvironment(env.CROSSEXAM_X402_SYNC, true),
     reviewerWallets: reviewerWalletRegistry(env.CROSSEXAM_REVIEWER_WALLETS),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
+    recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
   }
 }

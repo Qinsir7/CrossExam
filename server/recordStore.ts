@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { link, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { DecisionAssuranceRecord } from './assuranceRecord'
@@ -8,10 +8,16 @@ export type RecordSaveResult = 'CREATED' | 'EXISTING'
 export interface AssuranceRecordStore {
   save(record: DecisionAssuranceRecord): Promise<RecordSaveResult>
   find(recordId: string): Promise<DecisionAssuranceRecord | null>
+  issueReadAccess(recordId: string, ttlSeconds: number, now?: Date): Promise<{ token: string; expiresAt: string }>
+  canRead(recordId: string, token: string, now?: Date): Promise<boolean>
 }
 
 function assertRecordId(recordId: string) {
   if (!/^dar_[a-f0-9]{24}$/.test(recordId)) throw new Error('Invalid Decision Assurance Record identifier.')
+}
+
+function tokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex')
 }
 
 /**
@@ -22,9 +28,11 @@ function assertRecordId(recordId: string) {
  */
 export class FileAssuranceRecordStore implements AssuranceRecordStore {
   private readonly recordsDirectory: string
+  private readonly grantsDirectory: string
 
   constructor(dataDirectory: string) {
     this.recordsDirectory = join(dataDirectory, 'records')
+    this.grantsDirectory = join(dataDirectory, 'grants')
   }
 
   async save(record: DecisionAssuranceRecord): Promise<RecordSaveResult> {
@@ -62,6 +70,31 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
       return JSON.parse(await readFile(join(this.recordsDirectory, `${recordId}.json`), 'utf8')) as DecisionAssuranceRecord
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+      throw error
+    }
+  }
+
+  async issueReadAccess(recordId: string, ttlSeconds: number, now = new Date()) {
+    assertRecordId(recordId)
+    if (!Number.isInteger(ttlSeconds) || ttlSeconds < 60) throw new Error('Record access TTL must be at least 60 seconds.')
+    if (!await this.find(recordId)) throw new Error('Cannot issue access for a record that does not exist.')
+
+    await mkdir(this.grantsDirectory, { recursive: true })
+    const token = `darv_${randomBytes(32).toString('base64url')}`
+    const expiresAt = new Date(now.getTime() + ttlSeconds * 1000).toISOString()
+    const grant = JSON.stringify({ recordId, expiresAt }, null, 2)
+    await writeFile(join(this.grantsDirectory, `${tokenHash(token)}.json`), `${grant}\n`, { encoding: 'utf8', flag: 'wx' })
+    return { token, expiresAt }
+  }
+
+  async canRead(recordId: string, token: string, now = new Date()) {
+    assertRecordId(recordId)
+    if (!token.startsWith('darv_')) return false
+    try {
+      const grant = JSON.parse(await readFile(join(this.grantsDirectory, `${tokenHash(token)}.json`), 'utf8')) as { recordId: string; expiresAt: string }
+      return grant.recordId === recordId && new Date(grant.expiresAt).getTime() > now.getTime()
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false
       throw error
     }
   }
