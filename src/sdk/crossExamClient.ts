@@ -52,6 +52,7 @@ export class CrossExamClient {
       valueAtRiskUsd: record.decision.valueAtRiskUsd,
       attributionStatus: record.attributionStatus,
       result: record.result,
+      actionBinding: record.decision.actionBinding,
     }, intent, policy)
   }
 }

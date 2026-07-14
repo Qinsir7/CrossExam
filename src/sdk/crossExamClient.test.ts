@@ -4,7 +4,7 @@ import { CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
 const record = {
   recordId: 'dar_1234567890abcdef12345678',
   attributionStatus: 'NETWORK_VERIFIED' as const,
-  decision: { id: 'DP-1', title: 'Execute', valueAtRiskUsd: 2000, claims: [] },
+  decision: { id: 'DP-1', title: 'Execute', valueAtRiskUsd: 2000, claims: [], actionBinding: { actionType: 'TRADE' as const, target: 'dex:demo', parametersHash: '0xdemo' } },
   result: { claims: [], action: 'PROCEED' as const, effectiveIndependence: 2.7, materialRefutations: 0, materialUnresolved: 0, reversalConditions: [] },
 }
 
@@ -22,7 +22,7 @@ describe('CrossExamClient', () => {
   it('turns a fetched record into an executable preflight decision', async () => {
     const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(record), { status: 200 })) })
 
-    await expect(client.preflight({ recordId: record.recordId, token: 'darv_token' }, { decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE' })).resolves.toMatchObject({
+    await expect(client.preflight({ recordId: record.recordId, token: 'darv_token' }, { decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parametersHash: '0xdemo' })).resolves.toMatchObject({
       status: 'PERMIT', executable: true,
     })
   })

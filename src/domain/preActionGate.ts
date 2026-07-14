@@ -1,4 +1,4 @@
-import type { ActionRecommendation, CrossExamResult } from './types'
+import type { ActionBinding, ActionRecommendation, ActionType, CrossExamResult } from './types'
 
 export type AssuredDecision = {
   recordId: string
@@ -6,16 +6,20 @@ export type AssuredDecision = {
   valueAtRiskUsd: number
   attributionStatus: 'DECLARED_BY_CALLER' | 'NETWORK_VERIFIED'
   result: CrossExamResult
+  actionBinding?: ActionBinding
 }
 
 export type ActionIntent = {
   decisionId: string
   valueAtRiskUsd: number
-  actionType: 'SPEND' | 'TRADE' | 'DEPLOY' | 'PUBLISH' | 'OTHER'
+  actionType: ActionType
+  target: string
+  parametersHash: string
 }
 
 export type PreActionPolicy = {
   requireNetworkVerificationAtOrAboveUsd: number
+  requireActionBindingAtOrAboveUsd: number
 }
 
 export type PreActionDecision = {
@@ -27,6 +31,7 @@ export type PreActionDecision = {
 
 export const defaultPreActionPolicy: PreActionPolicy = {
   requireNetworkVerificationAtOrAboveUsd: 1_000,
+  requireActionBindingAtOrAboveUsd: 1_000,
 }
 
 function actionReason(action: ActionRecommendation) {
@@ -51,6 +56,16 @@ export function evaluatePreAction(
   }
   if (intent.valueAtRiskUsd > assured.valueAtRiskUsd) {
     return { status: 'DENY', executable: false, reasons: ['The action exceeds the value at risk reviewed by this Decision Assurance Record.'], requiredClaimIds: [] }
+  }
+  if (intent.valueAtRiskUsd >= policy.requireActionBindingAtOrAboveUsd && !assured.actionBinding) {
+    return { status: 'DENY', executable: false, reasons: ['This action exceeds the policy threshold and has no action binding in its Decision Assurance Record.'], requiredClaimIds: [] }
+  }
+  if (assured.actionBinding && (
+    assured.actionBinding.actionType !== intent.actionType ||
+    assured.actionBinding.target !== intent.target ||
+    assured.actionBinding.parametersHash !== intent.parametersHash
+  )) {
+    return { status: 'DENY', executable: false, reasons: ['The action target or parameters do not match the reviewed action binding.'], requiredClaimIds: [] }
   }
   if (intent.valueAtRiskUsd >= policy.requireNetworkVerificationAtOrAboveUsd && assured.attributionStatus !== 'NETWORK_VERIFIED') {
     return { status: 'REQUIRE_NETWORK_VERIFICATION', executable: false, reasons: ['This action exceeds the policy threshold and needs network-verified reviewer delivery.'], requiredClaimIds: [] }

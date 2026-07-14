@@ -131,12 +131,14 @@ import { CrossExamClient } from './src/sdk'
 const crossExam = new CrossExamClient({ baseUrl: 'https://your-crossexam-domain' })
 const gate = await crossExam.preflight(
   { recordId, token: readAccess.token },
-  { decisionId: 'DP-042', valueAtRiskUsd: 5000, actionType: 'TRADE' },
+  { decisionId: 'DP-042', valueAtRiskUsd: 5000, actionType: 'TRADE', target: 'dex:pool', parametersHash: '0x...' },
 )
 
 if (!gate.executable) throw new Error(gate.reasons.join(' '))
 // Only now invoke the external trade/payment/deployment executor.
 ```
+
+For high-value actions, the Decision Package must include an `actionBinding` (type, target, and parameter hash). The gate rejects a substituted target or parameter set even if the decision ID and value-at-risk are reused.
 
 ## Errors
 

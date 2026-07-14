@@ -4,6 +4,7 @@ export const demoDecision: DecisionPackage = {
   id: 'DP-042',
   title: 'Execute position',
   valueAtRiskUsd: 12500,
+  actionBinding: { actionType: 'TRADE', target: 'xlayer:asset-demo', parametersHash: '0xdemo-trade-position-v1' },
   claims: [
     {
       id: 'C-01',

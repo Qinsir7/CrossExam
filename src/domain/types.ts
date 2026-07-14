@@ -8,6 +8,14 @@ export type DecisionClaim = {
   materiality: number
 }
 
+export type ActionType = 'SPEND' | 'TRADE' | 'DEPLOY' | 'PUBLISH' | 'OTHER'
+
+export type ActionBinding = {
+  actionType: ActionType
+  target: string
+  parametersHash: string
+}
+
 export type Reviewer = {
   id: string
   name: string
@@ -30,6 +38,7 @@ export type DecisionPackage = {
   title: string
   valueAtRiskUsd: number
   claims: DecisionClaim[]
+  actionBinding?: ActionBinding
 }
 
 export type ExaminedClaim = {
