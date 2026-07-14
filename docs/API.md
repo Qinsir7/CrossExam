@@ -117,6 +117,10 @@ The network-verified endpoint is the first implementation of that mode: the sign
 
 CrossExam does not assign reputation from reviewer agreement or raw task volume. A reviewer becomes `ESTABLISHED` only after at least five independently adjudicated claim outcomes. The resulting signal weights material accuracy, evidence completeness, and timeliness; material misconduct is penalized. Prior to that threshold, the profile remains `PROVISIONAL` and has no ranking score.
 
+## Pre-action gate
+
+Agent executors should evaluate the returned record before spending, trading, deploying, or publishing. The CrossExam SDK domain hook returns one of `PERMIT`, `REMEDIATE`, `REQUIRE_NETWORK_VERIFICATION`, or `DENY`. It rejects action intents that do not match the reviewed decision or exceed its reviewed value-at-risk, requires network-verified delivery at policy-defined high-value thresholds, and surfaces the claim IDs that must be remediated.
+
 ## Errors
 
 | Status | Meaning |
