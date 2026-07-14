@@ -7,6 +7,7 @@ import { aggregateNetworkVerifiedAssurance } from './assuranceService'
 import type { AggregateAssuranceRequest } from './assuranceService'
 import type { X402ServerConfig } from './config'
 import { FileAssuranceRecordStore, type AssuranceRecordStore } from './recordStore'
+import { createServiceManifest } from './serviceManifest'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -26,6 +27,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   app.use(express.json({ limit: '128kb' }))
   app.get('/health', (_request, response) => {
     response.json({ service: 'crossexam-asp', x402: 'enabled', network: 'eip155:196', recordStore: 'enabled' })
+  })
+  app.get('/.well-known/crossexam.json', (_request, response) => {
+    response.json(createServiceManifest(config.publicUrl))
   })
   app.get('/api/v1/assurance/records/:recordId', async (request, response) => {
     const authorization = request.header('authorization')

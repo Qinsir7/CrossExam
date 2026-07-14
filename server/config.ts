@@ -9,6 +9,7 @@ export type X402ServerConfig = {
   reviewerWallets: Record<string, `0x${string}`>
   dataDirectory: string
   recordAccessTtlSeconds: number
+  publicUrl?: string
 }
 
 type Environment = Record<string, string | undefined>
@@ -84,5 +85,6 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     reviewerWallets: reviewerWalletRegistry(env.CROSSEXAM_REVIEWER_WALLETS),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
+    publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
   }
 }

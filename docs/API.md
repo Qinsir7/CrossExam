@@ -8,6 +8,10 @@ Version: `0.1`
 
 Produces a Decision Assurance Record from a Decision Package and a fully delivered, independently attributed review dispatch. This is a deterministic aggregation service; it does not generate reviewer findings, invent evidence, or complete missing review scopes.
 
+## Service discovery
+
+`GET /.well-known/crossexam.json` returns the public capability manifest. It declares the two x402-paid assurance endpoints, protected record retrieval, X Layer `eip155:196`, and the `exact` x402 scheme. Configure `CROSSEXAM_PUBLIC_URL` in production so endpoint URLs are absolute.
+
 `POST /api/v1/assurance/network-aggregate` accepts the same payload, but requires every delivered review to include an EIP-191 wallet attestation. Each reviewer ID must be bound to a different signing wallet in CrossExam's server-side registry. This endpoint returns `attributionStatus: "NETWORK_VERIFIED"` only after those signatures verify.
 
 ## x402 payment

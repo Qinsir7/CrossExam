@@ -22,6 +22,8 @@ CrossExam is designed to make consequential agent decisions inspectable before e
 
 CrossExam ships a paid, standardized A2MCP endpoint at `POST /api/v1/assurance/aggregate`. It accepts a decision package plus an independently delivered review dispatch, then applies CrossExam's contradiction-first aggregation and issues a content-derived Decision Assurance Record. It is protected using the official OKX x402 Express SDK on X Layer (`eip155:196`). A request without a valid payment payload receives a standard `402 Payment Required` challenge.
 
+Agents can discover its capabilities at `/.well-known/crossexam.json`.
+
 The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” Version `0.1` marks reviewer identity as caller-declared; it will not overstate that attribution as network-verified until CrossExam itself manages the reviewer relationship.
 
 To run the seller service after provisioning an OKX API credential and X Layer receiving address:
