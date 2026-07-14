@@ -31,7 +31,9 @@ export type BenchmarkSummary = {
 const MATERIAL_THRESHOLD = 0.7
 
 function allowsExecution(action: CrossExamResult['action']) {
-  return action === 'PROCEED' || action === 'CONDITIONAL'
+  // CONDITIONAL is intentionally non-executable: the pre-action gate turns it
+  // into REMEDIATE until its reversal conditions are satisfied.
+  return action === 'PROCEED'
 }
 
 /**

@@ -27,3 +27,11 @@ Every truth set should be run through the same cost envelope with:
 4. CrossExam's independent, contradiction-first process.
 
 Publish misses and overblocks alongside wins. A safety product without visible failure cases is not yet trustworthy.
+
+## Running the regression suite
+
+```bash
+npm run evaluate
+```
+
+The repository currently ships only a small **demo-only synthetic** regression suite. It protects core invariants while the first externally labeled decision set is assembled; its output must not be presented as evidence of real-world performance lift.
