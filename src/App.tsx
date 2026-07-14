@@ -1,9 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { createDecisionPackage } from './domain/decisionPackage'
+import { createActionBinding } from './domain/actionBinding'
 import { createReviewPlan } from './domain/reviewPlan'
 import { stageReviewPlan } from './network/reviewNetwork'
-import type { DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
+import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import './App.css'
 
@@ -28,6 +29,9 @@ function App() {
   const [draftTitle, setDraftTitle] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
   const [draftClaims, setDraftClaims] = useState('')
+  const [draftActionType, setDraftActionType] = useState<ActionType>('OTHER')
+  const [draftTarget, setDraftTarget] = useState('')
+  const [draftParameters, setDraftParameters] = useState('')
   const [formErrors, setFormErrors] = useState<string[]>([])
 
   const isDemo = activeDecision.id === demoDecision.id
@@ -51,12 +55,20 @@ function App() {
     [result.claims],
   )
 
-  function submitDecision(event: FormEvent<HTMLFormElement>) {
+  async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    let actionBinding
+    try {
+      actionBinding = await createActionBinding(draftActionType, draftTarget, draftParameters)
+    } catch (error) {
+      setFormErrors([error instanceof Error ? error.message : 'Unable to create an action binding.'])
+      return
+    }
     const created = createDecisionPackage({
       title: draftTitle,
       valueAtRiskUsd: Number(draftRisk),
       claimsText: draftClaims,
+      actionBinding,
     })
 
     if (created.ok === false) {
@@ -267,6 +279,9 @@ function App() {
             <p className="composer-intro">CrossExam only challenges claims you explicitly submit. It will never fill unknown facts with confident prose.</p>
             <label>Proposed action<input autoFocus value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="e.g. Approve a $5,000 vendor contract" /></label>
             <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => setDraftRisk(event.target.value)} placeholder="5000" /></label>
+            <label>Execution type<select value={draftActionType} onChange={(event) => setDraftActionType(event.target.value as ActionType)}><option value="SPEND">Spend</option><option value="TRADE">Trade</option><option value="DEPLOY">Deploy</option><option value="PUBLISH">Publish</option><option value="OTHER">Other</option></select></label>
+            <label>Execution target<input value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="e.g. xlayer:0x... or vendor:acme" /></label>
+            <label>Action parameters<textarea value={draftParameters} onChange={(event) => setDraftParameters(event.target.value)} placeholder="Raw transaction parameters, contract payload, or canonical action JSON" rows={3} /></label>
             <label>Claims that must be true<textarea value={draftClaims} onChange={(event) => setDraftClaims(event.target.value)} placeholder={'One material claim per line\nThe vendor has a valid SOC 2 report.\nCustomer data remains in the EU.'} rows={6} /></label>
             {formErrors.length > 0 && <div className="form-errors">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
             <button className="run-button" type="submit"><span className="button-cross">×</span> Structure Decision Package <span className="button-arrow">→</span></button>
