@@ -1,2 +1,2 @@
-export { CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
-export type { RecordAccess, RemoteDecisionAssuranceRecord } from './crossExamClient'
+export { CrossExamClient, CrossExamActionBlockedError, CrossExamRecordAccessError } from './crossExamClient'
+export type { BoundActionInput, RecordAccess, RemoteDecisionAssuranceRecord } from './crossExamClient'

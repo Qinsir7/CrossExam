@@ -148,6 +148,18 @@ if (!gate.executable) throw new Error(gate.reasons.join(' '))
 
 For high-value actions, the Decision Package must include an `actionBinding` (type, target, and parameter hash). The gate rejects a substituted target or parameter set even if the decision ID and value-at-risk are reused.
 
+For an execution-bound integration, use the SDK adapter instead of separately computing a hash, preflighting, and invoking the executor. It hashes the precise payload, refuses execution when the gate is non-executable, and only then gives that same immutable payload to your transaction/deployment executor:
+
+```ts
+const receipt = await crossExam.executeBoundAction({
+  access: { recordId, token: readAccess.token },
+  decisionId: 'DP-042', valueAtRiskUsd: 5000,
+  actionType: 'TRADE', target: 'dex:pool',
+  parameters: '{"side":"buy","amount":"100"}',
+  execute: (action) => submitTrade(action),
+})
+```
+
 ## Errors
 
 | Status | Meaning |

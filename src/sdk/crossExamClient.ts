@@ -1,5 +1,6 @@
 import { evaluatePreAction, type ActionIntent, type AssuredDecision, type PreActionDecision, type PreActionPolicy } from '../domain/preActionGate'
-import type { CrossExamResult, DecisionPackage } from '../domain/types'
+import { createActionBinding } from '../domain/actionBinding'
+import type { ActionType, CrossExamResult, DecisionPackage } from '../domain/types'
 
 export type RecordAccess = {
   recordId: string
@@ -13,6 +14,18 @@ export type RemoteDecisionAssuranceRecord = {
   result: CrossExamResult
 }
 
+export type BoundActionInput<T> = {
+  access: RecordAccess
+  decisionId: string
+  valueAtRiskUsd: number
+  actionType: ActionType
+  target: string
+  /** Canonical action payload that will be hashed and handed unchanged to the executor. */
+  parameters: string
+  policy?: PreActionPolicy
+  execute: (boundAction: Readonly<Pick<BoundActionInput<T>, 'actionType' | 'target' | 'parameters'>>) => Promise<T> | T
+}
+
 export class CrossExamRecordAccessError extends Error {
   readonly status: number
 
@@ -20,6 +33,16 @@ export class CrossExamRecordAccessError extends Error {
     super(status === 404 ? 'CrossExam record is unavailable or access has expired.' : `CrossExam record request failed with status ${status}.`)
     this.name = 'CrossExamRecordAccessError'
     this.status = status
+  }
+}
+
+export class CrossExamActionBlockedError extends Error {
+  readonly gate: PreActionDecision
+
+  constructor(gate: PreActionDecision) {
+    super(`CrossExam prevented execution: ${gate.reasons.join(' ')}`)
+    this.name = 'CrossExamActionBlockedError'
+    this.gate = gate
   }
 }
 
@@ -54,5 +77,25 @@ export class CrossExamClient {
       result: record.result,
       actionBinding: record.decision.actionBinding,
     }, intent, policy)
+  }
+
+  /**
+   * Hashes the exact execution payload, applies the assurance gate, then hands
+   * the same frozen payload to the external executor. This concentrates the
+   * otherwise easy-to-miss pre-action check at the execution boundary.
+   */
+  async executeBoundAction<T>(input: BoundActionInput<T>): Promise<T> {
+    const binding = await createActionBinding(input.actionType, input.target, input.parameters)
+    const gate = await this.preflight(input.access, {
+      decisionId: input.decisionId,
+      valueAtRiskUsd: input.valueAtRiskUsd,
+      ...binding,
+    }, input.policy)
+    if (!gate.executable) throw new CrossExamActionBlockedError(gate)
+    return input.execute(Object.freeze({
+      actionType: binding.actionType,
+      target: binding.target,
+      parameters: input.parameters.trim(),
+    }))
   }
 }
