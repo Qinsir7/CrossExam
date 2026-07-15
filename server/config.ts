@@ -22,6 +22,7 @@ export type X402ServerConfig = {
   recordAccessTtlSeconds: number
   databaseUrl?: string
   publicUrl?: string
+  allowedOrigins: string[]
 }
 
 type Environment = Record<string, string | undefined>
@@ -161,6 +162,22 @@ function databaseUrl(value: string | undefined) {
   return candidate
 }
 
+function allowedOrigins(value: string | undefined) {
+  if (!value?.trim()) return []
+  const origins = value.split(',').map((origin) => origin.trim().replace(/\/$/, '')).filter(Boolean)
+  if (!origins.length || origins.some((origin) => {
+    try {
+      const parsed = new URL(origin)
+      return parsed.origin !== origin || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+    } catch {
+      return true
+    }
+  })) {
+    throw new Error('CROSSEXAM_ALLOWED_ORIGINS must be a comma-separated list of HTTP(S) origins without paths.')
+  }
+  return [...new Set(origins)]
+}
+
 /** Reads the seller-only configuration. Do not expose any of these values to Vite. */
 export function loadX402ServerConfig(env: Environment = process.env): X402ServerConfig {
   const payTo = required(env, 'CROSSEXAM_PAY_TO')
@@ -168,7 +185,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     throw new Error('CROSSEXAM_PAY_TO must be a 20-byte EVM address.')
   }
 
-  const port = Number(env.CROSSEXAM_PORT ?? '4022')
+  const port = Number(env.PORT ?? env.CROSSEXAM_PORT ?? '4022')
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('CROSSEXAM_PORT must be a valid TCP port.')
   }
@@ -205,5 +222,6 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
     databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
+    allowedOrigins: allowedOrigins(env.CROSSEXAM_ALLOWED_ORIGINS),
   }
 }

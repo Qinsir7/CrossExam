@@ -41,6 +41,26 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
 
   app.disable('x-powered-by')
+  app.use((request, response, next) => {
+    const origin = request.header('origin')?.replace(/\/$/, '')
+    if (!origin) {
+      next()
+      return
+    }
+    if (!config.allowedOrigins.includes(origin)) {
+      response.status(403).json({ error: 'ORIGIN_NOT_ALLOWED' })
+      return
+    }
+    response.setHeader('Access-Control-Allow-Origin', origin)
+    response.setHeader('Vary', 'Origin')
+    response.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
+    response.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type,Idempotency-Key,Payment-Signature')
+    if (request.method === 'OPTIONS') {
+      response.status(204).end()
+      return
+    }
+    next()
+  })
   app.use(express.json({ limit: '128kb' }))
   app.get('/health', (_request, response) => {
     response.json({ service: 'crossexam-asp', x402: 'enabled', network: 'eip155:196', recordStore: 'enabled' })

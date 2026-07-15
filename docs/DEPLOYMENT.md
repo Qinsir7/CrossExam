@@ -15,6 +15,8 @@ docker run --rm \
 
 `CROSSEXAM_DATA_DIR` defaults to `/var/lib/crossexam` in the container. The mounted volume is mandatory for any single-instance filesystem deployment.
 
+When the web app is hosted on a different origin, set `CROSSEXAM_ALLOWED_ORIGINS` explicitly (for example, `https://cross-exam.xyz,https://www.cross-exam.xyz`). The API rejects browser origins not on this allowlist. Managed container platforms commonly provide `PORT`; CrossExam honours it before `CROSSEXAM_PORT`.
+
 ## Shared PostgreSQL production store
 
 For more than one API instance, set `CROSSEXAM_DATABASE_URL` to a managed PostgreSQL connection string. CrossExam then uses PostgreSQL—not the local filesystem—for Decision Assurance Records, bearer-token hashes and expiry, immutable authority outcomes, and paid-request idempotency mappings. The schema is initialized idempotently on first use; deploy the application identity with only the database privileges it needs.

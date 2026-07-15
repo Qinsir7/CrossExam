@@ -19,6 +19,20 @@ describe('loadX402ServerConfig', () => {
     expect(config.syncFacilitatorOnStart).toBe(true)
   })
 
+  it('uses the hosting platform PORT and parses an explicit browser-origin allowlist', () => {
+    const config = loadX402ServerConfig({
+      ...validEnvironment,
+      PORT: '8080',
+      CROSSEXAM_ALLOWED_ORIGINS: 'https://cross-exam.xyz,https://www.cross-exam.xyz',
+    })
+    expect(config.port).toBe(8080)
+    expect(config.allowedOrigins).toEqual(['https://cross-exam.xyz', 'https://www.cross-exam.xyz'])
+  })
+
+  it('rejects a CORS allowlist entry with a path instead of an origin', () => {
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_ALLOWED_ORIGINS: 'https://cross-exam.xyz/path' })).toThrow('origins')
+  })
+
   it('rejects a placeholder or malformed recipient address', () => {
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_PAY_TO: '0xSeller' })).toThrow('20-byte')
   })
