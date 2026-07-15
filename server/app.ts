@@ -10,6 +10,7 @@ import { FileAssuranceRecordStore, type AssuranceRecordStore } from './recordSto
 import { createServiceManifest } from './serviceManifest'
 import { verifyOutcomeAttestation, type SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 import { deriveReviewerOutcomeEvents } from './outcomeAdjudication'
+import { loadReviewerReliabilityProfile } from './reliabilityService'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -72,6 +73,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid outcome adjudication.'
       response.status(422).json({ error: 'OUTCOME_ADJUDICATION_REJECTED', message })
+    }
+  })
+  app.get('/api/v1/reviewers/:reviewerId/reliability', async (request, response) => {
+    try {
+      response.json(await loadReviewerReliabilityProfile(request.params.reviewerId, recordStore))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load reviewer reliability.'
+      response.status(422).json({ error: 'RELIABILITY_PROFILE_REJECTED', message })
     }
   })
   const paidRoutes = {

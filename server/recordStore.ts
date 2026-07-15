@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { link, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { DecisionAssuranceRecord } from './assuranceRecord'
 import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
@@ -12,6 +12,7 @@ export interface AssuranceRecordStore {
   issueReadAccess(recordId: string, ttlSeconds: number, now?: Date): Promise<{ token: string; expiresAt: string }>
   canRead(recordId: string, token: string, now?: Date): Promise<boolean>
   saveOutcome(outcome: SignedClaimOutcomeAdjudication): Promise<RecordSaveResult>
+  listOutcomes(): Promise<SignedClaimOutcomeAdjudication[]>
 }
 
 function assertRecordId(recordId: string) {
@@ -104,19 +105,19 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
   }
 
   /**
-   * Stores one authority's immutable resolution for a record claim. A later
-   * write under the same authority/record/claim key must be byte-identical;
-   * authorities cannot quietly revise history in-place.
+   * Stores one immutable resolution for a record claim. A later write for
+   * that claim must be byte-identical; authorities cannot race a competing
+   * conclusion into the reputation history or revise it in-place.
    */
   async saveOutcome(outcome: SignedClaimOutcomeAdjudication): Promise<RecordSaveResult> {
     assertRecordId(outcome.recordId)
     await mkdir(this.outcomesDirectory, { recursive: true })
-    const key = createHash('sha256').update(`${outcome.recordId}\n${outcome.claimId}\n${outcome.authority.id}`).digest('hex')
+    const key = createHash('sha256').update(`${outcome.recordId}\n${outcome.claimId}`).digest('hex')
     const destination = join(this.outcomesDirectory, `${key}.json`)
     const serialized = `${JSON.stringify(outcome, null, 2)}\n`
     try {
       const existing = await readFile(destination, 'utf8')
-      if (existing !== serialized) throw new Error('Outcome adjudication conflict: this authority already resolved the record claim.')
+      if (existing !== serialized) throw new Error('Outcome adjudication conflict: this record claim already has an immutable resolution.')
       return 'EXISTING'
     } catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
@@ -129,10 +130,20 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
     } catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error
       const existing = await readFile(destination, 'utf8')
-      if (existing !== serialized) throw new Error('Outcome adjudication conflict: this authority already resolved the record claim.')
+      if (existing !== serialized) throw new Error('Outcome adjudication conflict: this record claim already has an immutable resolution.')
       return 'EXISTING'
     } finally {
       await rm(temporary, { force: true })
+    }
+  }
+
+  async listOutcomes(): Promise<SignedClaimOutcomeAdjudication[]> {
+    try {
+      const entries = (await readdir(this.outcomesDirectory)).filter((entry) => /^[a-f0-9]{64}\.json$/.test(entry)).sort()
+      return Promise.all(entries.map(async (entry) => JSON.parse(await readFile(join(this.outcomesDirectory, entry), 'utf8')) as SignedClaimOutcomeAdjudication))
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return []
+      throw error
     }
   }
 }

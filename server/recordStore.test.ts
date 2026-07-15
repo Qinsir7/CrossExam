@@ -75,6 +75,7 @@ describe('FileAssuranceRecordStore', () => {
 
     expect(await recordStore.saveOutcome(first)).toBe('CREATED')
     expect(await recordStore.saveOutcome(first)).toBe('EXISTING')
+    expect(await recordStore.listOutcomes()).toEqual([first])
     await expect(recordStore.saveOutcome({ ...first, exPostAdjudication: 'CONTRADICTED' })).rejects.toThrow('conflict')
   })
 })

@@ -38,6 +38,10 @@ export function createServiceManifest(publicUrl?: string): CrossExamServiceManif
         id: 'decision-assurance.outcome-ingestion', endpoint: endpoint('/api/v1/outcomes'), paid: false,
         description: 'Registered outcome authorities submit EIP-191-signed, evidence-bound ex-post claim resolutions.',
       },
+      {
+        id: 'decision-assurance.reviewer-reliability', endpoint: endpoint('/api/v1/reviewers/{reviewerId}/reliability'), paid: false,
+        description: 'Recompute a reviewer profile from immutable, authority-signed ex-post outcomes.',
+      },
     ],
   }
 }
