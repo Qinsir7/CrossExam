@@ -24,8 +24,8 @@ function record(attributionStatus: 'DECLARED_BY_CALLER' | 'NETWORK_VERIFIED' = '
     dispatch = acceptReviewDelivery(plan, dispatch, assignment.scopeId, {
       reviewerId,
       deliveredAt: '2026-07-15T00:00:00.000Z',
-      artifacts: [{ id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE', locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-15T00:00:00.000Z', excerpt: 'Traceable evidence.' }],
-      findings: [{ claimId: 'C-1', reviewerId, verdict: reviewerId === 'challenger' ? 'CONTRADICTS' : 'SUPPORTS', confidence: 0.9, materiality: 0.9, evidence: 'A reviewed finding.' }],
+      artifacts: [{ id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE', locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-15T00:00:00.000Z', excerpt: 'Traceable evidence.', contentHash: '0x01' }],
+      findings: [{ claimId: 'C-1', reviewerId, verdict: reviewerId === 'challenger' ? 'CONTRADICTS' : 'SUPPORTS', confidence: 0.9, materiality: 0.9, evidence: 'A reviewed finding.', evidenceArtifactIds: [`E-${reviewerId}`] }],
     })
   }
   const result = runCrossExam(decision, reviewers.map((reviewer) => ({ id: reviewer.id, name: reviewer.displayName, ownerId: reviewer.ownerId, modelFamily: reviewer.modelFamily, evidenceRoute: reviewer.evidenceRoutes[0] })), dispatch.assignments.flatMap((assignment) => assignment.delivery!.findings))

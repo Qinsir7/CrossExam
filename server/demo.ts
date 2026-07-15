@@ -9,10 +9,12 @@ import type { DecisionPackage, Finding } from '../src/domain/types'
 import { acceptReviewDelivery, stageReviewPlan, type ReviewDelivery, type ReviewerProfile } from '../src/network/reviewNetwork'
 import { aggregateNetworkVerifiedAssurance } from './assuranceService'
 import { deliveryPayloadHash } from './deliveryAttestation'
+import { evidenceArtifactHash } from './evidenceIntegrity'
 import { deriveReviewerOutcomeEvents, type ClaimOutcomeAdjudication } from './outcomeAdjudication'
 import { outcomePayloadHash, verifyOutcomeAttestation, type SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 import { FileAssuranceRecordStore } from './recordStore'
 import { loadReviewerReliabilityProfile } from './reliabilityService'
+import type { ReviewerRegistry } from './reviewerRegistry'
 
 const accounts = [
   privateKeyToAccount('0x0123456789012345678901234567890123456789012345678901234567890123'),
@@ -55,17 +57,19 @@ async function main() {
       confidence: 0.9,
       materiality: claim.materiality,
       evidence: claim.id === 'C-1' && reviewerId === 'assumption-challenger' ? 'Reconstructed executable depth is below the stated threshold.' : 'Traceable independent review evidence.',
+      evidenceArtifactIds: [`E-${reviewerId}`],
     }))
+    const artifact = { id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE' as const, locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-15T00:00:00.000Z', excerpt: 'Traceable review artifact.' }
     const unsigned: ReviewDelivery = {
       reviewerId, deliveredAt: '2026-07-15T00:00:00.000Z',
-      artifacts: [{ id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE', locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-15T00:00:00.000Z', excerpt: 'Traceable review artifact.' }],
+      artifacts: [{ ...artifact, contentHash: evidenceArtifactHash(artifact) }],
       findings,
     }
     dispatch = acceptReviewDelivery(plan, dispatch, assignment.scopeId, await signedDelivery(dispatch.id, decision.id, assignment.scopeId, unsigned))
   }
 
-  const reviewerWallets = Object.fromEntries(reviewers.map((reviewer, index) => [reviewer.id, accounts[index].address]))
-  const record = await aggregateNetworkVerifiedAssurance({ decision, dispatch }, reviewerWallets, '2026-07-15T00:01:00.000Z')
+  const reviewerRegistry: ReviewerRegistry = Object.fromEntries(reviewers.map((reviewer, index) => [reviewer.id, { ...reviewer, wallet: accounts[index].address, status: 'ACTIVE' as const }]))
+  const record = await aggregateNetworkVerifiedAssurance({ decision, dispatch }, reviewerRegistry, '2026-07-15T00:01:00.000Z')
   const dataDirectory = await mkdtemp(join(tmpdir(), 'crossexam-offline-demo-'))
   const store = new FileAssuranceRecordStore(dataDirectory)
   await store.save(record)

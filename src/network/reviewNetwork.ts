@@ -16,6 +16,8 @@ export type EvidenceArtifact = {
   locator: string
   observedAt: string
   excerpt: string
+  /** Keccak-256 of this artifact's canonical, immutable delivery fields. */
+  contentHash?: `0x${string}`
 }
 
 export type ReviewDelivery = {
@@ -134,9 +136,18 @@ export function acceptReviewDelivery(
     throw new Error('A delivery needs at least one traceable evidence artifact.')
   }
 
+  const artifactIds = new Set(delivery.artifacts.map((artifact) => artifact.id))
+  if (artifactIds.size !== delivery.artifacts.length || delivery.artifacts.some((artifact) => !artifact.id.trim() || !artifact.contentHash)) {
+    throw new Error('A delivery needs uniquely identified, content-addressed evidence artifacts.')
+  }
+
   const expectedClaims = new Set(scope.claimIds)
   const addressedClaims = new Set(delivery.findings.map((finding) => finding.claimId))
-  if (delivery.findings.some((finding) => finding.reviewerId !== delivery.reviewerId || !finding.evidence.trim() || !expectedClaims.has(finding.claimId))) {
+  if (delivery.findings.some((finding) => finding.reviewerId !== delivery.reviewerId
+    || !finding.evidence.trim()
+    || !expectedClaims.has(finding.claimId)
+    || !finding.evidenceArtifactIds?.length
+    || finding.evidenceArtifactIds.some((artifactId) => !artifactIds.has(artifactId)))) {
     throw new Error('Findings must be attributable, evidenced, and limited to claims in this scope.')
   }
   if (expectedClaims.size !== addressedClaims.size || [...expectedClaims].some((claimId) => !addressedClaims.has(claimId))) {

@@ -31,6 +31,12 @@ export type Finding = {
   confidence: number
   materiality: number
   evidence: string
+  /**
+   * Traceable evidence references are required when a finding is submitted as
+   * a network delivery. Kept optional here so pure aggregation can still be
+   * used to reason about abstract findings without inventing artifacts.
+   */
+  evidenceArtifactIds?: string[]
 }
 
 export type DecisionPackage = {

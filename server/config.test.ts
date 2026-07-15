@@ -37,13 +37,19 @@ describe('loadX402ServerConfig', () => {
     expect(loadX402ServerConfig({ ...unsigned, CROSSEXAM_X402_SYNC: 'false' }).serviceSigningKey).toBeUndefined()
   })
 
-  it('parses registered reviewer wallet bindings without exposing them to the browser', () => {
+  it('parses server-owned reviewer identity and wallet bindings without exposing them to the browser', () => {
     const config = loadX402ServerConfig({
       ...validEnvironment,
-      CROSSEXAM_REVIEWER_WALLETS: '{"reviewer-1":"0x2222222222222222222222222222222222222222"}',
+      CROSSEXAM_REVIEWER_REGISTRY: '[{"id":"reviewer-1","displayName":"Source verifier","ownerId":"independent-lab","modelFamily":"retrieval","evidenceRoutes":["primary"],"capabilities":["source verification"],"wallet":"0x2222222222222222222222222222222222222222"}]',
     })
 
-    expect(config.reviewerWallets['reviewer-1']).toBe('0x2222222222222222222222222222222222222222')
+    expect(config.reviewerRegistry['reviewer-1'].wallet).toBe('0x2222222222222222222222222222222222222222')
+    expect(config.reviewerRegistry['reviewer-1'].ownerId).toBe('independent-lab')
+  })
+
+  it('rejects duplicate reviewer wallet bindings in the server-owned registry', () => {
+    const registry = '[{"id":"reviewer-1","displayName":"One","ownerId":"owner-1","modelFamily":"model-1","evidenceRoutes":["a"],"capabilities":["source verification"],"wallet":"0x2222222222222222222222222222222222222222"},{"id":"reviewer-2","displayName":"Two","ownerId":"owner-2","modelFamily":"model-2","evidenceRoutes":["b"],"capabilities":["adversarial research"],"wallet":"0x2222222222222222222222222222222222222222"}]'
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: registry })).toThrow('duplicate')
   })
 
   it('parses outcome-authority wallet bindings separately from reviewer identities', () => {

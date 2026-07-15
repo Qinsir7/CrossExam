@@ -31,7 +31,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_SERVICE_SIGNING_KEY`: a dedicated 32-byte EVM private key for issuing assurance records. It is mandatory when the paid x402 service is enabled; publish only its derived public address in service discovery.
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
-- `CROSSEXAM_REVIEWER_WALLETS`: reviewer-ID to EVM-wallet registry when `/network-aggregate` is enabled.
+- `CROSSEXAM_REVIEWER_REGISTRY`: server-owned JSON registry of each reviewer's ID, owner, model family, capabilities, evidence routes, status and EVM wallet when `/network-aggregate` is enabled. Caller-supplied reviewer metadata is not trusted for network-verified records.
 - `CROSSEXAM_OUTCOME_AUTHORITY_WALLETS`: authority-ID to EVM-wallet registry for signed outcome ingestion.
 - `CROSSEXAM_EXECUTOR_WALLETS`: executor-ID to EVM-wallet registry for signed execution receipt ingestion.
 - `CROSSEXAM_DATABASE_URL`: required when horizontally scaling the seller service.

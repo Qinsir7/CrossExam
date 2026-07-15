@@ -225,7 +225,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     try {
       assurance = await aggregateNetworkVerifiedAssurance(
         request.body as AggregateAssuranceRequest,
-        config.reviewerWallets,
+        config.reviewerRegistry,
       )
       if (!config.serviceSigningKey) throw new Error('Paid assurance issuance requires a configured service signing key.')
       assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)

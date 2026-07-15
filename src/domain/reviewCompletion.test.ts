@@ -21,8 +21,8 @@ function makeDelivery(reviewerId: string, verdict: ReviewDelivery['findings'][nu
   return {
     reviewerId,
     deliveredAt: '2026-07-14T14:00:00.000Z',
-    artifacts: [{ id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE', locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-14T13:59:00.000Z', excerpt: 'Attributable evidence.' }],
-    findings: [{ claimId: 'C-1', reviewerId, verdict, confidence: verdict === 'CONTRADICTS' ? 0.9 : 0.8, materiality: 0.9, evidence: 'The reviewer supplied an evidence-backed finding.' }],
+    artifacts: [{ id: `E-${reviewerId}`, kind: 'PRIMARY_SOURCE', locator: `https://example.com/${reviewerId}`, observedAt: '2026-07-14T13:59:00.000Z', excerpt: 'Attributable evidence.', contentHash: '0x01' }],
+    findings: [{ claimId: 'C-1', reviewerId, verdict, confidence: verdict === 'CONTRADICTS' ? 0.9 : 0.8, materiality: 0.9, evidence: 'The reviewer supplied an evidence-backed finding.', evidenceArtifactIds: [`E-${reviewerId}`] }],
   }
 }
 

@@ -1,5 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
+import type { ReviewerRegistry } from './reviewerRegistry'
 
 export type X402ServerConfig = {
   port: number
@@ -11,7 +12,7 @@ export type X402ServerConfig = {
   syncFacilitatorOnStart: boolean
   serviceSigningKey?: Hex
   serviceSignerAddress?: Address
-  reviewerWallets: Record<string, `0x${string}`>
+  reviewerRegistry: ReviewerRegistry
   outcomeAuthorityWallets: Record<string, `0x${string}`>
   executorWallets: Record<string, `0x${string}`>
   dataDirectory: string
@@ -72,6 +73,52 @@ function walletRegistry(value: string | undefined, label: string): Record<string
   return registry
 }
 
+function reviewerRegistry(value: string | undefined): ReviewerRegistry {
+  if (!value?.trim()) return {}
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new Error('CROSSEXAM_REVIEWER_REGISTRY must be valid JSON.')
+  }
+  if (!Array.isArray(parsed)) throw new Error('CROSSEXAM_REVIEWER_REGISTRY must be a JSON array.')
+
+  const registry: ReviewerRegistry = {}
+  const wallets = new Set<string>()
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') throw new Error('CROSSEXAM_REVIEWER_REGISTRY contains an invalid reviewer.')
+    const candidate = item as Record<string, unknown>
+    const id = typeof candidate.id === 'string' ? candidate.id.trim() : ''
+    const displayName = typeof candidate.displayName === 'string' ? candidate.displayName.trim() : ''
+    const ownerId = typeof candidate.ownerId === 'string' ? candidate.ownerId.trim() : ''
+    const modelFamily = typeof candidate.modelFamily === 'string' ? candidate.modelFamily.trim() : ''
+    const wallet = typeof candidate.wallet === 'string' ? candidate.wallet : ''
+    const status = candidate.status === undefined ? 'ACTIVE' : candidate.status
+    const evidenceRoutes = candidate.evidenceRoutes
+    const capabilities = candidate.capabilities
+    if (!id || !displayName || !ownerId || !modelFamily
+      || !/^0x[a-fA-F0-9]{40}$/.test(wallet)
+      || (status !== 'ACTIVE' && status !== 'SUSPENDED')
+      || !Array.isArray(evidenceRoutes) || !evidenceRoutes.length || evidenceRoutes.some((route) => typeof route !== 'string' || !route.trim())
+      || !Array.isArray(capabilities) || !capabilities.length || capabilities.some((capability) => typeof capability !== 'string' || !capability.trim())
+      || registry[id] || wallets.has(wallet.toLowerCase())) {
+      throw new Error('CROSSEXAM_REVIEWER_REGISTRY contains an invalid or duplicate reviewer binding.')
+    }
+    wallets.add(wallet.toLowerCase())
+    registry[id] = {
+      id,
+      displayName,
+      ownerId,
+      modelFamily,
+      wallet: wallet as Address,
+      status,
+      evidenceRoutes: evidenceRoutes as string[],
+      capabilities: capabilities as string[],
+    }
+  }
+  return registry
+}
+
 function recordAccessTtl(value: string | undefined) {
   const ttl = Number(value ?? '2592000')
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 31_536_000) throw new Error('CROSSEXAM_RECORD_ACCESS_TTL_SECONDS must be between 60 and 31536000.')
@@ -121,7 +168,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     syncFacilitatorOnStart,
     serviceSigningKey: signer?.key,
     serviceSignerAddress: signer?.address,
-    reviewerWallets: walletRegistry(env.CROSSEXAM_REVIEWER_WALLETS, 'CROSSEXAM_REVIEWER_WALLETS'),
+    reviewerRegistry: reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY),
     outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
     executorWallets: walletRegistry(env.CROSSEXAM_EXECUTOR_WALLETS, 'CROSSEXAM_EXECUTOR_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',

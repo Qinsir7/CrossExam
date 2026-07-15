@@ -50,8 +50,8 @@ describe('acceptReviewDelivery', () => {
     return {
       reviewerId: 'r-1',
       deliveredAt: '2026-07-14T14:00:00.000Z',
-      artifacts: [{ id: 'E-1', kind: 'PRIMARY_SOURCE', locator: 'https://example.com/source', observedAt: '2026-07-14T13:59:00.000Z', excerpt: 'A traceable source excerpt.' }],
-      findings: [{ claimId: 'C-1', reviewerId: 'r-1', verdict: 'SUPPORTS', confidence: 0.8, materiality: 0.9, evidence: 'The source directly supports this claim.' }],
+      artifacts: [{ id: 'E-1', kind: 'PRIMARY_SOURCE', locator: 'https://example.com/source', observedAt: '2026-07-14T13:59:00.000Z', excerpt: 'A traceable source excerpt.', contentHash: '0x01' }],
+      findings: [{ claimId: 'C-1', reviewerId: 'r-1', verdict: 'SUPPORTS', confidence: 0.8, materiality: 0.9, evidence: 'The source directly supports this claim.', evidenceArtifactIds: ['E-1'] }],
       ...overrides,
     }
   }
