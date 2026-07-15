@@ -34,6 +34,10 @@ export function createServiceManifest(publicUrl?: string): CrossExamServiceManif
         id: 'decision-assurance.record-retrieval', endpoint: endpoint('/api/v1/assurance/records/{recordId}'), paid: false,
         description: 'Retrieve a persisted Decision Assurance Record with its time-limited bearer token.',
       },
+      {
+        id: 'decision-assurance.outcome-ingestion', endpoint: endpoint('/api/v1/outcomes'), paid: false,
+        description: 'Registered outcome authorities submit EIP-191-signed, evidence-bound ex-post claim resolutions.',
+      },
     ],
   }
 }

@@ -7,6 +7,7 @@ export type X402ServerConfig = {
   okxPassphrase: string
   syncFacilitatorOnStart: boolean
   reviewerWallets: Record<string, `0x${string}`>
+  outcomeAuthorityWallets: Record<string, `0x${string}`>
   dataDirectory: string
   recordAccessTtlSeconds: number
   publicUrl?: string
@@ -35,21 +36,21 @@ function booleanEnvironment(value: string | undefined, fallback: boolean) {
   throw new Error('CROSSEXAM_X402_SYNC must be "true" or "false".')
 }
 
-function reviewerWalletRegistry(value: string | undefined): Record<string, `0x${string}`> {
+function walletRegistry(value: string | undefined, label: string): Record<string, `0x${string}`> {
   if (!value?.trim()) return {}
   let parsed: unknown
   try {
     parsed = JSON.parse(value)
   } catch {
-    throw new Error('CROSSEXAM_REVIEWER_WALLETS must be valid JSON.')
+    throw new Error(`${label} must be valid JSON.`)
   }
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('CROSSEXAM_REVIEWER_WALLETS must be a reviewer-id to EVM-address object.')
+    throw new Error(`${label} must be an identifier to EVM-address object.`)
   }
   const registry: Record<string, `0x${string}`> = {}
   for (const [reviewerId, wallet] of Object.entries(parsed)) {
     if (!reviewerId.trim() || typeof wallet !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
-      throw new Error('CROSSEXAM_REVIEWER_WALLETS contains an invalid reviewer wallet binding.')
+      throw new Error(`${label} contains an invalid wallet binding.`)
     }
     registry[reviewerId] = wallet as `0x${string}`
   }
@@ -82,7 +83,8 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     okxSecretKey: required(env, 'OKX_SECRET_KEY'),
     okxPassphrase: required(env, 'OKX_PASSPHRASE'),
     syncFacilitatorOnStart: booleanEnvironment(env.CROSSEXAM_X402_SYNC, true),
-    reviewerWallets: reviewerWalletRegistry(env.CROSSEXAM_REVIEWER_WALLETS),
+    reviewerWallets: walletRegistry(env.CROSSEXAM_REVIEWER_WALLETS, 'CROSSEXAM_REVIEWER_WALLETS'),
+    outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,

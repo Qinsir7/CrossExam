@@ -6,6 +6,7 @@ import { issueDecisionAssuranceRecord } from './assuranceRecord'
 import { FileAssuranceRecordStore } from './recordStore'
 import type { CrossExamResult, DecisionPackage } from '../src/domain/types'
 import type { ReviewDispatch } from '../src/network/reviewNetwork'
+import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 
 const directories: string[] = []
 
@@ -22,6 +23,15 @@ afterEach(async () => {
 const decision: DecisionPackage = { id: 'DP-STORE', title: 'Persist record', valueAtRiskUsd: 1, claims: [] }
 const dispatch: ReviewDispatch = { id: 'RD-STORE', decisionId: 'DP-STORE', status: 'DELIVERED', assignments: [] }
 const result: CrossExamResult = { claims: [], action: 'PROCEED', effectiveIndependence: 0, materialRefutations: 0, materialUnresolved: 0, reversalConditions: [] }
+
+function outcome(recordId: string): SignedClaimOutcomeAdjudication {
+  return {
+    schemaVersion: '0.1', recordId, claimId: 'C-1', exPostAdjudication: 'SUPPORTED', adjudicatedAt: '2026-07-15T00:10:00.000Z',
+    authority: { id: 'xlayer-finality', kind: 'ONCHAIN_FINALITY' },
+    evidence: { locator: 'xlayer://tx/0xoutcome', observedAt: '2026-07-15T00:10:00.000Z', excerpt: 'Finalized outcome.' },
+    attestation: { scheme: 'EIP191', payloadHash: '0x1234', signature: '0x1234' },
+  }
+}
 
 describe('FileAssuranceRecordStore', () => {
   it('persists and retrieves an assurance record', async () => {
@@ -56,5 +66,15 @@ describe('FileAssuranceRecordStore', () => {
     await expect(recordStore.canRead(record.recordId, grant.token, new Date('2026-07-15T00:00:30.000Z'))).resolves.toBe(true)
     await expect(recordStore.canRead(record.recordId, `${grant.token}wrong`, new Date('2026-07-15T00:00:30.000Z'))).resolves.toBe(false)
     await expect(recordStore.canRead(record.recordId, grant.token, new Date('2026-07-15T00:01:00.000Z'))).resolves.toBe(false)
+  })
+
+  it('allows an authority to retry an identical outcome but refuses a silent revision', async () => {
+    const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z')
+    const recordStore = await store()
+    const first = outcome(record.recordId)
+
+    expect(await recordStore.saveOutcome(first)).toBe('CREATED')
+    expect(await recordStore.saveOutcome(first)).toBe('EXISTING')
+    await expect(recordStore.saveOutcome({ ...first, exPostAdjudication: 'CONTRADICTED' })).rejects.toThrow('conflict')
   })
 })

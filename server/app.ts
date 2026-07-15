@@ -8,6 +8,8 @@ import type { AggregateAssuranceRequest } from './assuranceService'
 import type { X402ServerConfig } from './config'
 import { FileAssuranceRecordStore, type AssuranceRecordStore } from './recordStore'
 import { createServiceManifest } from './serviceManifest'
+import { verifyOutcomeAttestation, type SignedClaimOutcomeAdjudication } from './outcomeAttestation'
+import { deriveReviewerOutcomeEvents } from './outcomeAdjudication'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -47,6 +49,29 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.json(record)
     } catch {
       response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+    }
+  })
+  app.post('/api/v1/outcomes', async (request, response) => {
+    const outcome = request.body as SignedClaimOutcomeAdjudication
+    try {
+      await verifyOutcomeAttestation({ outcome, authorityWallets: config.outcomeAuthorityWallets })
+      const record = await recordStore.find(outcome.recordId)
+      if (!record) {
+        response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+        return
+      }
+      const events = deriveReviewerOutcomeEvents(record, outcome)
+      const persistence = await recordStore.saveOutcome(outcome)
+      response.status(persistence === 'CREATED' ? 201 : 200).json({
+        recordId: outcome.recordId,
+        claimId: outcome.claimId,
+        authorityId: outcome.authority.id,
+        persistence,
+        reviewerOutcomeEventsAccepted: events.length,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid outcome adjudication.'
+      response.status(422).json({ error: 'OUTCOME_ADJUDICATION_REJECTED', message })
     }
   })
   const paidRoutes = {

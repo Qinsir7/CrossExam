@@ -39,6 +39,15 @@ describe('loadX402ServerConfig', () => {
     expect(config.reviewerWallets['reviewer-1']).toBe('0x2222222222222222222222222222222222222222')
   })
 
+  it('parses outcome-authority wallet bindings separately from reviewer identities', () => {
+    const config = loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_OUTCOME_AUTHORITY_WALLETS: '{"xlayer-finality":"0x3333333333333333333333333333333333333333"}',
+    })
+
+    expect(config.outcomeAuthorityWallets['xlayer-finality']).toBe('0x3333333333333333333333333333333333333333')
+  })
+
   it('uses a local durable data directory unless a deployment overrides it', () => {
     expect(loadX402ServerConfig(validEnvironment).dataDirectory).toBe('.crossexam-data')
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DATA_DIR: '/data/crossexam' }).dataDirectory).toBe('/data/crossexam')
