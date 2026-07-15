@@ -16,6 +16,5 @@ RUN mkdir -p /var/lib/crossexam && chown -R node:node /app /var/lib/crossexam
 
 USER node
 EXPOSE 4022
-VOLUME ["/var/lib/crossexam"]
 
 CMD ["npm", "run", "x402:serve"]

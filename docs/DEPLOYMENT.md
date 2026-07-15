@@ -15,6 +15,8 @@ docker run --rm \
 
 `CROSSEXAM_DATA_DIR` defaults to `/var/lib/crossexam` in the container. The mounted volume is mandatory for any single-instance filesystem deployment.
 
+Railway does not support Dockerfile `VOLUME` declarations. For Railway, provision its managed PostgreSQL service and set `CROSSEXAM_DATABASE_URL` to the Postgres service reference; do not attach a local filesystem volume.
+
 When the web app is hosted on a different origin, set `CROSSEXAM_ALLOWED_ORIGINS` explicitly (for example, `https://cross-exam.xyz,https://www.cross-exam.xyz`). The API rejects browser origins not on this allowlist. Managed container platforms commonly provide `PORT`; CrossExam honours it before `CROSSEXAM_PORT`.
 
 ## Shared PostgreSQL production store
