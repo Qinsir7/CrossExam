@@ -52,6 +52,19 @@ describe('loadX402ServerConfig', () => {
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: registry })).toThrow('duplicate')
   })
 
+  it('requires an explicit asset allowlist and atomic cap before enabling a buyer-side procurement signer', () => {
+    const signer = '0x1123456789012345678901234567890123456789012345678901234567890123'
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_PROCUREMENT_SIGNING_KEY: signer })).toThrow('MAX_PER_SCOPE_ATOMIC')
+    const config = loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_PROCUREMENT_SIGNING_KEY: signer,
+      CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC: '250000',
+      CROSSEXAM_PROCUREMENT_ALLOWED_ASSETS: '0x5555555555555555555555555555555555555555',
+    })
+    expect(config.procurementMaxPerScopeAtomic).toBe(250000n)
+    expect(config.procurementAllowedAssets).toEqual(['0x5555555555555555555555555555555555555555'])
+  })
+
   it('parses outcome-authority wallet bindings separately from reviewer identities', () => {
     const config = loadX402ServerConfig({
       ...validEnvironment,

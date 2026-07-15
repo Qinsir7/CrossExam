@@ -36,6 +36,18 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_EXECUTOR_WALLETS`: executor-ID to EVM-wallet registry for signed execution receipt ingestion.
 - `CROSSEXAM_DATABASE_URL`: required when horizontally scaling the seller service.
 
+## Buyer-side reviewer procurement
+
+The API process never needs a buyer wallet to serve assurance records. Run procurement as a separate worker only after registering real external reviewers and setting all of the following seller-side secrets and spend controls:
+
+- `CROSSEXAM_PROCUREMENT_SIGNING_KEY`: a dedicated, funded X Layer buyer key—never reuse the issuer key.
+- `CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC`: absolute token-unit cap for one external review request.
+- `CROSSEXAM_PROCUREMENT_ALLOWED_ASSETS`: comma-separated X Layer token contract allowlist.
+- `CROSSEXAM_PUBLIC_URL`: HTTPS callback base used by reviewers to return their EIP-191-signed deliveries.
+- Each active `CROSSEXAM_REVIEWER_REGISTRY` entry needs an HTTPS `procurementEndpoint` before the worker can send it work.
+
+Run one recoverable pass with `npm run x402:procure`. A scheduler or queue may invoke it repeatedly. The worker rejects all non-`exact`, non-X-Layer, unapproved-asset, over-cap, redirecting, or no-402 procurement flows before it creates a payment signature. Every external request has a durable `{jobId}:{scopeId}` idempotency key and records the settled asset, amount and transaction reference on the job.
+
 ## HTTPS and exposure
 
 Place the container behind an HTTPS reverse proxy and expose a public domain. OKX.AI validates a paid A2MCP endpoint by calling it without a payment header; a live endpoint must answer `402` and include the `PAYMENT-REQUIRED` header. Do not expose the service directly through an unauthenticated development tunnel in production.

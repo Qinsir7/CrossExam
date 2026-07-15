@@ -7,6 +7,8 @@ import type { ReviewerWalletRegistry } from './deliveryAttestation'
 export type RegisteredReviewer = ReviewerProfile & {
   wallet: Address
   status: 'ACTIVE' | 'SUSPENDED'
+  /** HTTPS x402 endpoint that accepts CrossExam blind-review procurement. */
+  procurementEndpoint?: string
 }
 
 export type ReviewerRegistry = Record<string, RegisteredReviewer>

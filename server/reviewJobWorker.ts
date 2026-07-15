@@ -2,7 +2,7 @@ import type { ReviewJobStore } from './reviewJobStore'
 import { blindTaskForProcurement, markProcurementDispatching, markProcurementFailed, markProcurementRequested, type ReviewJob } from './reviewJob'
 
 export type ExternalReviewProvider = {
-  requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{ externalRequestId: string }>
+  requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{ externalRequestId: string; payment?: ReviewJob['procurements'][number]['payment'] }>
 }
 
 /**
@@ -45,7 +45,7 @@ export class ReviewJobWorker {
             idempotencyKey: claimedJob.procurements.find((item) => item.scopeId === procurement.scopeId)!.idempotencyKey,
             task: blindTaskForProcurement(claimedJob, procurement.scopeId),
           })
-          const requestedJob = markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId)
+          const requestedJob = markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.payment)
           await this.store.updateJob(requestedJob, claimedJob.revision)
           requested += 1
         } catch (error) {

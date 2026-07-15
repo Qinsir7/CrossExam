@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "x402:serve": "tsx server/index.ts",
     "evaluate": "tsx server/evaluate.ts",
-    "demo": "tsx server/demo.ts"
+    "demo": "tsx server/demo.ts",
+    "x402:procure": "tsx server/procure.ts"
   },
   "dependencies": {
     "@okxweb3/x402-core": "^0.1.0",

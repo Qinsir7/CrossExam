@@ -16,6 +16,7 @@ export type ReviewProcurement = {
   externalRequestId?: string
   lastAttemptAt?: string
   failure?: string
+  payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction?: string }
 }
 
 export type ReviewJobEvent = {
@@ -132,12 +133,12 @@ export function markProcurementDispatching(job: ReviewJob, scopeId: string, now 
   return revise(job, now, { procurements }, event('REVIEW_REQUEST_DISPATCHING', 'External reviewer procurement is being dispatched with its stable idempotency key.', now, scopeId))
 }
 
-export function markProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, now = new Date().toISOString()): ReviewJob {
+export function markProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, payment?: ReviewProcurement['payment'], now = new Date().toISOString()): ReviewJob {
   if (!externalRequestId.trim()) throw new Error('External review request must return a stable identifier.')
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
-    ? { ...item, status: 'REQUESTED' as const, externalRequestId, lastAttemptAt: now }
+    ? { ...item, status: 'REQUESTED' as const, externalRequestId, ...(payment ? { payment } : {}), lastAttemptAt: now }
     : item)
   return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `External reviewer accepted request ${externalRequestId}.`, now, scopeId))
 }
