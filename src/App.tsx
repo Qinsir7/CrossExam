@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { createDecisionPackage } from './domain/decisionPackage'
 import { createActionBinding } from './domain/actionBinding'
+import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import { createReviewPlan } from './domain/reviewPlan'
 import { stageReviewPlan } from './network/reviewNetwork'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
@@ -33,6 +34,7 @@ function App() {
   const [draftTarget, setDraftTarget] = useState('')
   const [draftParameters, setDraftParameters] = useState('')
   const [formErrors, setFormErrors] = useState<string[]>([])
+  const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -54,6 +56,21 @@ function App() {
     }),
     [result.claims],
   )
+
+  const demoGate = useMemo(() => evaluatePreAction({
+    recordId: 'dar_demo_assurance_record',
+    decisionId: demoDecision.id,
+    valueAtRiskUsd: demoDecision.valueAtRiskUsd,
+    attributionStatus: 'NETWORK_VERIFIED',
+    result,
+    actionBinding: demoDecision.actionBinding,
+  }, {
+    decisionId: demoDecision.id,
+    valueAtRiskUsd: demoDecision.valueAtRiskUsd,
+    actionType: demoDecision.actionBinding!.actionType,
+    target: demoDecision.actionBinding!.target,
+    parametersHash: demoDecision.actionBinding!.parametersHash,
+  }), [result])
 
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -83,6 +100,7 @@ function App() {
   }
 
   function queueReview() {
+    setGateDecision(null)
     setRunState(isDemo ? 'demo-complete' : 'queued')
   }
 
@@ -235,6 +253,19 @@ function App() {
                 {result.reversalConditions.map((condition) => <p key={condition.claimId}><b>{condition.claimId}</b>{condition.requirement}</p>)}
               </div>
             )}
+            <div className="execution-guard">
+              <div className="guard-heading"><span>Execution guard</span><small>NETWORK VERIFIED</small></div>
+              <p>Bound to {demoDecision.actionBinding?.actionType.toLowerCase()} · {demoDecision.actionBinding?.target}</p>
+              {gateDecision ? (
+                <div className={`gate-outcome ${gateDecision.executable ? 'permit' : 'blocked'}`}>
+                  <strong>{gateDecision.status}</strong>
+                  <span>{gateDecision.reasons[0]}</span>
+                  {gateDecision.requiredClaimIds.length > 0 && <small>Remediate {gateDecision.requiredClaimIds.join(' · ')}</small>}
+                </div>
+              ) : (
+                <button className="guard-button" onClick={() => setGateDecision(demoGate)}>Attempt guarded execution <span>→</span></button>
+              )}
+            </div>
           </aside>
         </div>
       </section>
