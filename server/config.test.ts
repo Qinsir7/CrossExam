@@ -6,6 +6,7 @@ const validEnvironment = {
   OKX_API_KEY: 'api-key',
   OKX_SECRET_KEY: 'secret',
   OKX_PASSPHRASE: 'passphrase',
+  CROSSEXAM_SERVICE_SIGNING_KEY: '0x0123456789012345678901234567890123456789012345678901234567890123',
 }
 
 describe('loadX402ServerConfig', () => {
@@ -28,6 +29,12 @@ describe('loadX402ServerConfig', () => {
 
   it('allows the facilitator sync only to be explicitly disabled for local non-payment smoke tests', () => {
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_SYNC: 'false' }).syncFacilitatorOnStart).toBe(false)
+  })
+
+  it('does not permit a paid seller to issue unsigned assurance records', () => {
+    const { CROSSEXAM_SERVICE_SIGNING_KEY: _signingKey, ...unsigned } = validEnvironment
+    expect(() => loadX402ServerConfig(unsigned)).toThrow('SERVICE_SIGNING_KEY')
+    expect(loadX402ServerConfig({ ...unsigned, CROSSEXAM_X402_SYNC: 'false' }).serviceSigningKey).toBeUndefined()
   })
 
   it('parses registered reviewer wallet bindings without exposing them to the browser', () => {

@@ -28,6 +28,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 ## Required production settings
 
 - `CROSSEXAM_PAY_TO`: a real X Layer receiving wallet.
+- `CROSSEXAM_SERVICE_SIGNING_KEY`: a dedicated 32-byte EVM private key for issuing assurance records. It is mandatory when the paid x402 service is enabled; publish only its derived public address in service discovery.
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
 - `CROSSEXAM_REVIEWER_WALLETS`: reviewer-ID to EVM-wallet registry when `/network-aggregate` is enabled.

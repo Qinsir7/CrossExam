@@ -3,6 +3,7 @@ export type CrossExamServiceManifest = {
   version: '0.1'
   description: string
   discovery: { homepage: string }
+  issuer?: { recordAttestation: { scheme: 'EIP191'; signer: string } }
   payment: { protocol: 'x402'; network: 'eip155:196'; scheme: 'exact' }
   capabilities: Array<{
     id: string
@@ -12,7 +13,7 @@ export type CrossExamServiceManifest = {
   }>
 }
 
-export function createServiceManifest(publicUrl?: string): CrossExamServiceManifest {
+export function createServiceManifest(publicUrl?: string, serviceSignerAddress?: string): CrossExamServiceManifest {
   const baseUrl = publicUrl?.replace(/\/$/, '') ?? ''
   const endpoint = (path: string) => `${baseUrl}${path}`
   return {
@@ -20,6 +21,7 @@ export function createServiceManifest(publicUrl?: string): CrossExamServiceManif
     version: '0.1',
     description: 'Adversarial decision assurance: evidence-first review, network verification, and machine-enforceable pre-action gates.',
     discovery: { homepage: endpoint('/') || '/' },
+    ...(serviceSignerAddress ? { issuer: { recordAttestation: { scheme: 'EIP191' as const, signer: serviceSignerAddress } } } : {}),
     payment: { protocol: 'x402', network: 'eip155:196', scheme: 'exact' },
     capabilities: [
       {

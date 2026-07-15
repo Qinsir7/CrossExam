@@ -1,6 +1,9 @@
 import { evaluatePreAction, type ActionIntent, type AssuredDecision, type PreActionDecision, type PreActionPolicy } from '../domain/preActionGate'
 import { createActionBinding } from '../domain/actionBinding'
 import type { ActionType, CrossExamResult, DecisionPackage } from '../domain/types'
+import type { ReviewDispatch } from '../network/reviewNetwork'
+import type { Address } from 'viem'
+import { verifyRemoteRecordAttestation, type RemoteServiceAttestation } from './recordAttestation'
 
 export type RecordAccess = {
   recordId: string
@@ -8,10 +11,14 @@ export type RecordAccess = {
 }
 
 export type RemoteDecisionAssuranceRecord = {
+  schemaVersion: '0.1'
   recordId: string
+  issuedAt: string
   attributionStatus: AssuredDecision['attributionStatus']
   decision: DecisionPackage
+  dispatch: ReviewDispatch
   result: CrossExamResult
+  serviceAttestation?: RemoteServiceAttestation
 }
 
 export type BoundActionInput<T> = {
@@ -61,7 +68,7 @@ export class CrossExamClient {
     })
     if (!response.ok) throw new CrossExamRecordAccessError(response.status)
     const record = await response.json() as RemoteDecisionAssuranceRecord
-    if (!record || record.recordId !== access.recordId || !record.decision || !record.result || !record.attributionStatus) {
+    if (!record || record.recordId !== access.recordId || !record.schemaVersion || !record.issuedAt || !record.decision || !record.dispatch || !record.result || !record.attributionStatus) {
       throw new Error('CrossExam returned an invalid Decision Assurance Record.')
     }
     return record
@@ -69,6 +76,24 @@ export class CrossExamClient {
 
   async preflight(access: RecordAccess, intent: ActionIntent, policy?: PreActionPolicy): Promise<PreActionDecision> {
     const record = await this.getRecord(access)
+    return evaluatePreAction({
+      recordId: record.recordId,
+      decisionId: record.decision.id,
+      valueAtRiskUsd: record.decision.valueAtRiskUsd,
+      attributionStatus: record.attributionStatus,
+      result: record.result,
+      actionBinding: record.decision.actionBinding,
+    }, intent, policy)
+  }
+
+  async getVerifiedRecord(access: RecordAccess, expectedServiceSigner: Address): Promise<RemoteDecisionAssuranceRecord> {
+    const record = await this.getRecord(access)
+    await verifyRemoteRecordAttestation(record, expectedServiceSigner)
+    return record
+  }
+
+  async preflightVerified(access: RecordAccess, intent: ActionIntent, expectedServiceSigner: Address, policy?: PreActionPolicy): Promise<PreActionDecision> {
+    const record = await this.getVerifiedRecord(access, expectedServiceSigner)
     return evaluatePreAction({
       recordId: record.recordId,
       decisionId: record.decision.id,

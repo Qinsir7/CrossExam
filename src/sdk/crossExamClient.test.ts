@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CrossExamActionBlockedError, CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
 import { createActionBinding } from '../domain/actionBinding'
+import { privateKeyToAccount } from 'viem/accounts'
+import { attestDecisionAssuranceRecord } from '../../server/serviceAttestation'
 
 const record = {
+  schemaVersion: '0.1' as const,
   recordId: 'dar_1234567890abcdef12345678',
+  issuedAt: '2026-07-15T00:00:00.000Z',
   attributionStatus: 'NETWORK_VERIFIED' as const,
   decision: { id: 'DP-1', title: 'Execute', valueAtRiskUsd: 2000, claims: [], actionBinding: { actionType: 'TRADE' as const, target: 'dex:demo', parametersHash: '0xdemo' } },
+  dispatch: { id: 'RD-1', decisionId: 'DP-1', status: 'DELIVERED' as const, assignments: [] },
   result: { claims: [], action: 'PROCEED' as const, effectiveIndependence: 2.7, materialRefutations: 0, materialUnresolved: 0, reversalConditions: [] },
 }
 
@@ -34,6 +39,14 @@ describe('CrossExamClient', () => {
     await expect(client.getRecord({ recordId: record.recordId, token: 'expired' })).rejects.toEqual(expect.objectContaining({
       name: 'CrossExamRecordAccessError', status: 404,
     } satisfies Partial<CrossExamRecordAccessError>))
+  })
+
+  it('verifies that a fetched record was signed by the expected CrossExam issuer', async () => {
+    const privateKey = '0x0123456789012345678901234567890123456789012345678901234567890123' as const
+    const signed = await attestDecisionAssuranceRecord(record, privateKey)
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(signed), { status: 200 })) })
+
+    await expect(client.getVerifiedRecord({ recordId: record.recordId, token: 'darv_token' }, privateKeyToAccount(privateKey).address)).resolves.toMatchObject({ recordId: record.recordId })
   })
 
   it('hands the exact payload to an executor only after a matching assurance preflight', async () => {

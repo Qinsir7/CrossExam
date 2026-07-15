@@ -1,3 +1,6 @@
+import { privateKeyToAccount } from 'viem/accounts'
+import type { Address, Hex } from 'viem'
+
 export type X402ServerConfig = {
   port: number
   payTo: `0x${string}`
@@ -6,6 +9,8 @@ export type X402ServerConfig = {
   okxSecretKey: string
   okxPassphrase: string
   syncFacilitatorOnStart: boolean
+  serviceSigningKey?: Hex
+  serviceSignerAddress?: Address
   reviewerWallets: Record<string, `0x${string}`>
   outcomeAuthorityWallets: Record<string, `0x${string}`>
   dataDirectory: string
@@ -35,6 +40,14 @@ function booleanEnvironment(value: string | undefined, fallback: boolean) {
   if (value === 'true') return true
   if (value === 'false') return false
   throw new Error('CROSSEXAM_X402_SYNC must be "true" or "false".')
+}
+
+function serviceSigner(value: string | undefined) {
+  const privateKey = value?.trim()
+  if (!privateKey) return undefined
+  if (!/^0x[a-fA-F0-9]{64}$/.test(privateKey)) throw new Error('CROSSEXAM_SERVICE_SIGNING_KEY must be a 32-byte EVM private key.')
+  const key = privateKey as Hex
+  return { key, address: privateKeyToAccount(key).address }
 }
 
 function walletRegistry(value: string | undefined, label: string): Record<string, `0x${string}`> {
@@ -91,6 +104,12 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     throw new Error('CROSSEXAM_PORT must be a valid TCP port.')
   }
 
+  const signer = serviceSigner(env.CROSSEXAM_SERVICE_SIGNING_KEY)
+  const syncFacilitatorOnStart = booleanEnvironment(env.CROSSEXAM_X402_SYNC, true)
+  if (syncFacilitatorOnStart && !signer) {
+    throw new Error('CROSSEXAM_SERVICE_SIGNING_KEY is required when CROSSEXAM_X402_SYNC=true.')
+  }
+
   return {
     port,
     payTo: payTo as `0x${string}`,
@@ -98,7 +117,9 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     okxApiKey: required(env, 'OKX_API_KEY'),
     okxSecretKey: required(env, 'OKX_SECRET_KEY'),
     okxPassphrase: required(env, 'OKX_PASSPHRASE'),
-    syncFacilitatorOnStart: booleanEnvironment(env.CROSSEXAM_X402_SYNC, true),
+    syncFacilitatorOnStart,
+    serviceSigningKey: signer?.key,
+    serviceSignerAddress: signer?.address,
     reviewerWallets: walletRegistry(env.CROSSEXAM_REVIEWER_WALLETS, 'CROSSEXAM_REVIEWER_WALLETS'),
     outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',

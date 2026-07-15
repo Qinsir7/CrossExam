@@ -109,6 +109,8 @@ Every procurement scope must be `DELIVERED`. Each delivery must originate from t
 
 `recordId` is derived from a SHA-256 hash of the record content. Changing the input, evidence, delivery, or outcome changes the identifier.
 
+Every paid record is additionally issued with an EIP-191 `serviceAttestation` over the complete record payload. The service's public signer is published in `/.well-known/crossexam.json` under `issuer.recordAttestation.signer`. Executors should verify this signature before relying on a record; the SDK provides `getVerifiedRecord` and `preflightVerified` for that purpose.
+
 Every `REFUTED` or `UNRESOLVED` claim generates a reversal condition. It specifies the class of independently verifiable evidence needed before an action can be reconsidered; it does not fabricate a favorable resolution.
 
 After a successful paid aggregation, the record is atomically persisted before the API responds. The response includes `persistence: "CREATED"` or `"EXISTING"`; a persistence failure returns `500` rather than presenting an unrecorded result as an audit artifact.

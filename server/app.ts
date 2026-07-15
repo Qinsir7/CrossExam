@@ -13,6 +13,7 @@ import { deriveReviewerOutcomeEvents } from './outcomeAdjudication'
 import { loadReviewerReliabilityProfile } from './reliabilityService'
 import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempotencyStore } from './idempotencyStore'
 import { PostgresAssuranceStore } from './postgresStore'
+import { attestDecisionAssuranceRecord } from './serviceAttestation'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -46,7 +47,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
   })
   app.get('/.well-known/crossexam.json', (_request, response) => {
-    response.json(createServiceManifest(config.publicUrl))
+    response.json(createServiceManifest(config.publicUrl, config.serviceSignerAddress))
   })
   app.get('/api/v1/assurance/records/:recordId', async (request, response) => {
     const authorization = request.header('authorization')
@@ -185,6 +186,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     let assurance
     try {
       assurance = aggregateAssurance(request.body as AggregateAssuranceRequest)
+      if (!config.serviceSigningKey) throw new Error('Paid assurance issuance requires a configured service signing key.')
+      assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid assurance request.'
       response.status(422).json({ error: 'ASSURANCE_INPUT_REJECTED', message })
@@ -206,6 +209,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         request.body as AggregateAssuranceRequest,
         config.reviewerWallets,
       )
+      if (!config.serviceSigningKey) throw new Error('Paid assurance issuance requires a configured service signing key.')
+      assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid network-verified assurance request.'
       response.status(422).json({ error: 'NETWORK_ASSURANCE_REJECTED', message })

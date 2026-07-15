@@ -24,7 +24,7 @@ CrossExam ships a paid, standardized A2MCP endpoint at `POST /api/v1/assurance/a
 
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
-Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work.
+Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.
 
 The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” Version `0.1` marks reviewer identity as caller-declared; it will not overstate that attribution as network-verified until CrossExam itself manages the reviewer relationship.
 

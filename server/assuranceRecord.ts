@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto'
 import type { CrossExamResult, DecisionPackage } from '../src/domain/types'
 import type { ReviewDispatch } from '../src/network/reviewNetwork'
+import type { Address, Hex } from 'viem'
+
+export type ServiceAttestation = {
+  scheme: 'EIP191'
+  payloadHash: Hex
+  signer: Address
+  signature: Hex
+}
 
 export type DecisionAssuranceRecord = {
   schemaVersion: '0.1'
@@ -10,6 +18,7 @@ export type DecisionAssuranceRecord = {
   decision: DecisionPackage
   dispatch: ReviewDispatch
   result: CrossExamResult
+  serviceAttestation?: ServiceAttestation
 }
 
 type RecordPayload = Omit<DecisionAssuranceRecord, 'recordId'>
