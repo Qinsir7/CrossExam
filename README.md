@@ -26,6 +26,14 @@ Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” Version `0.1` marks reviewer identity as caller-declared; it will not overstate that attribution as network-verified until CrossExam itself manages the reviewer relationship.
 
+## Run the complete offline lifecycle
+
+```bash
+npm run demo
+```
+
+This creates a Decision Package, obtains three independently signed reviewer deliveries, issues a `NETWORK_VERIFIED` record, blocks its unsafe bound action, accepts an authority-signed ex-post outcome, and rebuilds the challenger's reliability profile. It uses deterministic demo-only keys and an OS temporary data directory—no wallet, payment, or OKX credential is needed. The live paid x402 route remains separate and requires the seller configuration below.
+
 To run the seller service after provisioning an OKX API credential and X Layer receiving address:
 
 ```bash
@@ -39,7 +47,7 @@ For a production-style container with a persistent record volume, see [deploymen
 
 ## Status
 
-Early product definition and validation.
+Functional prototype: adversarial review contracts, signed network-verification, X Layer x402 seller endpoints, action-bound execution gates, authority-signed outcome ingestion, and reproducible reviewer reliability.
 
 ## License
 

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "x402:serve": "tsx server/index.ts",
-    "evaluate": "tsx server/evaluate.ts"
+    "evaluate": "tsx server/evaluate.ts",
+    "demo": "tsx server/demo.ts"
   },
   "dependencies": {
     "@okxweb3/x402-core": "^0.1.0",
