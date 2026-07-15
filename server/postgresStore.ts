@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { Pool } from 'pg'
 import type { DecisionAssuranceRecord } from './assuranceRecord'
 import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
+import type { SignedExecutionReceipt } from './executionReceipt'
 import type { AssuranceRecordStore, RecordSaveResult } from './recordStore'
 import { assertIdempotencyKey, idempotencyKeyHash, type AssuranceIdempotencyStore, type IdempotencyLookup } from './idempotencyStore'
 
@@ -65,6 +66,11 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
         record_id TEXT NOT NULL REFERENCES crossexam_records(record_id),
         completed_at TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (route, key_hash)
+      );
+      CREATE TABLE IF NOT EXISTS crossexam_executions (
+        record_id TEXT PRIMARY KEY REFERENCES crossexam_records(record_id),
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `)
   }
@@ -143,6 +149,21 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
     await this.ready()
     const result = await this.pool.query<{ payload: SignedClaimOutcomeAdjudication }>('SELECT payload FROM crossexam_outcomes ORDER BY record_id, claim_id')
     return result.rows.map((row) => row.payload)
+  }
+
+  async saveExecution(receipt: SignedExecutionReceipt): Promise<RecordSaveResult> {
+    assertRecordId(receipt.recordId)
+    await this.ready()
+    const inserted = await this.pool.query(
+      'INSERT INTO crossexam_executions (record_id, payload) VALUES ($1, $2::jsonb) ON CONFLICT DO NOTHING RETURNING record_id',
+      [receipt.recordId, JSON.stringify(receipt)],
+    )
+    if (inserted.rowCount) return 'CREATED'
+    const existing = await this.pool.query<{ payload: SignedExecutionReceipt }>('SELECT payload FROM crossexam_executions WHERE record_id = $1', [receipt.recordId])
+    if (!existing.rows[0] || canonicalize(existing.rows[0].payload) !== canonicalize(receipt)) {
+      throw new Error('Execution receipt conflict: this assurance record already has an immutable execution receipt.')
+    }
+    return 'EXISTING'
   }
 
   async lookup(route: string, key: string, fingerprint: string): Promise<IdempotencyLookup> {

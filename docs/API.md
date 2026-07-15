@@ -131,6 +131,10 @@ CrossExam does not assign reputation from reviewer agreement or raw task volume.
 
 `GET /api/v1/reviewers/{reviewerId}/reliability` recomputes the public reliability profile from that immutable outcome trail. It never returns a ranking score before the reviewer has five independently resolved claims, and it does not use reviewer agreement as an input.
 
+## Execution receipts
+
+`POST /api/v1/executions` accepts a registered executor's EIP-191-signed execution receipt. An `EXECUTED` receipt must match the exact action binding, include an execution/transaction reference, and would have had to pass CrossExam's gate at the stated execution timestamp. The server stores one immutable receipt per assurance record, so the same reviewed action cannot acquire conflicting execution history. Configure `CROSSEXAM_EXECUTOR_WALLETS` server-side.
+
 ## Blind challenger task
 
 Before a reviewer is selected or paid, CrossExam creates a `BlindReviewTask` from the Decision Package and the reviewer scope. It carries only scope-specific claims, evidence requirements, and the permitted verdict vocabulary. The source recommendation, peer findings, and aggregate verdict are explicitly withheld during the first review round.

@@ -44,6 +44,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         id: 'decision-assurance.reviewer-reliability', endpoint: endpoint('/api/v1/reviewers/{reviewerId}/reliability'), paid: false,
         description: 'Recompute a reviewer profile from immutable, authority-signed ex-post outcomes.',
       },
+      {
+        id: 'decision-assurance.execution-receipt', endpoint: endpoint('/api/v1/executions'), paid: false,
+        description: 'Registered executors submit a signed receipt bound to the exact reviewed action.',
+      },
     ],
   }
 }

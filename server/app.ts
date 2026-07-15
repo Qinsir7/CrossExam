@@ -14,6 +14,7 @@ import { loadReviewerReliabilityProfile } from './reliabilityService'
 import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempotencyStore } from './idempotencyStore'
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
+import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -88,6 +89,23 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid outcome adjudication.'
       response.status(422).json({ error: 'OUTCOME_ADJUDICATION_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/executions', async (request, response) => {
+    const receipt = request.body as SignedExecutionReceipt
+    try {
+      await verifyExecutionReceiptAttestation(receipt, config.executorWallets)
+      const record = await recordStore.find(receipt.recordId)
+      if (!record) {
+        response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+        return
+      }
+      validateExecutionReceipt(record, receipt)
+      const persistence = await recordStore.saveExecution(receipt)
+      response.status(persistence === 'CREATED' ? 201 : 200).json({ recordId: receipt.recordId, executorId: receipt.executorId, status: receipt.status, persistence })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid execution receipt.'
+      response.status(422).json({ error: 'EXECUTION_RECEIPT_REJECTED', message })
     }
   })
   app.get('/api/v1/reviewers/:reviewerId/reliability', async (request, response) => {

@@ -13,6 +13,7 @@ export type X402ServerConfig = {
   serviceSignerAddress?: Address
   reviewerWallets: Record<string, `0x${string}`>
   outcomeAuthorityWallets: Record<string, `0x${string}`>
+  executorWallets: Record<string, `0x${string}`>
   dataDirectory: string
   recordAccessTtlSeconds: number
   databaseUrl?: string
@@ -122,6 +123,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     serviceSignerAddress: signer?.address,
     reviewerWallets: walletRegistry(env.CROSSEXAM_REVIEWER_WALLETS, 'CROSSEXAM_REVIEWER_WALLETS'),
     outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
+    executorWallets: walletRegistry(env.CROSSEXAM_EXECUTOR_WALLETS, 'CROSSEXAM_EXECUTOR_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
     databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),

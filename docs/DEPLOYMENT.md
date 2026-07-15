@@ -33,6 +33,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
 - `CROSSEXAM_REVIEWER_WALLETS`: reviewer-ID to EVM-wallet registry when `/network-aggregate` is enabled.
 - `CROSSEXAM_OUTCOME_AUTHORITY_WALLETS`: authority-ID to EVM-wallet registry for signed outcome ingestion.
+- `CROSSEXAM_EXECUTOR_WALLETS`: executor-ID to EVM-wallet registry for signed execution receipt ingestion.
 - `CROSSEXAM_DATABASE_URL`: required when horizontally scaling the seller service.
 
 ## HTTPS and exposure

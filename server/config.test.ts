@@ -55,6 +55,15 @@ describe('loadX402ServerConfig', () => {
     expect(config.outcomeAuthorityWallets['xlayer-finality']).toBe('0x3333333333333333333333333333333333333333')
   })
 
+  it('parses executor wallet bindings separately from outcome authorities', () => {
+    const config = loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_EXECUTOR_WALLETS: '{"trade-executor":"0x4444444444444444444444444444444444444444"}',
+    })
+
+    expect(config.executorWallets['trade-executor']).toBe('0x4444444444444444444444444444444444444444')
+  })
+
   it('uses a local durable data directory unless a deployment overrides it', () => {
     expect(loadX402ServerConfig(validEnvironment).dataDirectory).toBe('.crossexam-data')
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DATA_DIR: '/data/crossexam' }).dataDirectory).toBe('/data/crossexam')

@@ -3,6 +3,7 @@ import { link, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { DecisionAssuranceRecord } from './assuranceRecord'
 import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
+import type { SignedExecutionReceipt } from './executionReceipt'
 
 export type RecordSaveResult = 'CREATED' | 'EXISTING'
 
@@ -14,6 +15,7 @@ export interface AssuranceRecordStore {
   canRead(recordId: string, token: string, now?: Date): Promise<boolean>
   saveOutcome(outcome: SignedClaimOutcomeAdjudication): Promise<RecordSaveResult>
   listOutcomes(): Promise<SignedClaimOutcomeAdjudication[]>
+  saveExecution(receipt: SignedExecutionReceipt): Promise<RecordSaveResult>
 }
 
 function assertRecordId(recordId: string) {
@@ -34,11 +36,13 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
   private readonly recordsDirectory: string
   private readonly grantsDirectory: string
   private readonly outcomesDirectory: string
+  private readonly executionsDirectory: string
 
   constructor(dataDirectory: string) {
     this.recordsDirectory = join(dataDirectory, 'records')
     this.grantsDirectory = join(dataDirectory, 'grants')
     this.outcomesDirectory = join(dataDirectory, 'outcomes')
+    this.executionsDirectory = join(dataDirectory, 'executions')
   }
 
   async checkHealth() {
@@ -46,6 +50,7 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
       mkdir(this.recordsDirectory, { recursive: true }),
       mkdir(this.grantsDirectory, { recursive: true }),
       mkdir(this.outcomesDirectory, { recursive: true }),
+      mkdir(this.executionsDirectory, { recursive: true }),
     ])
   }
 
@@ -153,6 +158,33 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return []
       throw error
+    }
+  }
+
+  async saveExecution(receipt: SignedExecutionReceipt): Promise<RecordSaveResult> {
+    assertRecordId(receipt.recordId)
+    await mkdir(this.executionsDirectory, { recursive: true })
+    const destination = join(this.executionsDirectory, `${receipt.recordId}.json`)
+    const serialized = `${JSON.stringify(receipt, null, 2)}\n`
+    try {
+      const existing = await readFile(destination, 'utf8')
+      if (existing !== serialized) throw new Error('Execution receipt conflict: this assurance record already has an immutable execution receipt.')
+      return 'EXISTING'
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+    }
+    const temporary = join(this.executionsDirectory, `.${receipt.recordId}.${randomUUID()}.tmp`)
+    await writeFile(temporary, serialized, { encoding: 'utf8', flag: 'wx' })
+    try {
+      await link(temporary, destination)
+      return 'CREATED'
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error
+      const existing = await readFile(destination, 'utf8')
+      if (existing !== serialized) throw new Error('Execution receipt conflict: this assurance record already has an immutable execution receipt.')
+      return 'EXISTING'
+    } finally {
+      await rm(temporary, { force: true })
     }
   }
 }
