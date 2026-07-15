@@ -11,6 +11,7 @@ import { canAccessReviewJob, createReviewJob, createReviewJobWithAccess, recordR
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
+import { buildProcurementLedger } from './procurementLedger'
 
 const directories: string[] = []
 const accounts = [
@@ -56,7 +57,7 @@ describe('ReviewJob lifecycle', () => {
     const worker = new ReviewJobWorker(jobStore, {
       async requestReview(input) {
         requests.push({ scopeId: input.scopeId, idempotencyKey: input.idempotencyKey, withheld: input.task.withheldContext })
-        return { externalRequestId: `external-${input.scopeId}` }
+        return { externalRequestId: `external-${input.scopeId}`, payment: { network: 'eip155:196', asset: '0x5555555555555555555555555555555555555555', amountAtomic: '120000', transaction: `0x${'1'.repeat(64)}` } }
       },
     })
 
@@ -72,7 +73,7 @@ describe('ReviewJob lifecycle', () => {
     const jobStore = await store()
     let job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_22222222-2222-4222-8222-222222222222')
     await jobStore.createJob(job)
-    const worker = new ReviewJobWorker(jobStore, { async requestReview(input) { return { externalRequestId: `external-${input.scopeId}` } } })
+    const worker = new ReviewJobWorker(jobStore, { async requestReview(input) { return { externalRequestId: `external-${input.scopeId}`, payment: { network: 'eip155:196', asset: '0x5555555555555555555555555555555555555555', amountAtomic: '120000', transaction: `0x${'1'.repeat(64)}` } } } })
     await worker.runOnce()
     job = (await jobStore.findJob(job.id))!
 
@@ -94,5 +95,6 @@ describe('ReviewJob lifecycle', () => {
 
     expect(job.status).toBe('READY_FOR_ASSURANCE')
     expect(job.events.at(-1)?.type).toBe('JOB_READY_FOR_ASSURANCE')
+    expect(buildProcurementLedger(job)).toMatchObject({ settledByAsset: [{ asset: '0x5555555555555555555555555555555555555555', amountAtomic: '360000', payments: 3 }] })
   })
 })

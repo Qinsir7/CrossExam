@@ -52,6 +52,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         id: 'decision-assurance.review-jobs', endpoint: endpoint('/api/v1/review-jobs'), paid: false,
         description: 'Create and track capability-protected, durable blind-review procurement jobs before paid assurance issuance.',
       },
+      {
+        id: 'decision-assurance.procurement-ledger', endpoint: endpoint('/api/v1/review-jobs/{jobId}/ledger'), paid: false,
+        description: 'Retrieve a capability-protected, asset-denominated ledger of settled external reviewer procurement.',
+      },
     ],
   }
 }

@@ -1,12 +1,11 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { createDecisionPackage } from './domain/decisionPackage'
 import { createActionBinding } from './domain/actionBinding'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
-import { createReviewPlan } from './domain/reviewPlan'
-import { stageReviewPlan } from './network/reviewNetwork'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
+import { ReviewJobClient, type ReviewJobView } from './sdk/reviewJobClient'
 import './App.css'
 
 const verdictLabel: Record<ClaimVerdict, string> = {
@@ -35,13 +34,27 @@ function App() {
   const [draftParameters, setDraftParameters] = useState('')
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
+  const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(null)
+  const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(null)
+  const [reviewJobError, setReviewJobError] = useState<string | null>(null)
+  const [creatingReviewJob, setCreatingReviewJob] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
-  const reviewPlan = useMemo(() => createReviewPlan(activeDecision), [activeDecision])
-  // The browser holds no fake provider list. A future server-side OKX adapter
-  // will populate this verified registry before any payment or dispatch occurs.
-  const dispatch = useMemo(() => stageReviewPlan(reviewPlan, []), [reviewPlan])
+  useEffect(() => {
+    if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'CANCELLED') return
+    const client = new ReviewJobClient()
+    const refresh = async () => {
+      try {
+        setReviewJob(await client.get(reviewJob.id, reviewJobAccessToken))
+        setReviewJobError(null)
+      } catch (error) {
+        setReviewJobError(error instanceof Error ? error.message : 'Unable to refresh the review job.')
+      }
+    }
+    const timer = window.setInterval(() => { void refresh() }, 12_000)
+    return () => window.clearInterval(timer)
+  }, [reviewJob?.id, reviewJob?.status, reviewJobAccessToken])
 
   const result = useMemo(
     () => runCrossExam(demoDecision, demoReviewers, demoFindings),
@@ -96,13 +109,39 @@ function App() {
 
     setActiveDecision(created.value)
     setRunState('idle')
+    setReviewJob(null)
+    setReviewJobAccessToken(null)
+    setReviewJobError(null)
     setFormErrors([])
     setComposerOpen(false)
   }
 
-  function queueReview() {
+  async function queueReview() {
     setGateDecision(null)
-    setRunState(isDemo ? 'demo-complete' : 'queued')
+    if (isDemo) {
+      setRunState('demo-complete')
+      return
+    }
+    setCreatingReviewJob(true)
+    setReviewJobError(null)
+    try {
+      const created = await new ReviewJobClient().create(activeDecision)
+      const { accessToken, ...job } = created
+      setReviewJob(job)
+      setReviewJobAccessToken(accessToken)
+      setRunState('queued')
+    } catch (error) {
+      setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not create the review job.')
+    } finally {
+      setCreatingReviewJob(false)
+    }
+  }
+
+  const reviewStatusLabel: Record<ReviewJobView['status'], string> = {
+    AWAITING_MATCH: 'Awaiting independent reviewer match',
+    AWAITING_DELIVERIES: 'Independent review procurement in progress',
+    READY_FOR_ASSURANCE: 'All independent deliveries received',
+    CANCELLED: 'Review job cancelled',
   }
 
   return (
@@ -133,7 +172,7 @@ function App() {
             <div className="decision-icon">↗</div>
             <div>
               <h2>{activeDecision.title}</h2>
-              <p>{isDemo ? 'Agent-originated onchain recommendation' : 'Awaiting independent reviewer procurement'}</p>
+              <p>{isDemo ? 'Agent-originated onchain recommendation' : reviewJob ? reviewStatusLabel[reviewJob.status] : 'Decision package not yet submitted to CrossExam'}</p>
             </div>
           </div>
           <div className="risk-row">
@@ -141,8 +180,8 @@ function App() {
             <strong>${activeDecision.valueAtRiskUsd.toLocaleString()}</strong>
           </div>
           <div className="risk-row">
-            <span>Action window</span>
-            <strong>{isDemo ? '18 min' : `${activeDecision.claims.length} claims`}</strong>
+            <span>{reviewJob ? 'Review job' : 'Action window'}</span>
+            <strong>{isDemo ? '18 min' : reviewJob ? reviewJob.id.slice(0, 14) : `${activeDecision.claims.length} claims`}</strong>
           </div>
           <div className="source-row">
             <span className="source-avatar">A</span>
@@ -163,7 +202,7 @@ function App() {
           <div className="stage-topline">
             <div>
               <span className="card-kicker">Cross-examination</span>
-              <h2>{ran ? 'Evidence under pressure' : runState === 'queued' ? 'Independent review requested' : 'Ready to challenge the decision'}</h2>
+              <h2>{ran ? 'Evidence under pressure' : runState === 'queued' ? reviewJob ? reviewStatusLabel[reviewJob.status] : 'Independent review requested' : 'Ready to challenge the decision'}</h2>
             </div>
             <span className="round-pill">Round 01</span>
           </div>
@@ -193,8 +232,8 @@ function App() {
           </div>
 
           {runState === 'idle' ? (
-            <button className="run-button" onClick={queueReview}>
-              <span className="button-cross">×</span> {isDemo ? 'Run CrossExam' : 'Queue CrossExam'} <span className="button-arrow">→</span>
+            <button className="run-button" onClick={() => void queueReview()} disabled={creatingReviewJob}>
+              <span className="button-cross">×</span> {creatingReviewJob ? 'Creating real review job' : isDemo ? 'Run CrossExam' : 'Queue CrossExam'} <span className="button-arrow">→</span>
             </button>
           ) : (
             <div className="completed-run">
@@ -204,6 +243,8 @@ function App() {
           )}
         </section>
       </section>
+
+      {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam did not queue this decision.</strong><span>{reviewJobError}</span></section>}
 
       <section className={`results ${ran ? 'visible' : ''}`} aria-live="polite">
         <div className="results-intro">
@@ -271,19 +312,20 @@ function App() {
         </div>
       </section>
 
-      {runState === 'queued' && (
+      {runState === 'queued' && reviewJob && (
         <section className="queued-panel" aria-live="polite">
           <span className="queued-icon">×</span>
           <div>
             <span className="card-kicker">Review request staged</span>
             <h2>CrossExam will not invent a verdict.</h2>
-            <p>Your decision package is valid and ready for procurement. {dispatch.assignments.length} independent scopes are staged, but none has been silently substituted with a synthetic reviewer or a synthetic conclusion.</p>
+            <p>Job {reviewJob.id} is persisted by CrossExam. It will only advance on a server-recorded external procurement and an attributable signed delivery; no reviewer or conclusion is synthesized in the browser.</p>
           </div>
-          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewPlan.estimatedTotalUsdt} USDT estimate</span></div>
+          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT estimate</span><span>rev {reviewJob.revision}</span></div>
           <div className="review-plan-list">
-            {reviewPlan.scopes.map((scope) => {
-              const assignment = dispatch.assignments.find((item) => item.scopeId === scope.id)
-              return <div key={scope.id}><span>{scope.title}</span><small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : assignment?.reviewer?.displayName} · {scope.estimatedFeeUsdt} USDT</small></div>
+            {reviewJob.plan.scopes.map((scope) => {
+              const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
+              const procurement = reviewJob.procurements.find((item) => item.scopeId === scope.id)
+              return <div key={scope.id}><span>{scope.title}</span><small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small></div>
             })}
           </div>
         </section>

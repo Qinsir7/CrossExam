@@ -125,6 +125,8 @@ The response also includes a time-limited `readAccess` bearer token. Retrieve a 
 
 The review worker sends one blind task per matched scope to an external reviewer provider using a stable `{jobId}:{scopeId}` idempotency key. `POST /api/v1/review-jobs/{jobId}/deliveries/{scopeId}` accepts a reviewer callback only after that external request was persisted, and only with the assigned reviewer's valid EIP-191 signature. A job becomes `READY_FOR_ASSURANCE` only after every scope returns content-addressed evidence; it can then be sent to the paid `/network-aggregate` issuer. No job endpoint fabricates reviewer work or a payment result.
 
+`GET /api/v1/review-jobs/{jobId}/ledger` uses the same owner capability and returns the original USDT estimate alongside actual settled external spend grouped by token asset and atomic amount. It never converts different assets into a fabricated USD total. A scope cannot be marked `REQUESTED`, or accept a delivery, until the worker has recorded a successful x402 settlement transaction for it.
+
 ## Truth and attribution boundary
 
 In `0.1`, an API caller may submit its own reviewer information to the declared aggregation endpoint. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam.

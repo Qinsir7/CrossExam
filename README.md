@@ -26,7 +26,7 @@ Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.
 
-The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” Version `0.1` marks reviewer identity as caller-declared; it will not overstate that attribution as network-verified until CrossExam itself manages the reviewer relationship.
+The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” The standard route labels caller-supplied review attribution honestly; the network route verifies server-registered reviewer identity, independence, EIP-191 delivery signatures, evidence hashes, and finding-to-artifact links.
 
 ## Run the complete offline lifecycle
 
@@ -43,7 +43,7 @@ cp .env.example .env.local
 npm run x402:serve
 ```
 
-See [the A2MCP API contract](docs/API.md) for the payment flow, request schema, Decision Assurance Record semantics, and explicit truth boundary.
+See [the A2MCP API contract](docs/API.md) for the payment flow, durable review-job lifecycle, request schema, Decision Assurance Record semantics, and explicit truth boundary. The real independent-review provider contract is in [docs/REVIEW_PROVIDER.md](docs/REVIEW_PROVIDER.md).
 
 For a production-style container with a persistent record volume, see [deployment instructions](docs/DEPLOYMENT.md).
 
@@ -51,7 +51,7 @@ For horizontally scaled production, configure `CROSSEXAM_DATABASE_URL`; the incl
 
 ## Status
 
-Functional prototype: adversarial review contracts, signed network-verification, X Layer x402 seller endpoints, action-bound execution gates, authority-signed outcome ingestion, and reproducible reviewer reliability.
+Production-shaped assurance core: durable blind review jobs, server-owned reviewer identity, signed network verification, buyer- and seller-side X Layer x402 rails with spend policy, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Live operation still requires real reviewer endpoints, dedicated funded wallets, seller facilitator credentials, and a public HTTPS deployment.
 
 ## License
 

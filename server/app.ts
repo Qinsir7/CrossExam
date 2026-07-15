@@ -18,6 +18,7 @@ import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type Signe
 import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
+import { buildProcurementLedger } from './procurementLedger'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -159,6 +160,19 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.json(reviewJobForOwner(cancelled))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Review job could not be cancelled.'
+      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.get('/api/v1/review-jobs/:jobId/ledger', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      response.json(buildProcurementLedger(job))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review job ledger is unavailable.'
       response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
     }
   })

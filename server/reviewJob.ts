@@ -16,7 +16,7 @@ export type ReviewProcurement = {
   externalRequestId?: string
   lastAttemptAt?: string
   failure?: string
-  payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction?: string }
+  payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
 }
 
 export type ReviewJobEvent = {
@@ -135,6 +135,9 @@ export function markProcurementDispatching(job: ReviewJob, scopeId: string, now 
 
 export function markProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, payment?: ReviewProcurement['payment'], now = new Date().toISOString()): ReviewJob {
   if (!externalRequestId.trim()) throw new Error('External review request must return a stable identifier.')
+  if (!payment?.transaction || !/^0x[0-9a-fA-F]+$/.test(payment.transaction) || !/^[1-9][0-9]*$/.test(payment.amountAtomic)) {
+    throw new Error('External review procurement requires a successful, recorded x402 settlement.')
+  }
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
   const procurements = job.procurements.map((item) => item.scopeId === scopeId

@@ -93,18 +93,25 @@ export class X402ReviewProvider implements ExternalReviewProvider {
     })
     if (!paid.ok) throw new Error(`External reviewer rejected the paid procurement request (${paid.status}).`)
     const settlement = this.http.getPaymentSettleResponse((name) => paid.headers.get(name))
+    if (!settlement.success || settlement.network !== 'eip155:196' || !settlement.transaction?.trim()) {
+      throw new Error('External reviewer response lacks a successful X Layer payment settlement confirmation.')
+    }
     const response = await paid.json() as { requestId?: unknown }
     if (typeof response.requestId !== 'string' || !response.requestId.trim()) {
       throw new Error('External reviewer accepted payment without returning a stable requestId.')
     }
     const accepted = payment.accepted
+    const amountAtomic = settlement.amount ?? accepted.amount
+    if (!/^[1-9][0-9]*$/.test(amountAtomic) || BigInt(amountAtomic) > this.options.maxPerScopeAtomic) {
+      throw new Error('Settlement amount violates the approved procurement spend policy.')
+    }
     return {
       externalRequestId: response.requestId,
       payment: {
         network: 'eip155:196',
         asset: accepted.asset.toLowerCase(),
-        amountAtomic: accepted.amount,
-        ...(settlement.transaction ? { transaction: settlement.transaction } : {}),
+        amountAtomic,
+        transaction: settlement.transaction,
       },
     }
   }
