@@ -11,6 +11,8 @@ export type BlindReviewTask = {
   deliveryRequirements: {
     addressEveryClaim: true
     requireTraceableArtifact: true
+    requireArtifactContentHash: true
+    requireFindingArtifactReferences: true
     acceptedVerdicts: ['SUPPORTS', 'CONTRADICTS', 'INSUFFICIENT_EVIDENCE']
   }
   withheldContext: ['origin_recommendation', 'other_reviewer_findings', 'aggregate_verdict']
@@ -46,6 +48,8 @@ export function createBlindReviewTask(decision: DecisionPackage, plan: ReviewPla
     deliveryRequirements: {
       addressEveryClaim: true,
       requireTraceableArtifact: true,
+      requireArtifactContentHash: true,
+      requireFindingArtifactReferences: true,
       acceptedVerdicts: ['SUPPORTS', 'CONTRADICTS', 'INSUFFICIENT_EVIDENCE'],
     },
     withheldContext: ['origin_recommendation', 'other_reviewer_findings', 'aggregate_verdict'],

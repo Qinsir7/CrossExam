@@ -5,9 +5,15 @@ import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 import type { SignedExecutionReceipt } from './executionReceipt'
 import type { AssuranceRecordStore, RecordSaveResult } from './recordStore'
 import { assertIdempotencyKey, idempotencyKeyHash, type AssuranceIdempotencyStore, type IdempotencyLookup } from './idempotencyStore'
+import type { ReviewJob } from './reviewJob'
+import type { ReviewJobStore } from './reviewJobStore'
 
 function assertRecordId(recordId: string) {
   if (!/^dar_[a-f0-9]{24}$/.test(recordId)) throw new Error('Invalid Decision Assurance Record identifier.')
+}
+
+function assertJobId(jobId: string) {
+  if (!/^rj_[0-9a-f-]{36}$/.test(jobId)) throw new Error('Invalid review job identifier.')
 }
 
 function tokenHash(token: string) {
@@ -26,7 +32,7 @@ function canonicalize(value: unknown): string {
  * Every conditional write uses a database uniqueness constraint; no process-
  * local lock is trusted for record, outcome, or paid-request idempotency.
  */
-export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceIdempotencyStore {
+export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceIdempotencyStore, ReviewJobStore {
   private readonly pool: Pool
   private migration?: Promise<void>
 
@@ -72,6 +78,15 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
         payload JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      CREATE TABLE IF NOT EXISTS crossexam_review_jobs (
+        job_id TEXT PRIMARY KEY,
+        revision INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS crossexam_review_jobs_active_idx ON crossexam_review_jobs (status, updated_at);
     `)
   }
 
@@ -164,6 +179,47 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
       throw new Error('Execution receipt conflict: this assurance record already has an immutable execution receipt.')
     }
     return 'EXISTING'
+  }
+
+  async createJob(job: ReviewJob): Promise<void> {
+    assertJobId(job.id)
+    if (job.revision !== 0) throw new Error('A new review job must begin at revision zero.')
+    await this.ready()
+    try {
+      await this.pool.query(
+        'INSERT INTO crossexam_review_jobs (job_id, revision, status, payload, created_at, updated_at) VALUES ($1, $2, $3, $4::jsonb, $5, $6)',
+        [job.id, job.revision, job.status, JSON.stringify(job), job.createdAt, job.updatedAt],
+      )
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === '23505') throw new Error('Review job revision conflict.')
+      throw error
+    }
+  }
+
+  async findJob(jobId: string): Promise<ReviewJob | null> {
+    assertJobId(jobId)
+    await this.ready()
+    const result = await this.pool.query<{ payload: ReviewJob }>('SELECT payload FROM crossexam_review_jobs WHERE job_id = $1', [jobId])
+    return result.rows[0]?.payload ?? null
+  }
+
+  async listActiveJobs(): Promise<ReviewJob[]> {
+    await this.ready()
+    const result = await this.pool.query<{ payload: ReviewJob }>(
+      "SELECT payload FROM crossexam_review_jobs WHERE status NOT IN ('READY_FOR_ASSURANCE', 'CANCELLED') ORDER BY updated_at ASC",
+    )
+    return result.rows.map((row) => row.payload)
+  }
+
+  async updateJob(job: ReviewJob, expectedRevision: number): Promise<void> {
+    assertJobId(job.id)
+    if (job.revision !== expectedRevision + 1) throw new Error('Review job revision must increment by exactly one.')
+    await this.ready()
+    const result = await this.pool.query(
+      'UPDATE crossexam_review_jobs SET revision = $1, status = $2, payload = $3::jsonb, updated_at = $4 WHERE job_id = $5 AND revision = $6',
+      [job.revision, job.status, JSON.stringify(job), job.updatedAt, job.id, expectedRevision],
+    )
+    if (result.rowCount !== 1) throw new Error('Review job revision conflict.')
   }
 
   async lookup(route: string, key: string, fingerprint: string): Promise<IdempotencyLookup> {

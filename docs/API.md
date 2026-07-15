@@ -64,7 +64,8 @@ For either paid aggregation endpoint, clients should send a cryptographically ra
               "kind": "PRIMARY_SOURCE",
               "locator": "https://source.example/evidence",
               "observedAt": "2026-07-14T15:59:00.000Z",
-              "excerpt": "Traceable supporting or contradicting evidence."
+              "excerpt": "Traceable supporting or contradicting evidence.",
+              "contentHash": "0x..."
             }
           ],
           "findings": [
@@ -74,7 +75,8 @@ For either paid aggregation endpoint, clients should send a cryptographically ra
               "verdict": "SUPPORTS",
               "confidence": 0.8,
               "materiality": 0.9,
-              "evidence": "The evidence explains why this claim is supported."
+              "evidence": "The evidence explains why this claim is supported.",
+              "evidenceArtifactIds": ["E-1"]
             }
           ]
         },
@@ -85,7 +87,7 @@ For either paid aggregation endpoint, clients should send a cryptographically ra
 }
 ```
 
-Every procurement scope must be `DELIVERED`. Each delivery must originate from the reviewer assigned to that scope, provide at least one traceable artifact, and explicitly address every claim in the scope.
+Every procurement scope must be `DELIVERED`. Each delivery must originate from the reviewer assigned to that scope, provide at least one traceable, content-addressed artifact, and explicitly address every claim in the scope. Every finding cites one or more artifact IDs; `/network-aggregate` recomputes each artifact hash before issuing a record.
 
 ## Response
 
@@ -117,11 +119,17 @@ After a successful paid aggregation, the record is atomically persisted before t
 
 The response also includes a time-limited `readAccess` bearer token. Retrieve a persisted record with `GET /api/v1/assurance/records/{recordId}` and `Authorization: Bearer {token}`. The server stores only a SHA-256 token hash and returns `404` for absent, invalid, expired, or unauthorized requests to avoid disclosing record existence.
 
+## Durable review jobs
+
+`POST /api/v1/review-jobs` creates a durable, capability-protected procurement job from a valid Decision Package. The service derives the canonical three-scope plan and matches only active reviewers from the server-owned registry. It returns an `rjv_…` access token exactly once; use it as `Authorization: Bearer {token}` for `GET` or `DELETE /api/v1/review-jobs/{jobId}`. The store retains only its SHA-256 hash.
+
+The review worker sends one blind task per matched scope to an external reviewer provider using a stable `{jobId}:{scopeId}` idempotency key. `POST /api/v1/review-jobs/{jobId}/deliveries/{scopeId}` accepts a reviewer callback only after that external request was persisted, and only with the assigned reviewer's valid EIP-191 signature. A job becomes `READY_FOR_ASSURANCE` only after every scope returns content-addressed evidence; it can then be sent to the paid `/network-aggregate` issuer. No job endpoint fabricates reviewer work or a payment result.
+
 ## Truth and attribution boundary
 
-In `0.1`, an API caller may submit its own reviewer information. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam. A later network-verified mode will require registry identity proofs and reviewer-signed deliveries.
+In `0.1`, an API caller may submit its own reviewer information to the declared aggregation endpoint. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam.
 
-The network-verified endpoint is the first implementation of that mode: the signed payload binds the delivery to its dispatch ID, decision ID, scope ID, reviewer ID, artifacts, and findings. A changed artifact, replay into another scope, unregistered reviewer, invalid signature, or repeated wallet across scopes is rejected.
+The network-verified endpoint is the verified mode: the signed payload binds the delivery to its dispatch ID, decision ID, scope ID, reviewer ID, artifacts, and findings. Server-owned registry data overwrites caller-supplied owner, model, capability, and evidence-route metadata. A changed artifact, missing artifact citation, replay into another scope, unregistered reviewer, reused owner or wallet, or invalid signature is rejected.
 
 ## Reviewer reliability boundary
 

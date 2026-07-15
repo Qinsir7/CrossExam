@@ -15,11 +15,14 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
+import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
+import type { SignedReviewDelivery } from './deliveryAttestation'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
     apiKey: config.okxApiKey,
     secretKey: config.okxSecretKey,
@@ -28,11 +31,12 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const resourceServer = new x402ResourceServer(facilitator)
     .register('eip155:196', new ExactEvmScheme())
   const app = express()
-  const sharedProductionStore = config.databaseUrl && !dependencies.recordStore && !dependencies.idempotencyStore
+  const sharedProductionStore = config.databaseUrl && !dependencies.recordStore && !dependencies.idempotencyStore && !dependencies.jobStore
     ? new PostgresAssuranceStore(config.databaseUrl)
     : undefined
   const recordStore = dependencies.recordStore ?? sharedProductionStore ?? new FileAssuranceRecordStore(config.dataDirectory)
   const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
+  const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
 
   app.disable('x-powered-by')
   app.use(express.json({ limit: '128kb' }))
@@ -41,7 +45,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.get('/ready', async (_request, response) => {
     try {
-      await recordStore.checkHealth()
+      await Promise.all([recordStore.checkHealth(), jobStore.checkHealth()])
       response.json({ ready: true })
     } catch {
       response.status(503).json({ ready: false, error: 'PERSISTENCE_UNAVAILABLE' })
@@ -114,6 +118,63 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load reviewer reliability.'
       response.status(422).json({ error: 'RELIABILITY_PROFILE_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/review-jobs', async (request, response) => {
+    try {
+      const created = createReviewJobWithAccess(request.body, config.reviewerRegistry)
+      await jobStore.createJob(created.job)
+      response.status(201).json({ ...reviewJobForOwner(created.job), accessToken: created.accessToken })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid review job request.'
+      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.get('/api/v1/review-jobs/:jobId', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      response.json(reviewJobForOwner(job))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid review job identifier.'
+      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.delete('/api/v1/review-jobs/:jobId', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      const cancelled = cancelReviewJob(job)
+      if (cancelled === job) {
+        response.json(reviewJobForOwner(job))
+        return
+      }
+      await jobStore.updateJob(cancelled, job.revision)
+      response.json(reviewJobForOwner(cancelled))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review job could not be cancelled.'
+      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/review-jobs/:jobId/deliveries/:scopeId', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      const updated = await recordReviewDelivery(job, request.params.scopeId, request.body as SignedReviewDelivery, config.reviewerRegistry)
+      await jobStore.updateJob(updated, job.revision)
+      response.status(200).json(reviewJobForOwner(updated))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review delivery was rejected.'
+      response.status(422).json({ error: 'REVIEW_DELIVERY_REJECTED', message })
     }
   })
   const paidRoutes = {

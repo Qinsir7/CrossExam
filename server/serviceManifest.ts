@@ -48,6 +48,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         id: 'decision-assurance.execution-receipt', endpoint: endpoint('/api/v1/executions'), paid: false,
         description: 'Registered executors submit a signed receipt bound to the exact reviewed action.',
       },
+      {
+        id: 'decision-assurance.review-jobs', endpoint: endpoint('/api/v1/review-jobs'), paid: false,
+        description: 'Create and track capability-protected, durable blind-review procurement jobs before paid assurance issuance.',
+      },
     ],
   }
 }
