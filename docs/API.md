@@ -24,6 +24,10 @@ The endpoint is protected by the OKX x402 Express SDK.
 
 The seller configures the receiving address and price server-side. No credential, key, or signing capability is exposed to the browser.
 
+## Idempotent paid delivery
+
+For either paid aggregation endpoint, clients should send a cryptographically random `Idempotency-Key` header (32–200 URL-safe characters) and reuse it only when retrying the exact same request. After a successful settlement and record persistence, CrossExam binds that key to the canonical request fingerprint and record ID. A retry is returned free of charge before the x402 middleware runs, with `Idempotent-Replay: true` and a fresh time-limited record-access token. Reusing the key with different input returns `409`; this prevents an ambiguous retry from becoming new paid work.
+
 ## Request
 
 ```json

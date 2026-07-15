@@ -11,11 +11,12 @@ import { createServiceManifest } from './serviceManifest'
 import { verifyOutcomeAttestation, type SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 import { deriveReviewerOutcomeEvents } from './outcomeAdjudication'
 import { loadReviewerReliabilityProfile } from './reliabilityService'
+import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempotencyStore } from './idempotencyStore'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
     apiKey: config.okxApiKey,
     secretKey: config.okxSecretKey,
@@ -25,6 +26,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     .register('eip155:196', new ExactEvmScheme())
   const app = express()
   const recordStore = dependencies.recordStore ?? new FileAssuranceRecordStore(config.dataDirectory)
+  const idempotencyStore = dependencies.idempotencyStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
 
   app.disable('x-powered-by')
   app.use(express.json({ limit: '128kb' }))
@@ -108,6 +110,52 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     },
   }
 
+  async function serveIdempotentReplay(route: string, request: express.Request, response: express.Response) {
+    const key = request.header('idempotency-key')
+    if (!key) return false
+    const fingerprint = requestFingerprint(route, request.body)
+    const lookup = await idempotencyStore.lookup(route, key, fingerprint)
+    if (lookup.status === 'MISSING') {
+      response.locals.idempotency = { route, key, fingerprint }
+      return false
+    }
+    if (lookup.status === 'CONFLICT') {
+      response.status(409).json({ error: 'IDEMPOTENCY_KEY_CONFLICT', message: 'This Idempotency-Key is already bound to a different assurance request.' })
+      return true
+    }
+    const record = await recordStore.find(lookup.recordId)
+    if (!record) {
+      response.status(500).json({ error: 'IDEMPOTENCY_RECORD_MISSING', message: 'The completed idempotency entry no longer has its assurance record.' })
+      return true
+    }
+    const access = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
+    response.setHeader('Idempotent-Replay', 'true')
+    response.status(200).json({ ...record, persistence: 'EXISTING', readAccess: access })
+    return true
+  }
+
+  async function persistIdempotency(response: express.Response, recordId: string) {
+    const context = response.locals.idempotency as { route: string; key: string; fingerprint: string } | undefined
+    if (context) await idempotencyStore.complete(context.route, context.key, context.fingerprint, recordId)
+  }
+
+  app.post('/api/v1/assurance/aggregate', async (request, response, next) => {
+    try {
+      if (!await serveIdempotentReplay(assuranceRoute, request, response)) next()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/assurance/network-aggregate', async (request, response, next) => {
+    try {
+      if (!await serveIdempotentReplay(networkAssuranceRoute, request, response)) next()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
+    }
+  })
+
   if (config.syncFacilitatorOnStart) {
     app.use(paymentMiddleware(paidRoutes, resourceServer))
   } else {
@@ -132,6 +180,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
     try {
       const persistence = await recordStore.save(assurance)
+      await persistIdempotency(response, assurance.recordId)
       const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
       response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
@@ -152,6 +201,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
     try {
       const persistence = await recordStore.save(assurance)
+      await persistIdempotency(response, assurance.recordId)
       const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
       response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
