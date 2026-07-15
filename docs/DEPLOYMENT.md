@@ -13,7 +13,17 @@ docker run --rm \
   crossexam-asp
 ```
 
-`CROSSEXAM_DATA_DIR` defaults to `/var/lib/crossexam` in the container. The mounted volume is mandatory for any environment where record durability matters.
+`CROSSEXAM_DATA_DIR` defaults to `/var/lib/crossexam` in the container. The mounted volume is mandatory for any single-instance filesystem deployment.
+
+## Shared PostgreSQL production store
+
+For more than one API instance, set `CROSSEXAM_DATABASE_URL` to a managed PostgreSQL connection string. CrossExam then uses PostgreSQL—not the local filesystem—for Decision Assurance Records, bearer-token hashes and expiry, immutable authority outcomes, and paid-request idempotency mappings. The schema is initialized idempotently on first use; deploy the application identity with only the database privileges it needs.
+
+```bash
+CROSSEXAM_DATABASE_URL=postgresql://crossexam:...@your-managed-postgres/crossexam?sslmode=require
+```
+
+Do not configure a shared network filesystem as a substitute for PostgreSQL: conditional record/outcome/idempotency writes depend on database uniqueness constraints across replicas.
 
 ## Required production settings
 
@@ -21,6 +31,8 @@ docker run --rm \
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
 - `CROSSEXAM_REVIEWER_WALLETS`: reviewer-ID to EVM-wallet registry when `/network-aggregate` is enabled.
+- `CROSSEXAM_OUTCOME_AUTHORITY_WALLETS`: authority-ID to EVM-wallet registry for signed outcome ingestion.
+- `CROSSEXAM_DATABASE_URL`: required when horizontally scaling the seller service.
 
 ## HTTPS and exposure
 
@@ -28,6 +40,6 @@ Place the container behind an HTTPS reverse proxy and expose a public domain. OK
 
 ## Operational notes
 
-- `/health` is intentionally free and does not expose credentials, reviewer wallets, records, or payment details.
+- `/health` is intentionally free and does not expose credentials, reviewer wallets, records, or payment details. It is a liveness probe; use `/ready` as the readiness probe because it verifies the configured persistence backend is reachable.
 - Paid aggregation is not reported successful until its Decision Assurance Record is persisted.
-- The local file store is appropriate for a single instance with a mounted volume. Before horizontal scaling, replace `AssuranceRecordStore` with a shared durable implementation and preserve the same no-overwrite contract.
+- The local file store is appropriate for a single instance with a mounted volume. `CROSSEXAM_DATABASE_URL` selects the included PostgreSQL implementation for horizontal scaling.

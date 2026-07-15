@@ -12,7 +12,7 @@ export interface AssuranceIdempotencyStore {
   complete(route: string, key: string, fingerprint: string, recordId: string, completedAt?: string): Promise<void>
 }
 
-function assertKey(key: string) {
+export function assertIdempotencyKey(key: string) {
   if (!/^[A-Za-z0-9._~-]{32,200}$/.test(key)) {
     throw new Error('Idempotency-Key must contain 32 to 200 URL-safe characters.')
   }
@@ -22,7 +22,7 @@ function assertRecordId(recordId: string) {
   if (!/^dar_[a-f0-9]{24}$/.test(recordId)) throw new Error('Invalid Decision Assurance Record identifier.')
 }
 
-function location(route: string, key: string) {
+export function idempotencyKeyHash(route: string, key: string) {
   return createHash('sha256').update(`${route}\n${key}`).digest('hex')
 }
 
@@ -41,9 +41,9 @@ export class FileAssuranceIdempotencyStore implements AssuranceIdempotencyStore 
   }
 
   async lookup(route: string, key: string, fingerprint: string): Promise<IdempotencyLookup> {
-    assertKey(key)
+    assertIdempotencyKey(key)
     try {
-      const entry = JSON.parse(await readFile(join(this.directory, `${location(route, key)}.json`), 'utf8')) as StoredEntry
+      const entry = JSON.parse(await readFile(join(this.directory, `${idempotencyKeyHash(route, key)}.json`), 'utf8')) as StoredEntry
       if (entry.route !== route || entry.fingerprint !== fingerprint) return { status: 'CONFLICT' }
       return { status: 'MATCH', recordId: entry.recordId }
     } catch (error) {
@@ -53,10 +53,10 @@ export class FileAssuranceIdempotencyStore implements AssuranceIdempotencyStore 
   }
 
   async complete(route: string, key: string, fingerprint: string, recordId: string, completedAt = new Date().toISOString()) {
-    assertKey(key)
+    assertIdempotencyKey(key)
     assertRecordId(recordId)
     await mkdir(this.directory, { recursive: true })
-    const destination = join(this.directory, `${location(route, key)}.json`)
+    const destination = join(this.directory, `${idempotencyKeyHash(route, key)}.json`)
     const serialized = `${JSON.stringify({ route, fingerprint, recordId, completedAt }, null, 2)}\n`
     try {
       const existing = await readFile(destination, 'utf8')

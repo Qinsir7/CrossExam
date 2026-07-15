@@ -7,6 +7,7 @@ import type { SignedClaimOutcomeAdjudication } from './outcomeAttestation'
 export type RecordSaveResult = 'CREATED' | 'EXISTING'
 
 export interface AssuranceRecordStore {
+  checkHealth(): Promise<void>
   save(record: DecisionAssuranceRecord): Promise<RecordSaveResult>
   find(recordId: string): Promise<DecisionAssuranceRecord | null>
   issueReadAccess(recordId: string, ttlSeconds: number, now?: Date): Promise<{ token: string; expiresAt: string }>
@@ -38,6 +39,14 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
     this.recordsDirectory = join(dataDirectory, 'records')
     this.grantsDirectory = join(dataDirectory, 'grants')
     this.outcomesDirectory = join(dataDirectory, 'outcomes')
+  }
+
+  async checkHealth() {
+    await Promise.all([
+      mkdir(this.recordsDirectory, { recursive: true }),
+      mkdir(this.grantsDirectory, { recursive: true }),
+      mkdir(this.outcomesDirectory, { recursive: true }),
+    ])
   }
 
   async save(record: DecisionAssuranceRecord): Promise<RecordSaveResult> {

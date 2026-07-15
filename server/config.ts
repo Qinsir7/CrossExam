@@ -10,6 +10,7 @@ export type X402ServerConfig = {
   outcomeAuthorityWallets: Record<string, `0x${string}`>
   dataDirectory: string
   recordAccessTtlSeconds: number
+  databaseUrl?: string
   publicUrl?: string
 }
 
@@ -63,6 +64,21 @@ function recordAccessTtl(value: string | undefined) {
   return ttl
 }
 
+function databaseUrl(value: string | undefined) {
+  const candidate = value?.trim()
+  if (!candidate) return undefined
+  let parsed: URL
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    throw new Error('CROSSEXAM_DATABASE_URL must be a valid PostgreSQL connection URL.')
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error('CROSSEXAM_DATABASE_URL must use the postgres or postgresql protocol.')
+  }
+  return candidate
+}
+
 /** Reads the seller-only configuration. Do not expose any of these values to Vite. */
 export function loadX402ServerConfig(env: Environment = process.env): X402ServerConfig {
   const payTo = required(env, 'CROSSEXAM_PAY_TO')
@@ -87,6 +103,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
+    databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
   }
 }

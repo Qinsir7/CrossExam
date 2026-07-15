@@ -52,4 +52,9 @@ describe('loadX402ServerConfig', () => {
     expect(loadX402ServerConfig(validEnvironment).dataDirectory).toBe('.crossexam-data')
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DATA_DIR: '/data/crossexam' }).dataDirectory).toBe('/data/crossexam')
   })
+
+  it('accepts only PostgreSQL URLs for the shared production store', () => {
+    expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DATABASE_URL: 'postgresql://cross:secret@db.example/crossexam' }).databaseUrl).toContain('postgresql://')
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DATABASE_URL: 'https://db.example/crossexam' })).toThrow('postgres')
+  })
 })

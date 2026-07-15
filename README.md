@@ -47,6 +47,8 @@ See [the A2MCP API contract](docs/API.md) for the payment flow, request schema, 
 
 For a production-style container with a persistent record volume, see [deployment instructions](docs/DEPLOYMENT.md).
 
+For horizontally scaled production, configure `CROSSEXAM_DATABASE_URL`; the included PostgreSQL store shares records, access grants, signed outcomes, and paid-request idempotency across API replicas.
+
 ## Status
 
 Functional prototype: adversarial review contracts, signed network-verification, X Layer x402 seller endpoints, action-bound execution gates, authority-signed outcome ingestion, and reproducible reviewer reliability.

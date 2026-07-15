@@ -12,6 +12,7 @@ import { verifyOutcomeAttestation, type SignedClaimOutcomeAdjudication } from '.
 import { deriveReviewerOutcomeEvents } from './outcomeAdjudication'
 import { loadReviewerReliabilityProfile } from './reliabilityService'
 import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempotencyStore } from './idempotencyStore'
+import { PostgresAssuranceStore } from './postgresStore'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -25,13 +26,24 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const resourceServer = new x402ResourceServer(facilitator)
     .register('eip155:196', new ExactEvmScheme())
   const app = express()
-  const recordStore = dependencies.recordStore ?? new FileAssuranceRecordStore(config.dataDirectory)
-  const idempotencyStore = dependencies.idempotencyStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
+  const sharedProductionStore = config.databaseUrl && !dependencies.recordStore && !dependencies.idempotencyStore
+    ? new PostgresAssuranceStore(config.databaseUrl)
+    : undefined
+  const recordStore = dependencies.recordStore ?? sharedProductionStore ?? new FileAssuranceRecordStore(config.dataDirectory)
+  const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
 
   app.disable('x-powered-by')
   app.use(express.json({ limit: '128kb' }))
   app.get('/health', (_request, response) => {
     response.json({ service: 'crossexam-asp', x402: 'enabled', network: 'eip155:196', recordStore: 'enabled' })
+  })
+  app.get('/ready', async (_request, response) => {
+    try {
+      await recordStore.checkHealth()
+      response.json({ ready: true })
+    } catch {
+      response.status(503).json({ ready: false, error: 'PERSISTENCE_UNAVAILABLE' })
+    }
   })
   app.get('/.well-known/crossexam.json', (_request, response) => {
     response.json(createServiceManifest(config.publicUrl))
