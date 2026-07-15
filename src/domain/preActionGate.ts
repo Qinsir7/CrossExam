@@ -2,6 +2,7 @@ import type { ActionBinding, ActionRecommendation, ActionType, CrossExamResult }
 
 export type AssuredDecision = {
   recordId: string
+  issuedAt: string
   decisionId: string
   valueAtRiskUsd: number
   attributionStatus: 'DECLARED_BY_CALLER' | 'NETWORK_VERIFIED'
@@ -20,6 +21,10 @@ export type ActionIntent = {
 export type PreActionPolicy = {
   requireNetworkVerificationAtOrAboveUsd: number
   requireActionBindingAtOrAboveUsd: number
+  /** Maximum age of evidence before a new assurance record is required. */
+  maxRecordAgeSeconds: number
+  /** Tolerates small issuer/executor clock skew but rejects future-dated records. */
+  maxFutureClockSkewSeconds: number
 }
 
 export type PreActionDecision = {
@@ -32,6 +37,8 @@ export type PreActionDecision = {
 export const defaultPreActionPolicy: PreActionPolicy = {
   requireNetworkVerificationAtOrAboveUsd: 1_000,
   requireActionBindingAtOrAboveUsd: 1_000,
+  maxRecordAgeSeconds: 900,
+  maxFutureClockSkewSeconds: 60,
 }
 
 function actionReason(action: ActionRecommendation) {
@@ -50,12 +57,24 @@ export function evaluatePreAction(
   assured: AssuredDecision,
   intent: ActionIntent,
   policy: PreActionPolicy = defaultPreActionPolicy,
+  now = new Date(),
 ): PreActionDecision {
   if (assured.decisionId !== intent.decisionId) {
     return { status: 'DENY', executable: false, reasons: ['The action intent does not match this Decision Assurance Record.'], requiredClaimIds: [] }
   }
   if (intent.valueAtRiskUsd > assured.valueAtRiskUsd) {
     return { status: 'DENY', executable: false, reasons: ['The action exceeds the value at risk reviewed by this Decision Assurance Record.'], requiredClaimIds: [] }
+  }
+  const issuedAt = new Date(assured.issuedAt).getTime()
+  if (Number.isNaN(issuedAt)) {
+    return { status: 'DENY', executable: false, reasons: ['The Decision Assurance Record has an invalid issuance timestamp.'], requiredClaimIds: [] }
+  }
+  const nowMs = now.getTime()
+  if (issuedAt - nowMs > policy.maxFutureClockSkewSeconds * 1_000) {
+    return { status: 'DENY', executable: false, reasons: ['The Decision Assurance Record is future-dated beyond the permitted clock skew.'], requiredClaimIds: [] }
+  }
+  if (nowMs - issuedAt > policy.maxRecordAgeSeconds * 1_000) {
+    return { status: 'REMEDIATE', executable: false, reasons: ['The Decision Assurance Record has expired under this execution policy and requires a fresh review.'], requiredClaimIds: [] }
   }
   if (intent.valueAtRiskUsd >= policy.requireActionBindingAtOrAboveUsd && !assured.actionBinding) {
     return { status: 'DENY', executable: false, reasons: ['This action exceeds the policy threshold and has no action binding in its Decision Assurance Record.'], requiredClaimIds: [] }

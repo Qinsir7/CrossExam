@@ -5,6 +5,7 @@ import type { AssuredDecision } from './preActionGate'
 function assured(overrides: Partial<AssuredDecision> = {}): AssuredDecision {
   return {
     recordId: 'dar_1234567890abcdef12345678',
+    issuedAt: new Date().toISOString(),
     decisionId: 'DP-1',
     valueAtRiskUsd: 5_000,
     attributionStatus: 'NETWORK_VERIFIED',
@@ -48,5 +49,17 @@ describe('evaluatePreAction', () => {
     const gate = evaluatePreAction(assured(), { decisionId: 'DP-1', valueAtRiskUsd: 5_000, actionType: 'SPEND', target: 'attacker:wallet', parametersHash: '0xspend-demo' })
 
     expect(gate.status).toBe('DENY')
+  })
+
+  it('requires a fresh review when evidence has expired under the execution policy', () => {
+    const gate = evaluatePreAction(
+      assured({ issuedAt: '2026-07-15T00:00:00.000Z' }),
+      { decisionId: 'DP-1', valueAtRiskUsd: 5_000, actionType: 'SPEND', target: 'vendor:demo', parametersHash: '0xspend-demo' },
+      { requireNetworkVerificationAtOrAboveUsd: 1_000, requireActionBindingAtOrAboveUsd: 1_000, maxRecordAgeSeconds: 300, maxFutureClockSkewSeconds: 60 },
+      new Date('2026-07-15T00:06:00.000Z'),
+    )
+
+    expect(gate).toMatchObject({ status: 'REMEDIATE', executable: false })
+    expect(gate.reasons[0]).toContain('expired')
   })
 })

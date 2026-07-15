@@ -7,7 +7,7 @@ import { attestDecisionAssuranceRecord } from '../../server/serviceAttestation'
 const record = {
   schemaVersion: '0.1' as const,
   recordId: 'dar_1234567890abcdef12345678',
-  issuedAt: '2026-07-15T00:00:00.000Z',
+  issuedAt: new Date().toISOString(),
   attributionStatus: 'NETWORK_VERIFIED' as const,
   decision: { id: 'DP-1', title: 'Execute', valueAtRiskUsd: 2000, claims: [], actionBinding: { actionType: 'TRADE' as const, target: 'dex:demo', parametersHash: '0xdemo' } },
   dispatch: { id: 'RD-1', decisionId: 'DP-1', status: 'DELIVERED' as const, assignments: [] },
@@ -61,6 +61,21 @@ describe('CrossExamClient', () => {
       actionType: 'TRADE', target: 'dex:demo', parameters, execute,
     })).resolves.toEqual({ txHash: '0xexecuted' })
     expect(execute).toHaveBeenCalledWith({ actionType: 'TRADE', target: 'dex:demo', parameters })
+  })
+
+  it('requires the expected CrossExam issuer before calling a production executor', async () => {
+    const privateKey = '0x0123456789012345678901234567890123456789012345678901234567890123' as const
+    const parameters = '{"side":"buy","amount":"1"}'
+    const actionBinding = await createActionBinding('TRADE', 'dex:demo', parameters)
+    const signed = await attestDecisionAssuranceRecord({ ...record, decision: { ...record.decision, actionBinding } }, privateKey)
+    const execute = vi.fn().mockResolvedValue({ txHash: '0xverified' })
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(signed), { status: 200 })) })
+
+    await expect(client.executeVerifiedBoundAction({
+      access: { recordId: record.recordId, token: 'darv_token' }, expectedServiceSigner: privateKeyToAccount(privateKey).address,
+      decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parameters, execute,
+    })).resolves.toEqual({ txHash: '0xverified' })
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 
   it('does not call the executor when the payload differs from the reviewed binding', async () => {

@@ -59,6 +59,7 @@ function App() {
 
   const demoGate = useMemo(() => evaluatePreAction({
     recordId: 'dar_demo_assurance_record',
+    issuedAt: new Date().toISOString(),
     decisionId: demoDecision.id,
     valueAtRiskUsd: demoDecision.valueAtRiskUsd,
     attributionStatus: 'NETWORK_VERIFIED',

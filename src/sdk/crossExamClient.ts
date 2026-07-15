@@ -33,6 +33,10 @@ export type BoundActionInput<T> = {
   execute: (boundAction: Readonly<Pick<BoundActionInput<T>, 'actionType' | 'target' | 'parameters'>>) => Promise<T> | T
 }
 
+export type VerifiedBoundActionInput<T> = BoundActionInput<T> & {
+  expectedServiceSigner: Address
+}
+
 export class CrossExamRecordAccessError extends Error {
   readonly status: number
 
@@ -78,6 +82,7 @@ export class CrossExamClient {
     const record = await this.getRecord(access)
     return evaluatePreAction({
       recordId: record.recordId,
+      issuedAt: record.issuedAt,
       decisionId: record.decision.id,
       valueAtRiskUsd: record.decision.valueAtRiskUsd,
       attributionStatus: record.attributionStatus,
@@ -96,6 +101,7 @@ export class CrossExamClient {
     const record = await this.getVerifiedRecord(access, expectedServiceSigner)
     return evaluatePreAction({
       recordId: record.recordId,
+      issuedAt: record.issuedAt,
       decisionId: record.decision.id,
       valueAtRiskUsd: record.decision.valueAtRiskUsd,
       attributionStatus: record.attributionStatus,
@@ -116,6 +122,22 @@ export class CrossExamClient {
       valueAtRiskUsd: input.valueAtRiskUsd,
       ...binding,
     }, input.policy)
+    if (!gate.executable) throw new CrossExamActionBlockedError(gate)
+    return input.execute(Object.freeze({
+      actionType: binding.actionType,
+      target: binding.target,
+      parameters: input.parameters.trim(),
+    }))
+  }
+
+  /** Production executor path: verify CrossExam's issuer before applying the fresh-record gate. */
+  async executeVerifiedBoundAction<T>(input: VerifiedBoundActionInput<T>): Promise<T> {
+    const binding = await createActionBinding(input.actionType, input.target, input.parameters)
+    const gate = await this.preflightVerified(input.access, {
+      decisionId: input.decisionId,
+      valueAtRiskUsd: input.valueAtRiskUsd,
+      ...binding,
+    }, input.expectedServiceSigner, input.policy)
     if (!gate.executable) throw new CrossExamActionBlockedError(gate)
     return input.execute(Object.freeze({
       actionType: binding.actionType,

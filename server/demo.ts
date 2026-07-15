@@ -80,7 +80,7 @@ async function main() {
   const outcomeEvents = deriveReviewerOutcomeEvents(record, outcome)
   await store.saveOutcome(outcome)
   const profile = await loadReviewerReliabilityProfile('assumption-challenger', store)
-  const gate = evaluatePreAction({ recordId: record.recordId, decisionId: decision.id, valueAtRiskUsd: decision.valueAtRiskUsd, attributionStatus: record.attributionStatus, result: record.result, actionBinding }, {
+  const gate = evaluatePreAction({ recordId: record.recordId, issuedAt: record.issuedAt, decisionId: decision.id, valueAtRiskUsd: decision.valueAtRiskUsd, attributionStatus: record.attributionStatus, result: record.result, actionBinding }, {
     decisionId: decision.id, valueAtRiskUsd: decision.valueAtRiskUsd, ...actionBinding,
   })
 
