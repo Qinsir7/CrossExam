@@ -56,6 +56,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         id: 'decision-assurance.procurement-ledger', endpoint: endpoint('/api/v1/review-jobs/{jobId}/ledger'), paid: false,
         description: 'Retrieve a capability-protected, asset-denominated ledger of settled external reviewer procurement.',
       },
+      {
+        id: 'decision-assurance.review-funding', endpoint: endpoint('/api/v1/review-jobs/authorize'), paid: true,
+        description: 'Authorize bounded external-review procurement through an x402 buyer payment before the worker can spend.',
+      },
     ],
   }
 }

@@ -46,7 +46,7 @@ The API process never needs a buyer wallet to serve assurance records. Run procu
 - `CROSSEXAM_PUBLIC_URL`: HTTPS callback base used by reviewers to return their EIP-191-signed deliveries.
 - Each active `CROSSEXAM_REVIEWER_REGISTRY` entry needs an HTTPS `procurementEndpoint` before the worker can send it work.
 
-Run one recoverable pass with `npm run x402:procure`. A scheduler or queue may invoke it repeatedly. The worker rejects all non-`exact`, non-X-Layer, unapproved-asset, over-cap, redirecting, or no-402 procurement flows before it creates a payment signature. Every external request has a durable `{jobId}:{scopeId}` idempotency key and records the settled asset, amount and transaction reference on the job.
+Run one recoverable pass with `npm run x402:procure`. A scheduler or queue may invoke it repeatedly. The worker considers only jobs whose owner has completed the x402-paid `/api/v1/review-jobs/authorize` step; creating a job cannot spend the buyer wallet. It rejects all non-`exact`, non-X-Layer, unapproved-asset, over-cap, redirecting, or no-402 procurement flows before it creates a payment signature. Every external request has a durable `{jobId}:{scopeId}` idempotency key and records the settled asset, amount and transaction reference on the job.
 
 ## HTTPS and exposure
 

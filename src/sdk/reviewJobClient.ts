@@ -3,11 +3,13 @@ import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'CANCELLED'
+export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
 
 export type ReviewJobView = {
   id: string
   revision: number
   status: ReviewJobStatus
+  fundingStatus: ReviewJobFundingStatus
   decision: DecisionPackage
   plan: ReviewPlan
   dispatch: ReviewDispatch

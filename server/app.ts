@@ -15,13 +15,14 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
-import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
+const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
@@ -214,6 +215,17 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       description: 'CrossExam registry-bound reviewer verification and decision-assurance aggregation',
       mimeType: 'application/json',
     },
+    [reviewFundingRoute]: {
+      accepts: {
+        scheme: 'exact' as const,
+        network: 'eip155:196' as const,
+        payTo: config.payTo,
+        price: `$${config.priceUsd}`,
+        maxTimeoutSeconds: 300,
+      },
+      description: 'CrossExam buyer authorization for bounded external reviewer procurement',
+      mimeType: 'application/json',
+    },
   }
 
   async function serveIdempotentReplay(route: string, request: express.Request, response: express.Response) {
@@ -273,6 +285,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     app.post('/api/v1/assurance/network-aggregate', (_request, response) => {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
+    app.post('/api/v1/review-jobs/authorize', (_request, response) => {
+      response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
+    })
   }
 
   app.post('/api/v1/assurance/aggregate', async (request, response) => {
@@ -316,6 +331,26 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
       response.status(500).json({ error: 'RECORD_PERSISTENCE_FAILED', message: 'The assurance result was not persisted.' })
+    }
+  })
+  app.post('/api/v1/review-jobs/authorize', async (request, response) => {
+    const input = request.body as { jobId?: unknown; accessToken?: unknown }
+    if (typeof input.jobId !== 'string' || typeof input.accessToken !== 'string') {
+      response.status(422).json({ error: 'REVIEW_FUNDING_REJECTED', message: 'jobId and owner accessToken are required.' })
+      return
+    }
+    try {
+      const job = await jobStore.findJob(input.jobId)
+      if (!job || !canAccessReviewJob(job, input.accessToken)) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      const authorized = authorizeReviewJobFunding(job)
+      if (authorized !== job) await jobStore.updateJob(authorized, job.revision)
+      response.json(reviewJobForOwner(authorized))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review job funding could not be authorized.'
+      response.status(422).json({ error: 'REVIEW_FUNDING_REJECTED', message })
     }
   })
 

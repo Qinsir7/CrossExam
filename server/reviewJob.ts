@@ -7,6 +7,7 @@ import { verifyDeliveryAttestation, type SignedReviewDelivery } from './delivery
 import { normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'CANCELLED'
+export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
 export type ProcurementStatus = 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED'
 
 export type ReviewProcurement = {
@@ -22,7 +23,7 @@ export type ReviewProcurement = {
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
-  type: 'JOB_CREATED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_DELIVERED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
+  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_DELIVERED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
   scopeId?: string
   detail: string
 }
@@ -32,6 +33,7 @@ export type ReviewJob = {
   id: string
   revision: number
   status: ReviewJobStatus
+  fundingStatus: ReviewJobFundingStatus
   decision: DecisionPackage
   plan: ReviewPlan
   dispatch: ReviewDispatch
@@ -80,6 +82,7 @@ export function createReviewJob(decision: DecisionPackage, registry: ReviewerReg
     id,
     revision: 0,
     status,
+    fundingStatus: 'UNFUNDED',
     decision,
     plan,
     dispatch,
@@ -119,8 +122,15 @@ export function blindTaskForProcurement(job: ReviewJob, scopeId: string): BlindR
   return createBlindReviewTask(job.decision, job.plan, scopeId)
 }
 
-function revise(job: ReviewJob, now: string, patch: Partial<Pick<ReviewJob, 'status' | 'dispatch' | 'procurements'>>, nextEvent: ReviewJobEvent): ReviewJob {
+function revise(job: ReviewJob, now: string, patch: Partial<Pick<ReviewJob, 'status' | 'fundingStatus' | 'dispatch' | 'procurements'>>, nextEvent: ReviewJobEvent): ReviewJob {
   return { ...job, ...patch, revision: job.revision + 1, updatedAt: now, events: [...job.events, nextEvent] }
+}
+
+/** A paid x402 authorization is required before the buyer worker may spend. */
+export function authorizeReviewJobFunding(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
+  if (job.status === 'CANCELLED') throw new Error('A cancelled review job cannot be funded.')
+  if (job.fundingStatus === 'AUTHORIZED') return job
+  return revise(job, now, { fundingStatus: 'AUTHORIZED' }, event('JOB_FUNDING_AUTHORIZED', 'x402 buyer authorization received; external procurement may now spend within the configured policy.', now))
 }
 
 export function markProcurementDispatching(job: ReviewJob, scopeId: string, now = new Date().toISOString()): ReviewJob {

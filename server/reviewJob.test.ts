@@ -7,7 +7,7 @@ import type { DecisionPackage } from '../src/domain/types'
 import type { ReviewDelivery } from '../src/network/reviewNetwork'
 import { deliveryPayloadHash } from './deliveryAttestation'
 import { evidenceArtifactHash } from './evidenceIntegrity'
-import { canAccessReviewJob, createReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
@@ -61,6 +61,9 @@ describe('ReviewJob lifecycle', () => {
       },
     })
 
+    await expect(worker.runOnce()).resolves.toEqual({ claimed: 0, requested: 0, failed: 0 })
+    const authorized = authorizeReviewJobFunding(job, '2026-07-15T00:00:01.000Z')
+    await jobStore.updateJob(authorized, job.revision)
     await expect(worker.runOnce()).resolves.toEqual({ claimed: 3, requested: 3, failed: 0 })
     const persisted = await jobStore.findJob(job.id)
     expect(persisted?.procurements.map((procurement) => procurement.status)).toEqual(['REQUESTED', 'REQUESTED', 'REQUESTED'])
@@ -73,6 +76,9 @@ describe('ReviewJob lifecycle', () => {
     const jobStore = await store()
     let job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_22222222-2222-4222-8222-222222222222')
     await jobStore.createJob(job)
+    const authorized = authorizeReviewJobFunding(job, '2026-07-15T00:00:01.000Z')
+    await jobStore.updateJob(authorized, job.revision)
+    job = authorized
     const worker = new ReviewJobWorker(jobStore, { async requestReview(input) { return { externalRequestId: `external-${input.scopeId}`, payment: { network: 'eip155:196', asset: '0x5555555555555555555555555555555555555555', amountAtomic: '120000', transaction: `0x${'1'.repeat(64)}` } } } })
     await worker.runOnce()
     job = (await jobStore.findJob(job.id))!

@@ -121,7 +121,9 @@ The response also includes a time-limited `readAccess` bearer token. Retrieve a 
 
 ## Durable review jobs
 
-`POST /api/v1/review-jobs` creates a durable, capability-protected procurement job from a valid Decision Package. The service derives the canonical three-scope plan and matches only active reviewers from the server-owned registry. It returns an `rjv_…` access token exactly once; use it as `Authorization: Bearer {token}` for `GET` or `DELETE /api/v1/review-jobs/{jobId}`. The store retains only its SHA-256 hash.
+`POST /api/v1/review-jobs` creates a durable, capability-protected procurement job from a valid Decision Package. The service derives the canonical three-scope plan and matches only active reviewers from the server-owned registry. It returns an `rjv_…` access token exactly once; use it as `Authorization: Bearer {token}` for `GET` or `DELETE /api/v1/review-jobs/{jobId}`. The store retains only its SHA-256 hash. New jobs are deliberately `UNFUNDED`: creation alone cannot cause CrossExam's buyer wallet to spend.
+
+`POST /api/v1/review-jobs/authorize` is x402-paid and takes `{ "jobId", "accessToken" }`. After payment settlement it changes that job to `AUTHORIZED`; only then will the procurement worker consider it for external x402 review purchases. This separates an inexpensive intent to request review from authorization to spend within the server's configured per-scope policy.
 
 The review worker sends one blind task per matched scope to an external reviewer provider using a stable `{jobId}:{scopeId}` idempotency key. `POST /api/v1/review-jobs/{jobId}/deliveries/{scopeId}` accepts a reviewer callback only after that external request was persisted, and only with the assigned reviewer's valid EIP-191 signature. A job becomes `READY_FOR_ASSURANCE` only after every scope returns content-addressed evidence; it can then be sent to the paid `/network-aggregate` issuer. No job endpoint fabricates reviewer work or a payment result.
 

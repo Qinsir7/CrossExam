@@ -24,9 +24,10 @@ export class ReviewJobWorker {
     let requested = 0
     let failed = 0
     for (const current of await this.store.listActiveJobs()) {
+      if (current.fundingStatus !== 'AUTHORIZED') continue
       for (const procurement of current.procurements.filter((item) => item.status === 'UNSENT' || item.status === 'FAILED')) {
         const latest = await this.store.findJob(current.id)
-        if (!latest || latest.status !== 'AWAITING_DELIVERIES') continue
+        if (!latest || latest.status !== 'AWAITING_DELIVERIES' || latest.fundingStatus !== 'AUTHORIZED') continue
         const assignment = latest.dispatch.assignments.find((item) => item.scopeId === procurement.scopeId)
         if (!assignment?.reviewer) continue
         let claimedJob: ReviewJob

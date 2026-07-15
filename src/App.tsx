@@ -172,7 +172,7 @@ function App() {
             <div className="decision-icon">↗</div>
             <div>
               <h2>{activeDecision.title}</h2>
-              <p>{isDemo ? 'Agent-originated onchain recommendation' : reviewJob ? reviewStatusLabel[reviewJob.status] : 'Decision package not yet submitted to CrossExam'}</p>
+              <p>{isDemo ? 'Agent-originated onchain recommendation' : reviewJob ? reviewJob.fundingStatus === 'UNFUNDED' ? 'x402 procurement authorization required' : reviewStatusLabel[reviewJob.status] : 'Decision package not yet submitted to CrossExam'}</p>
             </div>
           </div>
           <div className="risk-row">
@@ -318,9 +318,9 @@ function App() {
           <div>
             <span className="card-kicker">Review request staged</span>
             <h2>CrossExam will not invent a verdict.</h2>
-            <p>Job {reviewJob.id} is persisted by CrossExam. It will only advance on a server-recorded external procurement and an attributable signed delivery; no reviewer or conclusion is synthesized in the browser.</p>
+            <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : 'It will only advance on a server-recorded external procurement and an attributable signed delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
           </div>
-          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT estimate</span><span>rev {reviewJob.revision}</span></div>
+          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT estimate</span><span>{reviewJob.fundingStatus}</span><span>rev {reviewJob.revision}</span></div>
           <div className="review-plan-list">
             {reviewJob.plan.scopes.map((scope) => {
               const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
