@@ -15,6 +15,8 @@ export type RegisteredReviewer = ReviewerProfile & {
   responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1'
   /** Immutable x402 merchant recipient expected from a paid-evidence source. */
   paymentRecipient?: Address
+  /** Conservative USDT estimate supplied from the provider's public x402 quote. */
+  estimatedUnitCostUsdt?: number
   /** Static JSON body for ordinary HTTP evidence APIs that do not accept a review task. */
   evidenceRequestBody?: Record<string, unknown>
 }
@@ -101,4 +103,14 @@ export function normalizeNetworkVerifiedDispatch(
     throw new Error('A paid evidence source cannot be represented as a network-verified reviewer.')
   }
   return normalized
+}
+
+/** Re-prices a canonical plan only from server-owned provider cost bindings. */
+export function applyMatchedProviderCosts(plan: ReturnType<typeof createReviewPlan>, dispatch: ReviewDispatch, registry: ReviewerRegistry) {
+  const scopes = plan.scopes.map((scope) => {
+    const reviewerId = dispatch.assignments.find((assignment) => assignment.scopeId === scope.id)?.reviewer?.id
+    const configuredCost = reviewerId ? registry[reviewerId]?.estimatedUnitCostUsdt : undefined
+    return configuredCost === undefined ? scope : { ...scope, estimatedFeeUsdt: configuredCost }
+  })
+  return { ...plan, scopes, estimatedTotalUsdt: Number(scopes.reduce((sum, scope) => sum + scope.estimatedFeeUsdt, 0).toFixed(6)) }
 }

@@ -5,7 +5,7 @@ import type { DecisionPackage } from '../src/domain/types'
 import { acceptReviewDelivery, stageReviewPlan, type PaidEvidenceProvenance, type ReviewDelivery, type ReviewDispatch } from '../src/network/reviewNetwork'
 import { createBlindReviewTask, type BlindReviewTask } from '../src/network/reviewTask'
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
-import { normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
+import { applyMatchedProviderCosts, normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
 import { quoteReview, type ReviewQuote } from './reviewPricing'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
@@ -104,12 +104,14 @@ export function createReviewJob(
   pricing: { authorizationPriceUsd?: string; minimumGrossMarginFraction?: number } = {},
 ): ReviewJob {
   assertDecision(decision)
-  const plan = createReviewPlan(decision)
+  const canonicalPlan = createReviewPlan(decision)
+  const activeReviewers = Object.values(registry).filter((reviewer) => reviewer.status === 'ACTIVE')
+  const initialDispatch = stageReviewPlan(canonicalPlan, activeReviewers)
+  const plan = applyMatchedProviderCosts(canonicalPlan, initialDispatch, registry)
   const quote = quoteReview(plan, pricing.authorizationPriceUsd ?? '2.00', pricing.minimumGrossMarginFraction ?? 0.4)
   if (!quote.economicallyAuthorized) {
     throw new Error(`Full-review authorization price is uneconomic for this job; require at least ${quote.minimumAuthorizationPriceUsdt.toFixed(2)} USDT before bounded external procurement.`)
   }
-  const activeReviewers = Object.values(registry).filter((reviewer) => reviewer.status === 'ACTIVE')
   const dispatch = stageReviewPlan(plan, activeReviewers)
   const procurements = dispatch.assignments.filter((assignment) => assignment.reviewer).map((assignment) => ({
     scopeId: assignment.scopeId,

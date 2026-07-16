@@ -51,6 +51,17 @@ describe('ReviewJob lifecycle', () => {
     expect(reviewJobForOwner(created.job)).not.toHaveProperty('accessTokenHash')
   })
 
+  it('quotes matched paid evidence at server-owned provider cost, not a caller-supplied estimate', () => {
+    const paidRegistry: ReviewerRegistry = {
+      liquidity: { ...registry.source, id: 'liquidity', ownerId: 'liquidity-owner', capabilities: ['execution liquidity'], procurementProtocol: 'PAID_EVIDENCE_V1', estimatedUnitCostUsdt: 0.1 },
+      'token-risk': { ...registry.challenger, id: 'token-risk', ownerId: 'token-risk-owner', capabilities: ['contract token risk'], procurementProtocol: 'PAID_EVIDENCE_V1', estimatedUnitCostUsdt: 0.001 },
+    }
+    const pretrade: DecisionPackage = { ...decision, reviewProfile: 'PRETRADE_ONCHAIN' }
+    const job = createReviewJob(pretrade, paidRegistry, '2026-07-15T00:00:00.000Z')
+    expect(job.plan.estimatedTotalUsdt).toBe(0.101)
+    expect(job.quote.estimatedExternalCostUsdt).toBe(0.101)
+  })
+
   it('durably stages independent procurements and sends blind tasks with stable idempotency keys', async () => {
     const jobStore = await store()
     const job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_11111111-1111-4111-8111-111111111111')

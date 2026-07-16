@@ -60,6 +60,7 @@ the source to implement the callback contract. Register it separately with
   "procurementProtocol": "PAID_EVIDENCE_V1",
   "responseAdapter": "OPAQUE_JSON_V1",
   "paymentRecipient": "0x<known-provider-payment-recipient>",
+  "estimatedUnitCostUsdt": 0.1,
   "evidenceRequestBody": {}
 }
 ```
@@ -74,6 +75,9 @@ is `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`.
 `paymentRecipient` is mandatory for paid evidence. The worker compares it with
 the `payTo` address in the received x402 challenge before it creates a payment
 signature, so an endpoint or DNS compromise cannot redirect a permitted spend.
+`estimatedUnitCostUsdt` is also mandatory: CrossExam uses only this
+server-owned supplier quote when calculating the full-review cost cap and
+customer margin floor.
 
 `CERTIK_TOKEN_SCAN_V1` is a source-specific deterministic adapter for CertiK's
 `/api/token-scan` response. It issues a `GET` from an action target formatted
