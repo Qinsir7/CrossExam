@@ -20,6 +20,7 @@ import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
 import { reconcileReviewJobFunding, XLAYER_USDT0 } from './customerPayment'
+import { fixedWindowRateLimit } from './rateLimit'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -97,6 +98,13 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
 
   app.disable('x-powered-by')
+  app.use((request, response, next) => {
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+    response.setHeader('Referrer-Policy', 'no-referrer')
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    if (request.path.startsWith('/api/') || request.path === '/health' || request.path === '/ready') response.setHeader('Cache-Control', 'no-store')
+    next()
+  })
   app.use((request, response, next) => {
     const origin = request.header('origin')?.replace(/\/$/, '')
     if (!origin) {
@@ -219,7 +227,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(422).json({ error: 'RELIABILITY_PROFILE_REJECTED', message })
     }
   })
-  app.post('/api/v1/review-jobs', async (request, response) => {
+  app.post('/api/v1/review-jobs', fixedWindowRateLimit({ limit: 20, windowMs: 60_000 }), async (request, response) => {
     try {
       const created = createReviewJobWithAccess(request.body, config.reviewerRegistry, undefined, {
         authorizationPriceUsd: config.reviewAuthorizationPriceUsd,
