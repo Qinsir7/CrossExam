@@ -355,7 +355,7 @@ function App() {
             <h2>CrossExam will not invent a verdict.</h2>
             <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : 'It will only advance on a server-recorded external procurement and an attributable signed delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
           </div>
-          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT estimate</span><span>{reviewJob.fundingStatus}</span><span>rev {reviewJob.revision}</span></div>
+          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.quote.authorizationPriceUsdt} USDT authorization</span><span>{reviewJob.quote.estimatedGrossMarginUsdt} USDT estimated gross margin</span><span>{reviewJob.fundingStatus}</span></div>
           <div className="review-plan-list">
             {reviewJob.plan.scopes.map((scope) => {
               const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)

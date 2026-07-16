@@ -147,7 +147,10 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.post('/api/v1/review-jobs', async (request, response) => {
     try {
-      const created = createReviewJobWithAccess(request.body, config.reviewerRegistry)
+      const created = createReviewJobWithAccess(request.body, config.reviewerRegistry, undefined, {
+        authorizationPriceUsd: config.reviewAuthorizationPriceUsd,
+        minimumGrossMarginFraction: config.reviewMinimumGrossMarginFraction,
+      })
       await jobStore.createJob(created.job)
       response.status(201).json({ ...reviewJobForOwner(created.job), accessToken: created.accessToken })
     } catch (error) {

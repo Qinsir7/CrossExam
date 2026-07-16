@@ -6,6 +6,7 @@ import { acceptReviewDelivery, stageReviewPlan, type PaidEvidenceProvenance, typ
 import { createBlindReviewTask, type BlindReviewTask } from '../src/network/reviewTask'
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
 import { normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
+import { quoteReview, type ReviewQuote } from './reviewPricing'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
@@ -47,6 +48,7 @@ export type ReviewJob = {
   fundingStatus: ReviewJobFundingStatus
   decision: DecisionPackage
   plan: ReviewPlan
+  quote: ReviewQuote
   dispatch: ReviewDispatch
   procurements: ReviewProcurement[]
   events: ReviewJobEvent[]
@@ -84,9 +86,20 @@ function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 
-export function createReviewJob(decision: DecisionPackage, registry: ReviewerRegistry, now = new Date().toISOString(), id = `rj_${randomUUID()}`, accessToken = `rjv_${randomBytes(32).toString('base64url')}`): ReviewJob {
+export function createReviewJob(
+  decision: DecisionPackage,
+  registry: ReviewerRegistry,
+  now = new Date().toISOString(),
+  id = `rj_${randomUUID()}`,
+  accessToken = `rjv_${randomBytes(32).toString('base64url')}`,
+  pricing: { authorizationPriceUsd?: string; minimumGrossMarginFraction?: number } = {},
+): ReviewJob {
   assertDecision(decision)
   const plan = createReviewPlan(decision)
+  const quote = quoteReview(plan, pricing.authorizationPriceUsd ?? '2.00', pricing.minimumGrossMarginFraction ?? 0.4)
+  if (!quote.economicallyAuthorized) {
+    throw new Error(`Full-review authorization price is uneconomic for this job; require at least ${quote.minimumAuthorizationPriceUsdt.toFixed(2)} USDT before bounded external procurement.`)
+  }
   const activeReviewers = Object.values(registry).filter((reviewer) => reviewer.status === 'ACTIVE')
   const dispatch = stageReviewPlan(plan, activeReviewers)
   const procurements = dispatch.assignments.filter((assignment) => assignment.reviewer).map((assignment) => ({
@@ -104,6 +117,7 @@ export function createReviewJob(decision: DecisionPackage, registry: ReviewerReg
     fundingStatus: 'UNFUNDED',
     decision,
     plan,
+    quote,
     dispatch,
     procurements,
     events: [event('JOB_CREATED', status === 'AWAITING_MATCH' ? 'Created; compatible independent reviewers are still required.' : 'Created with independent reviewers matched from the server registry.', now)],
@@ -113,9 +127,14 @@ export function createReviewJob(decision: DecisionPackage, registry: ReviewerReg
   }
 }
 
-export function createReviewJobWithAccess(decision: DecisionPackage, registry: ReviewerRegistry, now = new Date().toISOString()): CreatedReviewJob {
+export function createReviewJobWithAccess(
+  decision: DecisionPackage,
+  registry: ReviewerRegistry,
+  now = new Date().toISOString(),
+  pricing: { authorizationPriceUsd?: string; minimumGrossMarginFraction?: number } = {},
+): CreatedReviewJob {
   const accessToken = `rjv_${randomBytes(32).toString('base64url')}`
-  return { job: createReviewJob(decision, registry, now, `rj_${randomUUID()}`, accessToken), accessToken }
+  return { job: createReviewJob(decision, registry, now, `rj_${randomUUID()}`, accessToken, pricing), accessToken }
 }
 
 export function canAccessReviewJob(job: ReviewJob, accessToken: string): boolean {

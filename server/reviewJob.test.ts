@@ -122,7 +122,10 @@ describe('ReviewJob lifecycle', () => {
 
     expect(job.status).toBe('READY_FOR_ASSURANCE')
     expect(job.events.at(-1)?.type).toBe('JOB_READY_FOR_ASSURANCE')
-    expect(buildProcurementLedger(job)).toMatchObject({ settledByAsset: [{ asset: '0x5555555555555555555555555555555555555555', amountAtomic: '360000', payments: 3 }] })
+    expect(buildProcurementLedger(job)).toMatchObject({
+      commercial: { customerAuthorization: 'AUTHORIZED', grossMarginStatus: 'AWAITING_REVIEWER_SETTLEMENTS' },
+      settledByAsset: [{ asset: '0x5555555555555555555555555555555555555555', amountAtomic: '360000', payments: 3 }],
+    })
   })
 
   it('issues PROCUREMENT_VERIFIED only for settled generic paid evidence and never upgrades it to NETWORK_VERIFIED', async () => {

@@ -1,7 +1,14 @@
 import type { ReviewJob } from './reviewJob'
+import type { ReviewQuote } from './reviewPricing'
 
 export type ProcurementLedger = {
   jobId: string
+  commercial: {
+    customerAuthorization: 'UNFUNDED' | 'AUTHORIZED'
+    quote: ReviewQuote
+    /** Actual reviewer spend stays token-denominated until an accounting asset is configured. */
+    grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS'
+  }
   estimatedTotalUsdt: number
   scopes: Array<{
     scopeId: string
@@ -36,6 +43,11 @@ export function buildProcurementLedger(job: ReviewJob): ProcurementLedger {
   })
   return {
     jobId: job.id,
+    commercial: {
+      customerAuthorization: job.fundingStatus,
+      quote: job.quote,
+      grossMarginStatus: totals.size === 0 ? 'ESTIMATED_ONLY' : 'AWAITING_REVIEWER_SETTLEMENTS',
+    },
     estimatedTotalUsdt: job.plan.estimatedTotalUsdt,
     scopes,
     settledByAsset: [...totals.entries()].map(([asset, total]) => ({ asset, amountAtomic: total.amount.toString(), payments: total.payments })).sort((left, right) => left.asset.localeCompare(right.asset)),

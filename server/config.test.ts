@@ -37,8 +37,8 @@ describe('loadX402ServerConfig', () => {
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_PAY_TO: '0xSeller' })).toThrow('20-byte')
   })
 
-  it('rejects a price outside the deliberately narrow early-stage limit', () => {
-    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_PRICE_USD: '11' })).toThrow('no greater than 10')
+  it('rejects a price outside the deliberately bounded production limit', () => {
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_PRICE_USD: '1001' })).toThrow('no greater than 1000')
   })
 
   it('allows the facilitator sync only to be explicitly disabled for local non-payment smoke tests', () => {

@@ -7,6 +7,7 @@ export type X402ServerConfig = {
   payTo: `0x${string}`
   priceUsd: string
   reviewAuthorizationPriceUsd: string
+  reviewMinimumGrossMarginFraction: number
   okxApiKey: string
   okxSecretKey: string
   okxPassphrase: string
@@ -40,10 +41,18 @@ function required(env: Environment, key: string) {
 
 function positiveDollarPrice(value: string, label = 'CROSSEXAM_X402_PRICE_USD') {
   const amount = Number(value)
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 10) {
-    throw new Error(`${label} must be a positive amount no greater than 10.`)
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 1000) {
+    throw new Error(`${label} must be a positive amount no greater than 1000.`)
   }
   return amount.toFixed(2)
+}
+
+function marginFraction(value: string | undefined) {
+  const margin = Number(value ?? '0.40')
+  if (!Number.isFinite(margin) || margin < 0 || margin >= 0.95) {
+    throw new Error('CROSSEXAM_REVIEW_MIN_GROSS_MARGIN must be a fraction from 0 up to (but not including) 0.95.')
+  }
+  return margin
 }
 
 function booleanEnvironment(value: string | undefined, fallback: boolean) {
@@ -230,7 +239,8 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     port,
     payTo: payTo as `0x${string}`,
     priceUsd: positiveDollarPrice(env.CROSSEXAM_X402_PRICE_USD ?? '0.02'),
-    reviewAuthorizationPriceUsd: positiveDollarPrice(env.CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD ?? '0.50', 'CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD'),
+    reviewAuthorizationPriceUsd: positiveDollarPrice(env.CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD ?? '2.00', 'CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD'),
+    reviewMinimumGrossMarginFraction: marginFraction(env.CROSSEXAM_REVIEW_MIN_GROSS_MARGIN),
     okxApiKey: required(env, 'OKX_API_KEY'),
     okxSecretKey: required(env, 'OKX_SECRET_KEY'),
     okxPassphrase: required(env, 'OKX_PASSPHRASE'),

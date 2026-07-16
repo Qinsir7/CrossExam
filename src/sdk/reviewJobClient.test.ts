@@ -39,4 +39,11 @@ describe('ReviewJobClient', () => {
       headers: { authorization: 'Bearer rjv_owner' },
     })
   })
+
+  it('delegates paid authorization to a caller-owned x402-capable fetcher', async () => {
+    const paymentFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'rj_1', fundingStatus: 'AUTHORIZED' }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam' })
+    await expect(client.authorize('rj_1', 'rjv_owner', paymentFetch)).resolves.toMatchObject({ fundingStatus: 'AUTHORIZED' })
+    expect(paymentFetch).toHaveBeenCalledWith('https://api.cross.exam/api/v1/review-jobs/authorize', expect.objectContaining({ method: 'POST' }))
+  })
 })
