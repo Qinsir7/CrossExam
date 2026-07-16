@@ -72,7 +72,22 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     // prevent this public transaction from authorizing any other job.
     if (!Number.isFinite(createdAt) || createdAt > recoveredCustomerSettlementAt || createdAt < recoveredCustomerSettlementAt - 10 * 60_000) return job
     try {
-      const recovered = await reconcileFunding(job, recoveredCustomerTransaction)
+      const recovered = await reconcileReviewJobFunding({
+        job,
+        transaction: recoveredCustomerTransaction,
+        payTo: config.payTo,
+        expectedAmountAtomic: reviewAuthorizationAmountAtomic,
+        jobStore,
+        // This one-off repair is bound to the exact transaction already
+        // independently confirmed on X Layer. Re-verify its receipt on every
+        // attempt without depending on facilitator status API availability.
+        getSettleStatus: async () => ({
+          success: true,
+          status: 'success',
+          transaction: recoveredCustomerTransaction,
+          network: 'eip155:196',
+        }),
+      })
       console.info(`[customer-payment] recovered ${recovered.id} from confirmed transaction ${recoveredCustomerTransaction}`)
       return recovered
     } catch (error) {
