@@ -129,7 +129,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     else if (candidates.length > 1) console.error(`[customer-payment] automatic recovery is ambiguous across ${candidates.length} active jobs`)
   }).catch((error) => console.error(`[customer-payment] startup recovery deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
   void jobStore.findJobByCustomerPaymentTransaction(recoveredCustomerTransaction).then(async (job) => {
-    if (!job || job.status !== 'FAILED') return
+    if (!job || (job.status !== 'FAILED' && !job.procurements.some((procurement) => procurement.status === 'FAILED' || procurement.status === 'EXHAUSTED'))) return
     const retried = retryFailedReviewJob(job, config.reviewerRegistry)
     await jobStore.updateJob(retried, job.revision)
     console.info(`[procurement] reopened ${job.id} against current production evidence sources without another customer payment`)
@@ -204,7 +204,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
-        procurementOrchestrator: 'okx-market-certik-v1',
+        procurementOrchestrator: 'okx-market-goplus-v2',
+        embeddedProcurement: config.procurementSigningKey && config.procurementMaxPerScopeAtomic && config.procurementAllowedAssets.length && config.publicUrl ? 'ENABLED' : 'DISABLED',
         recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
         ...(recoveredPayment ? {
           recoveredCustomerJob: {
@@ -412,7 +413,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       if (!config.serviceSigningKey) throw new Error('Review-job result issuance requires a configured service signing key.')
       const hasExternalEvidence = job.dispatch.assignments.some((assignment) => {
         const protocol = assignment.reviewer ? config.reviewerRegistry[assignment.reviewer.id]?.procurementProtocol : undefined
-        return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+        return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1' || protocol === 'PUBLIC_API_EVIDENCE_V1'
       })
       let assurance = hasExternalEvidence
         ? await aggregateProcurementVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, config.reviewerRegistry, job.updatedAt)

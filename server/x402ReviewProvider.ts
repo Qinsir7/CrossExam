@@ -88,6 +88,16 @@ function evidenceRequest(reviewer: RegisteredReviewer, input: Parameters<Externa
     url.searchParams.set('tokenContractAddress', matched[2].toLowerCase())
     return { url: url.toString(), method: 'GET' }
   }
+  if (reviewer.responseAdapter === 'GOPLUS_TOKEN_SECURITY_V1') {
+    const target = input.task.reviewEvidenceContext?.tokenRiskTarget ?? input.task.actionBinding?.target ?? ''
+    const matched = /^(?:token|contract):([a-z0-9_-]+):(0x[a-fA-F0-9]{40})$/.exec(target)
+    if (!matched) throw new Error('GoPlus token security evidence requires token:<chain>:0x<contract-address>.')
+    const chainIndex = matched[1] === 'xlayer' ? '196' : matched[1]
+    if (chainIndex !== '196') throw new Error('The built-in GoPlus source is bound to X Layer chain 196.')
+    const url = new URL(reviewer.procurementEndpoint!)
+    url.searchParams.set('contract_addresses', matched[2].toLowerCase())
+    return { url: url.toString(), method: 'GET' }
+  }
   throw new Error('External evidence source has no approved response adapter.')
 }
 
@@ -119,6 +129,40 @@ function okxLiquidityFindings(input: Parameters<ExternalReviewProvider['requestR
     reviewerId: reviewer.id,
     verdict,
     confidence: contradiction ? 0.9 : 1,
+    materiality: claim.materiality,
+    evidence: explanation,
+    evidenceArtifactIds: [artifactId],
+  }))
+}
+
+function goPlusFindings(input: Parameters<ExternalReviewProvider['requestReview']>[0], reviewer: RegisteredReviewer, response: Record<string, unknown>, artifactId: string) {
+  if (response.code !== 1 || !response.result || typeof response.result !== 'object') throw new Error('GoPlus token security returned an unsuccessful API envelope.')
+  const target = input.task.reviewEvidenceContext?.tokenRiskTarget ?? ''
+  const address = /0x[a-fA-F0-9]{40}$/.exec(target)?.[0].toLowerCase()
+  const result = address ? (response.result as Record<string, unknown>)[address] : undefined
+  if (!result || typeof result !== 'object') throw new Error('GoPlus token security returned no record for the bound X Layer contract.')
+  const risk = result as Record<string, unknown>
+  const tax = Math.max(Number(risk.buy_tax || 0), Number(risk.sell_tax || 0), Number(risk.transfer_tax || 0))
+  const criticalFlags = [
+    ['is_honeypot', 'honeypot behavior'],
+    ['cannot_buy', 'buying disabled'],
+    ['cannot_sell_all', 'full selling disabled'],
+    ['is_blacklisted', 'blacklist controls'],
+  ] as const
+  const triggered: string[] = criticalFlags.filter(([field]) => risk[field] === '1').map(([, label]) => label)
+  if (risk.is_open_source === '0') triggered.push('contract source is not open')
+  if (Number.isFinite(tax) && tax >= 0.5) triggered.push(`tax at ${(tax * 100).toFixed(2)}%`)
+  const contradiction = triggered.length > 0
+  const warnings = [risk.is_proxy === '1' ? 'proxy contract' : '', risk.honeypot_with_same_creator === '1' ? 'creator linked to another honeypot' : ''].filter(Boolean)
+  const verdict = contradiction ? 'CONTRADICTS' as const : 'INSUFFICIENT_EVIDENCE' as const
+  const explanation = contradiction
+    ? `GoPlus X Layer token security detected material execution risk: ${triggered.join(', ')}.`
+    : `GoPlus found no deterministic critical token-control flag in this response${warnings.length ? `; non-blocking warnings: ${warnings.join(', ')}` : ''}. Absence of a flag is not proof of safety, so CrossExam does not upgrade it to support.`
+  return input.task.claims.map((claim) => ({
+    claimId: claim.id,
+    reviewerId: reviewer.id,
+    verdict,
+    confidence: contradiction ? 0.95 : 1,
     materiality: claim.materiality,
     evidence: explanation,
     evidenceArtifactIds: [artifactId],
@@ -176,10 +220,13 @@ export class X402ReviewProvider implements ExternalReviewProvider {
     if (!reviewer?.procurementEndpoint || !/^https:\/\/.+/.test(reviewer.procurementEndpoint)
       || (reviewer.procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1'
         && reviewer.procurementProtocol !== 'PAID_EVIDENCE_V1'
-        && reviewer.procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1')) {
+        && reviewer.procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1'
+        && reviewer.procurementProtocol !== 'PUBLIC_API_EVIDENCE_V1')) {
       throw new Error('Matched source has no approved external procurement endpoint.')
     }
-    const evidenceProtocol = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1' || reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+    const evidenceProtocol = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1'
+      || reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+      || reviewer.procurementProtocol === 'PUBLIC_API_EVIDENCE_V1'
     const externalRequest = evidenceProtocol
       ? evidenceRequest(reviewer, input)
       : JSON.stringify({
@@ -201,7 +248,9 @@ export class X402ReviewProvider implements ExternalReviewProvider {
       : {}
     const headers = { ...authenticatedHeaders, ...(request.body ? { 'content-type': 'application/json' } : {}), 'idempotency-key': input.idempotencyKey }
     const initial = await this.fetchImpl(request.url, { method: request.method, headers, ...(request.body ? { body: request.body } : {}), redirect: 'error' })
-    const includedQuota = reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && initial.ok
+    const publicApi = reviewer.procurementProtocol === 'PUBLIC_API_EVIDENCE_V1'
+    const includedQuota = (reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' || publicApi) && initial.ok
+    if (publicApi && !initial.ok) throw new Error(`Public external evidence source rejected the request (${initial.status}).`)
     if (!includedQuota && initial.status !== 402) {
       throw new Error(`External reviewer must return x402 Payment Required before accepting work (received ${initial.status}).`)
     }
@@ -254,6 +303,8 @@ export class X402ReviewProvider implements ExternalReviewProvider {
           ? certikFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
           : reviewer.responseAdapter === 'OKX_TOKEN_LIQUIDITY_V1'
             ? okxLiquidityFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
+            : reviewer.responseAdapter === 'GOPLUS_TOKEN_SECURITY_V1'
+              ? goPlusFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
           : input.task.claims.map((claim) => ({
             claimId: claim.id,
             reviewerId: reviewer.id,
@@ -264,20 +315,21 @@ export class X402ReviewProvider implements ExternalReviewProvider {
             evidenceArtifactIds: [artifact.id],
           })),
         provenance: {
-          kind: includedQuota ? 'AUTHENTICATED_API_EVIDENCE_V1' as const : 'X402_PAID_EVIDENCE_V1' as const,
+          kind: publicApi ? 'PUBLIC_API_EVIDENCE_V1' as const : includedQuota ? 'AUTHENTICATED_API_EVIDENCE_V1' as const : 'X402_PAID_EVIDENCE_V1' as const,
           sourceId: reviewer.id,
           endpoint: reviewer.procurementEndpoint,
           observedAt,
           requestHash,
           responseHash,
           ...(recordedPayment ? { payment: recordedPayment } : {}),
-          ...(includedQuota ? { authentication: { scheme: 'OKX_HMAC_SHA256' as const, includedQuota: true as const } } : {}),
+          ...(includedQuota && !publicApi ? { authentication: { scheme: 'OKX_HMAC_SHA256' as const, includedQuota: true as const } } : {}),
+          ...(publicApi ? { transport: { scheme: 'PUBLIC_HTTPS' as const, marginalCostUsd: 0 as const } } : {}),
         },
       }
       return {
         externalRequestId: `evidence-${responseHash.slice(2, 18)}`,
         ...(recordedPayment ? { payment: recordedPayment } : {}),
-        ...(includedQuota ? { includedQuota: { sourceId: reviewer.id } } : {}),
+        ...(includedQuota ? { includedQuota: { sourceId: reviewer.id, authentication: publicApi ? 'PUBLIC_HTTPS' as const : 'OKX_HMAC_SHA256' as const } } : {}),
         evidence: { delivery, provenance: delivery.provenance, responseBody },
       }
     }

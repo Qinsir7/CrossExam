@@ -138,8 +138,28 @@ describe('X402ReviewProvider', () => {
       },
     })
     expect(result.payment).toBeUndefined()
-    expect(result.includedQuota).toEqual({ sourceId: 'market' })
+    expect(result.includedQuota).toEqual({ sourceId: 'market', authentication: 'OKX_HMAC_SHA256' })
     expect(result.evidence?.provenance.kind).toBe('AUTHENTICATED_API_EVIDENCE_V1')
     expect(result.evidence?.delivery.findings[0]).toMatchObject({ verdict: 'CONTRADICTS', confidence: 0.9 })
+  })
+
+  it('normalizes public GoPlus X Layer token security without treating absence of flags as proof of safety', async () => {
+    const securityRegistry: ReviewerRegistry = {
+      goplus: {
+        id: 'goplus', displayName: 'GoPlus', ownerId: 'goplus', modelFamily: 'security', evidenceRoutes: ['token-security'], capabilities: ['contract token risk'],
+        status: 'ACTIVE', procurementEndpoint: 'https://api.gopluslabs.io/api/v1/token_security/196', procurementProtocol: 'PUBLIC_API_EVIDENCE_V1', responseAdapter: 'GOPLUS_TOKEN_SECURITY_V1', estimatedUnitCostUsdt: 0,
+      },
+    }
+    const provider = new X402ReviewProvider({
+      registry: securityRegistry, signingKey, maxPerScopeAtomic: 250000n, allowedAssets: [asset], callbackBaseUrl: 'https://crossexam.example',
+      fetchImpl: async () => new Response(JSON.stringify({ code: 1, message: 'OK', result: { '0x1111111111111111111111111111111111111111': { is_open_source: '1', is_proxy: '1', is_honeypot: '0', cannot_buy: '0' } } }), { status: 200 }),
+    })
+    const result = await provider.requestReview({
+      ...input, reviewerId: 'goplus', scopeId: 'contract-token-risk',
+      task: { ...input.task, scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x1111111111111111111111111111111111111111' } },
+    })
+    expect(result.includedQuota).toEqual({ sourceId: 'goplus', authentication: 'PUBLIC_HTTPS' })
+    expect(result.evidence?.provenance.kind).toBe('PUBLIC_API_EVIDENCE_V1')
+    expect(result.evidence?.delivery.findings[0].verdict).toBe('INSUFFICIENT_EVIDENCE')
   })
 })

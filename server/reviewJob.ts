@@ -23,7 +23,7 @@ export type ReviewProcurement = {
   nextAttemptAt?: string
   failure?: string
   payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
-  includedQuota?: { sourceId: string; authentication: 'OKX_HMAC_SHA256' }
+  includedQuota?: { sourceId: string; authentication: 'OKX_HMAC_SHA256' | 'PUBLIC_HTTPS' }
   evidence?: {
     observedAt: string
     requestHash: `0x${string}`
@@ -109,12 +109,15 @@ function hasProviderReadableTokenTarget(decision: DecisionPackage) {
  * after an unrelated liquidity provider has already been paid.
  */
 function assertProviderInputCompatibility(decision: DecisionPackage, dispatch: ReviewDispatch, registry: ReviewerRegistry) {
-  const certikAssignment = dispatch.assignments.find((assignment) => {
+  const tokenEvidenceAssignment = dispatch.assignments.find((assignment) => {
     const provider = assignment.reviewer ? registry[assignment.reviewer.id] : undefined
-    return assignment.scopeId === 'contract-token-risk' && provider?.responseAdapter === 'CERTIK_TOKEN_SCAN_V1'
+    return (assignment.scopeId === 'contract-token-risk' || assignment.scopeId === 'execution-liquidity')
+      && (provider?.responseAdapter === 'CERTIK_TOKEN_SCAN_V1'
+        || provider?.responseAdapter === 'OKX_TOKEN_LIQUIDITY_V1'
+        || provider?.responseAdapter === 'GOPLUS_TOKEN_SECURITY_V1')
   })
-  if (certikAssignment && !hasProviderReadableTokenTarget(decision)) {
-    throw new Error('This pre-trade review needs reviewEvidenceContext.tokenRiskTarget formatted as token:<chain>:0x<contract-address> before CertiK procurement can be authorized.')
+  if (tokenEvidenceAssignment && !hasProviderReadableTokenTarget(decision)) {
+    throw new Error('This pre-trade review needs reviewEvidenceContext.tokenRiskTarget formatted as token:<chain>:0x<contract-address> before external evidence procurement can be authorized.')
   }
 }
 
@@ -247,12 +250,12 @@ export function markProcurementRequested(job: ReviewJob, scopeId: string, extern
   return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `External reviewer accepted request ${externalRequestId}.`, now, scopeId))
 }
 
-export function markIncludedQuotaProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, sourceId: string, now = new Date().toISOString()): ReviewJob {
+export function markIncludedQuotaProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, sourceId: string, authentication: 'OKX_HMAC_SHA256' | 'PUBLIC_HTTPS' = 'OKX_HMAC_SHA256', now = new Date().toISOString()): ReviewJob {
   if (!externalRequestId.trim() || !sourceId.trim()) throw new Error('Authenticated evidence request identifiers are required.')
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
-    ? { ...item, status: 'REQUESTED' as const, externalRequestId, includedQuota: { sourceId, authentication: 'OKX_HMAC_SHA256' as const }, lastAttemptAt: now, nextAttemptAt: undefined }
+    ? { ...item, status: 'REQUESTED' as const, externalRequestId, includedQuota: { sourceId, authentication }, lastAttemptAt: now, nextAttemptAt: undefined }
     : item)
   return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `Authenticated external evidence source accepted request ${externalRequestId} within included quota.`, now, scopeId))
 }
@@ -320,7 +323,9 @@ export function recordPaidEvidenceDelivery(
     throw new Error('External evidence is accepted only after its procurement is recorded.')
   }
   const source = registry[assignment.reviewer.id]
-  const supportedSource = source?.procurementProtocol === 'PAID_EVIDENCE_V1' || source?.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+  const supportedSource = source?.procurementProtocol === 'PAID_EVIDENCE_V1'
+    || source?.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+    || source?.procurementProtocol === 'PUBLIC_API_EVIDENCE_V1'
   if (!source || !supportedSource || delivery.reviewerId !== source.id || !delivery.provenance) {
     throw new Error('Paid evidence provenance does not match the configured external evidence source.')
   }
@@ -333,9 +338,14 @@ export function recordPaidEvidenceDelivery(
     && Boolean(procurement.includedQuota?.sourceId === source.id
       && provenance.authentication?.scheme === 'OKX_HMAC_SHA256'
       && provenance.authentication.includedQuota)
+  const publicMatches = provenance.kind === 'PUBLIC_API_EVIDENCE_V1'
+    && Boolean(procurement.includedQuota?.sourceId === source.id
+      && procurement.includedQuota.authentication === 'PUBLIC_HTTPS'
+      && provenance.transport?.scheme === 'PUBLIC_HTTPS'
+      && provenance.transport.marginalCostUsd === 0)
   if (provenance.sourceId !== source.id || provenance.endpoint !== source.procurementEndpoint
     || provenance.requestHash !== delivery.provenance.requestHash || provenance.responseHash !== delivery.provenance.responseHash
-    || (!paymentMatches && !quotaMatches)) {
+    || (!paymentMatches && !quotaMatches && !publicMatches)) {
     throw new Error('Paid evidence provenance does not match the persisted settlement.')
   }
   if (Buffer.byteLength(responseBody, 'utf8') > 65_536) throw new Error('Paid evidence response exceeds the retained evidence limit.')
@@ -375,7 +385,7 @@ export function cancelReviewJob(job: ReviewJob, now = new Date().toISOString()):
  * price already authorized for that scope.
  */
 export function retryFailedReviewJob(job: ReviewJob, registry: ReviewerRegistry, now = new Date().toISOString()): ReviewJob {
-  if (job.status !== 'FAILED' || job.fundingStatus !== 'AUTHORIZED' || !job.customerPayment) {
+  if ((job.status !== 'FAILED' && job.status !== 'AWAITING_DELIVERIES') || job.fundingStatus !== 'AUTHORIZED' || !job.customerPayment) {
     throw new Error('Only a settled, failed review job can retry procurement without another customer payment.')
   }
   const failedScopes = new Set(job.procurements.filter((item) => item.status === 'FAILED' || item.status === 'EXHAUSTED').map((item) => item.scopeId))
@@ -393,8 +403,8 @@ export function retryFailedReviewJob(job: ReviewJob, registry: ReviewerRegistry,
       && candidate.capabilities.includes(scope.requiredCapability)
       && !occupiedOwners.has(candidate.ownerId)
       && (candidate.estimatedUnitCostUsdt ?? scope.estimatedFeeUsdt) <= scope.estimatedFeeUsdt)
-      .sort((left, right) => Number(right.id !== previous?.id) - Number(left.id !== previous?.id)
-        || (right.selectionPriority ?? 0) - (left.selectionPriority ?? 0))
+      .sort((left, right) => (right.selectionPriority ?? 0) - (left.selectionPriority ?? 0)
+        || Number(right.id !== previous?.id) - Number(left.id !== previous?.id))
     const replacement = candidates[0]
     if (!replacement) throw new Error(`No compatible source can retry ${scopeId} within the customer's authorized scope budget.`)
     replacements.set(scopeId, replacement)

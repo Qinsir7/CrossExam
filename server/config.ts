@@ -140,19 +140,22 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
     const capabilities = candidate.capabilities
     if (!id || !displayName || !ownerId || !modelFamily
       || (wallet !== undefined && !/^0x[a-fA-F0-9]{40}$/.test(wallet))
-      || (procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && !wallet)
+      || (procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && procurementProtocol !== 'PUBLIC_API_EVIDENCE_V1' && !wallet)
       || (procurementEndpoint !== undefined && !/^https:\/\/.+/.test(procurementEndpoint))
-      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1')
+      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && procurementProtocol !== 'PUBLIC_API_EVIDENCE_V1')
       || (procurementEndpoint === undefined && procurementProtocol !== undefined)
       || (procurementProtocol === 'CROSSEXAM_SIGNED_CALLBACK_V1' && responseAdapter !== undefined)
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && responseAdapter !== 'OPAQUE_JSON_V1' && responseAdapter !== 'CERTIK_TOKEN_SCAN_V1')
       || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && responseAdapter !== 'OKX_TOKEN_LIQUIDITY_V1')
       || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && procurementEndpoint !== 'https://web3.okx.com/api/v6/dex/market/token/top-liquidity')
+      || (procurementProtocol === 'PUBLIC_API_EVIDENCE_V1' && responseAdapter !== 'GOPLUS_TOKEN_SECURITY_V1')
+      || (procurementProtocol === 'PUBLIC_API_EVIDENCE_V1' && procurementEndpoint !== 'https://api.gopluslabs.io/api/v1/token_security/196')
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && (!paymentRecipient || !/^0x[a-fA-F0-9]{40}$/.test(paymentRecipient)))
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && (estimatedUnitCostUsdt === undefined || !Number.isFinite(estimatedUnitCostUsdt) || estimatedUnitCostUsdt <= 0 || estimatedUnitCostUsdt > 1_000))
       || (procurementProtocol !== 'PAID_EVIDENCE_V1' && paymentRecipient !== undefined)
-      || (procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && estimatedUnitCostUsdt !== undefined)
+      || (procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && procurementProtocol !== 'PUBLIC_API_EVIDENCE_V1' && estimatedUnitCostUsdt !== undefined)
       || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && (estimatedUnitCostUsdt === undefined || estimatedUnitCostUsdt < 0 || estimatedUnitCostUsdt > 1_000))
+      || (procurementProtocol === 'PUBLIC_API_EVIDENCE_V1' && estimatedUnitCostUsdt !== 0)
       || (selectionPriority !== undefined && (!Number.isFinite(selectionPriority) || selectionPriority < -1_000 || selectionPriority > 1_000))
       || (evidenceRequestBody !== undefined && (!evidenceRequestBody || Array.isArray(evidenceRequestBody) || typeof evidenceRequestBody !== 'object'))
       || (status !== 'ACTIVE' && status !== 'SUSPENDED')
@@ -171,10 +174,10 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
       ...(selectionPriority !== undefined ? { selectionPriority } : {}),
       status,
       ...(procurementEndpoint ? { procurementEndpoint } : {}),
-      ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1' } : {}),
-      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? { responseAdapter: responseAdapter as 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1' } : {}),
+      ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1' | 'PUBLIC_API_EVIDENCE_V1' } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' || procurementProtocol === 'PUBLIC_API_EVIDENCE_V1' ? { responseAdapter: responseAdapter as 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1' | 'GOPLUS_TOKEN_SECURITY_V1' } : {}),
       ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { paymentRecipient: paymentRecipient as Address } : {}),
-      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? { estimatedUnitCostUsdt: estimatedUnitCostUsdt! } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' || procurementProtocol === 'PUBLIC_API_EVIDENCE_V1' ? { estimatedUnitCostUsdt: estimatedUnitCostUsdt! } : {}),
       ...(procurementProtocol === 'PAID_EVIDENCE_V1' && evidenceRequestBody ? { evidenceRequestBody: evidenceRequestBody as Record<string, unknown> } : {}),
       evidenceRoutes: evidenceRoutes as string[],
       capabilities: capabilities as string[],

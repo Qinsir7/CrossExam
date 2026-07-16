@@ -27,7 +27,7 @@ export type EvidenceArtifact = {
  * without pretending that the source signed CrossExam's reviewer delivery.
  */
 export type ExternalEvidenceProvenance = {
-  kind: 'X402_PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1'
+  kind: 'X402_PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1' | 'PUBLIC_API_EVIDENCE_V1'
   sourceId: string
   endpoint: string
   observedAt: string
@@ -35,6 +35,7 @@ export type ExternalEvidenceProvenance = {
   responseHash: `0x${string}`
   payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
   authentication?: { scheme: 'OKX_HMAC_SHA256'; includedQuota: true }
+  transport?: { scheme: 'PUBLIC_HTTPS'; marginalCostUsd: 0 }
 }
 
 export type ReviewDelivery = {

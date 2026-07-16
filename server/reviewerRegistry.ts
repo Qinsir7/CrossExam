@@ -10,9 +10,9 @@ export type RegisteredReviewer = ReviewerProfile & {
   /** HTTPS x402 endpoint that accepts CrossExam blind-review procurement. */
   procurementEndpoint?: string
   /** Signed callbacks are network-verifiable; paid evidence is intentionally weaker. */
-  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1'
+  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1' | 'PUBLIC_API_EVIDENCE_V1'
   /** Controls a server-owned, deterministic normalizer for a paid response. */
-  responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1'
+  responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1' | 'GOPLUS_TOKEN_SECURITY_V1'
   /** Immutable x402 merchant recipient expected from a paid-evidence source. */
   paymentRecipient?: Address
   /** Conservative USDT estimate supplied from the provider's public x402 quote. */
@@ -24,6 +24,7 @@ export type RegisteredReviewer = ReviewerProfile & {
 export type ReviewerRegistry = Record<string, RegisteredReviewer>
 
 export const OKX_MARKET_SOURCE_ID = 'okx-onchainos-liquidity'
+export const GOPLUS_SECURITY_SOURCE_ID = 'goplus-xlayer-token-risk'
 
 /** Built-in official market source; HMAC credentials remain worker-only. */
 export function withOkxMarketSource(registry: ReviewerRegistry): ReviewerRegistry {
@@ -42,6 +43,20 @@ export function withOkxMarketSource(registry: ReviewerRegistry): ReviewerRegistr
       procurementProtocol: 'AUTHENTICATED_API_EVIDENCE_V1',
       responseAdapter: 'OKX_TOKEN_LIQUIDITY_V1',
       estimatedUnitCostUsdt: 0.005,
+    },
+    [GOPLUS_SECURITY_SOURCE_ID]: {
+      id: GOPLUS_SECURITY_SOURCE_ID,
+      displayName: 'GoPlus X Layer Token Security',
+      ownerId: 'goplus-security',
+      modelFamily: 'token-security-engine',
+      evidenceRoutes: ['goplus-token-security'],
+      capabilities: ['contract token risk'],
+      selectionPriority: 100,
+      status: 'ACTIVE',
+      procurementEndpoint: 'https://api.gopluslabs.io/api/v1/token_security/196',
+      procurementProtocol: 'PUBLIC_API_EVIDENCE_V1',
+      responseAdapter: 'GOPLUS_TOKEN_SECURITY_V1',
+      estimatedUnitCostUsdt: 0,
     },
   }
 }
@@ -124,7 +139,7 @@ export function normalizeNetworkVerifiedDispatch(
   }
   if (normalized.assignments.some((assignment) => {
     const protocol = registry[assignment.reviewer!.id]?.procurementProtocol
-    return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+    return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1' || protocol === 'PUBLIC_API_EVIDENCE_V1'
   })) {
     throw new Error('A paid evidence source cannot be represented as a network-verified reviewer.')
   }

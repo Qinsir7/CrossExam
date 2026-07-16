@@ -141,7 +141,7 @@ describe('ReviewJob lifecycle', () => {
     expect(retried.fundingStatus).toBe('AUTHORIZED')
     expect(retried.customerPayment).toEqual(job.customerPayment)
     expect(retried.dispatch.assignments.find((item) => item.scopeId === 'execution-liquidity')?.reviewer?.id).toBe('okx-onchainos-liquidity')
-    expect(retried.dispatch.assignments.find((item) => item.scopeId === 'contract-token-risk')?.reviewer?.id).toBe('certik')
+    expect(retried.dispatch.assignments.find((item) => item.scopeId === 'contract-token-risk')?.reviewer?.id).toBe('goplus-xlayer-token-risk')
     expect(retried.procurements.every((item) => item.status === 'UNSENT' && item.attempts === 0)).toBe(true)
   })
 

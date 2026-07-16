@@ -7,7 +7,7 @@ export type ExternalReviewProvider = {
   requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{
     externalRequestId: string
     payment?: ReviewJob['procurements'][number]['payment']
-    includedQuota?: { sourceId: string }
+    includedQuota?: { sourceId: string; authentication?: 'OKX_HMAC_SHA256' | 'PUBLIC_HTTPS' }
     evidence?: { delivery: ReviewDelivery; provenance: ExternalEvidenceProvenance; responseBody: string }
   }>
 }
@@ -108,7 +108,7 @@ export class ReviewJobWorker {
           const requestedJob = response.payment
             ? markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.payment)
             : response.includedQuota
-              ? markIncludedQuotaProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.includedQuota.sourceId)
+              ? markIncludedQuotaProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.includedQuota.sourceId, response.includedQuota.authentication)
               : (() => { throw new Error('External evidence source returned neither a settlement nor an included-quota receipt.') })()
           await this.store.updateJob(requestedJob, claimedJob.revision)
           requested += 1
