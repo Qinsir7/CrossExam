@@ -170,13 +170,17 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   app.use(express.json({ limit: '128kb' }))
   app.get('/health', async (_request, response) => {
     try {
-      const heartbeat = await jobStore.getProcurementWorkerHeartbeat()
+      const [heartbeat, recoveredPayment] = await Promise.all([
+        jobStore.getProcurementWorkerHeartbeat(),
+        jobStore.findJobByCustomerPaymentTransaction(recoveredCustomerTransaction),
+      ])
       const ageMs = heartbeat ? Date.now() - new Date(heartbeat.observedAt).getTime() : undefined
       const procurementWorker = !heartbeat ? 'UNSEEN' : ageMs !== undefined && ageMs <= 12 * 60_000 ? 'HEALTHY' : 'STALE'
       response.json({
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
+        recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
         network: 'eip155:196',
         recordStore: 'enabled',
         procurementWorker,
