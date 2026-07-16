@@ -27,6 +27,16 @@ const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 const recoveredCustomerTransaction = '0xafd77208465b834e5537f607b3d2b3543a06cf76ecc8d025e376899c2045034d'
 const recoveredCustomerSettlementAt = new Date('2026-07-16T14:39:39.000Z').getTime()
 
+function procurementFailureCategory(failure?: string) {
+  if (!failure) return undefined
+  if (/received 500|\(500\)/i.test(failure)) return 'PROVIDER_HTTP_500'
+  if (/received 4\d\d|\(4\d\d\)/i.test(failure)) return 'PROVIDER_HTTP_4XX'
+  if (/payment|settlement|x layer|spend policy/i.test(failure)) return 'PAYMENT_OR_POLICY'
+  if (/timeout|expired/i.test(failure)) return 'TIMEOUT'
+  if (/response|json|schema|adapter/i.test(failure)) return 'INVALID_PROVIDER_RESPONSE'
+  return 'PROVIDER_ERROR'
+}
+
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
     apiKey: config.okxApiKey,
@@ -181,6 +191,18 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
         recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
+        ...(recoveredPayment ? {
+          recoveredCustomerJob: {
+            status: recoveredPayment.status,
+            fundingStatus: recoveredPayment.fundingStatus,
+            procurements: recoveredPayment.procurements.map((procurement) => ({
+              scopeId: procurement.scopeId,
+              status: procurement.status,
+              attempts: procurement.attempts,
+              ...(procurementFailureCategory(procurement.failure) ? { failureCategory: procurementFailureCategory(procurement.failure) } : {}),
+            })),
+          },
+        } : {}),
         network: 'eip155:196',
         recordStore: 'enabled',
         procurementWorker,
