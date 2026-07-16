@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/crossexam-api/:path*",
-      "destination": "https://api.cross-exam.xyz/api/:path*"
+      "destination": "https://api.cross-exam.xyz/:path*"
     }
   ]
 }
