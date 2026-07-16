@@ -59,13 +59,23 @@ type CreatedReviewJob = ReviewJobView & { accessToken: string }
  * variable cannot make the browser accidentally call its own static origin.
  */
 export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: string) {
+  if (browserOrigin) {
+    try {
+      const origin = new URL(browserOrigin)
+      const host = origin.hostname.toLowerCase()
+      // The canonical public web domains always use the canonical API. This
+      // deliberately wins over a stale Vercel build variable so production
+      // cannot be bricked by an old preview/development endpoint.
+      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz') return 'https://api.cross-exam.xyz'
+    } catch {
+      // A configured URL below can still support unusual local environments.
+    }
+  }
   const configured = configuredUrl?.trim().replace(/\/$/, '')
   if (configured) return configured
   if (!browserOrigin) return ''
   try {
     const origin = new URL(browserOrigin)
-    const host = origin.hostname.toLowerCase()
-    if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz') return 'https://api.cross-exam.xyz'
     return origin.origin
   } catch {
     return ''
