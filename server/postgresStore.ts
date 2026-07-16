@@ -6,7 +6,7 @@ import type { SignedExecutionReceipt } from './executionReceipt'
 import type { AssuranceRecordStore, RecordSaveResult } from './recordStore'
 import { assertIdempotencyKey, idempotencyKeyHash, type AssuranceIdempotencyStore, type IdempotencyLookup } from './idempotencyStore'
 import type { ReviewJob } from './reviewJob'
-import type { ReviewJobStore } from './reviewJobStore'
+import type { ProcurementWorkerHeartbeat, ReviewJobStore } from './reviewJobStore'
 
 function assertRecordId(recordId: string) {
   if (!/^dar_[a-f0-9]{24}$/.test(recordId)) throw new Error('Invalid Decision Assurance Record identifier.')
@@ -87,6 +87,11 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS crossexam_review_jobs_active_idx ON crossexam_review_jobs (status, updated_at);
+      CREATE TABLE IF NOT EXISTS crossexam_worker_heartbeats (
+        worker_id TEXT PRIMARY KEY,
+        observed_at TIMESTAMPTZ NOT NULL,
+        last_event TEXT NOT NULL
+      );
     `)
   }
 
@@ -220,6 +225,26 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
       [job.revision, job.status, JSON.stringify(job), job.updatedAt, job.id, expectedRevision],
     )
     if (result.rowCount !== 1) throw new Error('Review job revision conflict.')
+  }
+
+  async recordProcurementWorkerHeartbeat(heartbeat: ProcurementWorkerHeartbeat): Promise<void> {
+    if (!Number.isFinite(new Date(heartbeat.observedAt).getTime())) throw new Error('Procurement worker heartbeat timestamp is invalid.')
+    await this.ready()
+    await this.pool.query(
+      `INSERT INTO crossexam_worker_heartbeats (worker_id, observed_at, last_event) VALUES ('procurement', $1, $2)
+       ON CONFLICT (worker_id) DO UPDATE SET observed_at = EXCLUDED.observed_at, last_event = EXCLUDED.last_event`,
+      [heartbeat.observedAt, heartbeat.lastEvent],
+    )
+  }
+
+  async getProcurementWorkerHeartbeat(): Promise<ProcurementWorkerHeartbeat | null> {
+    await this.ready()
+    const result = await this.pool.query<{ observed_at: Date; last_event: string }>(
+      "SELECT observed_at, last_event FROM crossexam_worker_heartbeats WHERE worker_id = 'procurement'",
+    )
+    const heartbeat = result.rows[0]
+    if (!heartbeat || (heartbeat.last_event !== 'heartbeat' && heartbeat.last_event !== 'work_processed')) return null
+    return { observedAt: heartbeat.observed_at.toISOString(), lastEvent: heartbeat.last_event }
   }
 
   async lookup(route: string, key: string, fingerprint: string): Promise<IdempotencyLookup> {

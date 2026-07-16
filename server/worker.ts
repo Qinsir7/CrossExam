@@ -35,7 +35,9 @@ while (!stopping) {
     const result = await worker.runOnce()
     const now = Date.now()
     if (result.claimed || result.requested || result.failed || result.recovered || now - lastHeartbeatAt >= 300_000) {
-      console.log(JSON.stringify({ worker: 'crossexam-procurement', event: result.claimed || result.requested || result.failed || result.recovered ? 'work_processed' : 'heartbeat', ...result }))
+      const event = result.claimed || result.requested || result.failed || result.recovered ? 'work_processed' as const : 'heartbeat' as const
+      await store.recordProcurementWorkerHeartbeat({ observedAt: new Date(now).toISOString(), lastEvent: event })
+      console.log(JSON.stringify({ worker: 'crossexam-procurement', event, ...result }))
       lastHeartbeatAt = now
     }
   } catch (error) {

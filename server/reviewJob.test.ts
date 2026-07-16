@@ -51,6 +51,12 @@ describe('ReviewJob lifecycle', () => {
     expect(reviewJobForOwner(created.job)).not.toHaveProperty('accessTokenHash')
   })
 
+  it('persists a bounded procurement-worker heartbeat separately from review jobs', async () => {
+    const jobStore = await store()
+    await jobStore.recordProcurementWorkerHeartbeat({ observedAt: '2026-07-15T00:00:00.000Z', lastEvent: 'heartbeat' })
+    await expect(jobStore.getProcurementWorkerHeartbeat()).resolves.toEqual({ observedAt: '2026-07-15T00:00:00.000Z', lastEvent: 'heartbeat' })
+  })
+
   it('quotes matched paid evidence at server-owned provider cost, not a caller-supplied estimate', () => {
     const paidRegistry: ReviewerRegistry = {
       liquidity: { ...registry.source, id: 'liquidity', ownerId: 'liquidity-owner', capabilities: ['execution liquidity'], procurementProtocol: 'PAID_EVIDENCE_V1', estimatedUnitCostUsdt: 0.1 },

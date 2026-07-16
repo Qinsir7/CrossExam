@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { link, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ReviewJob } from './reviewJob'
+
+export type ProcurementWorkerHeartbeat = {
+  observedAt: string
+  lastEvent: 'heartbeat' | 'work_processed'
+}
 
 function assertJobId(jobId: string) {
   if (!/^rj_[0-9a-f-]{36}$/.test(jobId)) throw new Error('Invalid review job identifier.')
@@ -13,6 +18,8 @@ export interface ReviewJobStore {
   findJob(jobId: string): Promise<ReviewJob | null>
   listActiveJobs(): Promise<ReviewJob[]>
   updateJob(job: ReviewJob, expectedRevision: number): Promise<void>
+  recordProcurementWorkerHeartbeat(heartbeat: ProcurementWorkerHeartbeat): Promise<void>
+  getProcurementWorkerHeartbeat(): Promise<ProcurementWorkerHeartbeat | null>
 }
 
 /**
@@ -91,5 +98,28 @@ export class FileReviewJobStore implements ReviewJobStore {
     const current = await this.findJob(job.id)
     if (!current || current.revision !== expectedRevision) throw new Error('Review job revision conflict.')
     await this.writeRevision(job, job.revision, true)
+  }
+
+  private heartbeatPath() {
+    return join(this.jobsDirectory, 'procurement-worker.json')
+  }
+
+  async recordProcurementWorkerHeartbeat(heartbeat: ProcurementWorkerHeartbeat): Promise<void> {
+    if (!Number.isFinite(new Date(heartbeat.observedAt).getTime())) throw new Error('Procurement worker heartbeat timestamp is invalid.')
+    await this.checkHealth()
+    const temporary = join(this.jobsDirectory, `.${randomUUID()}.heartbeat.tmp`)
+    await writeFile(temporary, `${JSON.stringify(heartbeat)}\n`, { encoding: 'utf8', flag: 'wx' })
+    await rename(temporary, this.heartbeatPath())
+  }
+
+  async getProcurementWorkerHeartbeat(): Promise<ProcurementWorkerHeartbeat | null> {
+    try {
+      const heartbeat = JSON.parse(await readFile(this.heartbeatPath(), 'utf8')) as ProcurementWorkerHeartbeat
+      if (!Number.isFinite(new Date(heartbeat.observedAt).getTime()) || (heartbeat.lastEvent !== 'heartbeat' && heartbeat.lastEvent !== 'work_processed')) return null
+      return heartbeat
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+      throw error
+    }
   }
 }

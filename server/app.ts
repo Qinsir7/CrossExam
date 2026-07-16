@@ -81,8 +81,22 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     next()
   })
   app.use(express.json({ limit: '128kb' }))
-  app.get('/health', (_request, response) => {
-    response.json({ service: 'crossexam-asp', x402: 'enabled', network: 'eip155:196', recordStore: 'enabled' })
+  app.get('/health', async (_request, response) => {
+    try {
+      const heartbeat = await jobStore.getProcurementWorkerHeartbeat()
+      const ageMs = heartbeat ? Date.now() - new Date(heartbeat.observedAt).getTime() : undefined
+      const procurementWorker = !heartbeat ? 'UNSEEN' : ageMs !== undefined && ageMs <= 12 * 60_000 ? 'HEALTHY' : 'STALE'
+      response.json({
+        service: 'crossexam-asp',
+        x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
+        network: 'eip155:196',
+        recordStore: 'enabled',
+        procurementWorker,
+        ...(heartbeat ? { procurementWorkerObservedAt: heartbeat.observedAt, procurementWorkerLastEvent: heartbeat.lastEvent } : {}),
+      })
+    } catch {
+      response.status(503).json({ service: 'crossexam-asp', x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled', recordStore: 'unavailable' })
+    }
   })
   app.get('/ready', async (_request, response) => {
     try {

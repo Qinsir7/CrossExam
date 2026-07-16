@@ -61,6 +61,6 @@ Place the container behind an HTTPS reverse proxy and expose a public domain. OK
 
 ## Operational notes
 
-- `/health` is intentionally free and does not expose credentials, reviewer wallets, records, or payment details. It is a liveness probe; use `/ready` as the readiness probe because it verifies the configured persistence backend is reachable.
+- `/health` is intentionally free and does not expose credentials, reviewer wallets, records, or payment details. It returns whether the x402 payment rail is enabled and a `procurementWorker` state. Once the separate Railway worker is running, it persists a heartbeat every five minutes; `HEALTHY` means the most recent heartbeat is no older than 12 minutes, while `UNSEEN` or `STALE` means no live worker should be trusted to fulfill paid review jobs. Use `/ready` as the API readiness probe because it verifies the configured persistence backend is reachable.
 - Paid aggregation is not reported successful until its Decision Assurance Record is persisted.
 - The local file store is appropriate for a single instance with a mounted volume. `CROSSEXAM_DATABASE_URL` selects the included PostgreSQL implementation for horizontal scaling.
