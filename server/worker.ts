@@ -22,6 +22,7 @@ const worker = new ReviewJobWorker(store, provider, {
 })
 
 let stopping = false
+let lastHeartbeatAt = 0
 const stop = (signal: string) => {
   stopping = true
   console.log(JSON.stringify({ worker: 'crossexam-procurement', event: 'shutdown_requested', signal }))
@@ -32,7 +33,11 @@ process.once('SIGTERM', () => stop('SIGTERM'))
 while (!stopping) {
   try {
     const result = await worker.runOnce()
-    console.log(JSON.stringify({ worker: 'crossexam-procurement', event: 'tick', ...result }))
+    const now = Date.now()
+    if (result.claimed || result.requested || result.failed || result.recovered || now - lastHeartbeatAt >= 300_000) {
+      console.log(JSON.stringify({ worker: 'crossexam-procurement', event: result.claimed || result.requested || result.failed || result.recovered ? 'work_processed' : 'heartbeat', ...result }))
+      lastHeartbeatAt = now
+    }
   } catch (error) {
     console.error(JSON.stringify({ worker: 'crossexam-procurement', event: 'tick_failed', error: error instanceof Error ? error.message : 'Unknown worker error' }))
   }
