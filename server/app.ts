@@ -33,6 +33,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const resourceServer = new x402ResourceServer(facilitator)
     .register('eip155:196', new ExactEvmScheme())
   const app = express()
+  // Railway terminates public TLS before forwarding to this container. Trust
+  // that single proxy hop so x402 advertises the public HTTPS resource URL.
+  app.set('trust proxy', 1)
   const sharedProductionStore = config.databaseUrl && !dependencies.recordStore && !dependencies.idempotencyStore && !dependencies.jobStore
     ? new PostgresAssuranceStore(config.databaseUrl)
     : undefined
