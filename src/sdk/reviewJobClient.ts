@@ -53,12 +53,34 @@ export type ReviewJobResult = RemoteDecisionAssuranceRecord & {
 
 type CreatedReviewJob = ReviewJobView & { accessToken: string }
 
+/**
+ * The public product is intentionally split between www.cross-exam.xyz and
+ * api.cross-exam.xyz. Keep a deploy-safe fallback so a missing Vercel build
+ * variable cannot make the browser accidentally call its own static origin.
+ */
+export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: string) {
+  const configured = configuredUrl?.trim().replace(/\/$/, '')
+  if (configured) return configured
+  if (!browserOrigin) return ''
+  try {
+    const origin = new URL(browserOrigin)
+    const host = origin.hostname.toLowerCase()
+    if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz') return 'https://api.cross-exam.xyz'
+    return origin.origin
+  } catch {
+    return ''
+  }
+}
+
 export class ReviewJobClient {
   private readonly baseUrl: string
   private readonly fetchImpl: typeof fetch
 
   constructor(options: { baseUrl?: string; fetchImpl?: typeof fetch } = {}) {
-    this.baseUrl = (options.baseUrl ?? import.meta.env.VITE_CROSSEXAM_API_URL ?? '').replace(/\/$/, '')
+    this.baseUrl = resolveCrossExamApiUrl(
+      options.baseUrl ?? import.meta.env.VITE_CROSSEXAM_API_URL,
+      typeof window === 'undefined' ? undefined : window.location.origin,
+    )
     this.fetchImpl = options.fetchImpl ?? fetch
   }
 

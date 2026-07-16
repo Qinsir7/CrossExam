@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ReviewJobClient } from './reviewJobClient'
+import { ReviewJobClient, resolveCrossExamApiUrl } from './reviewJobClient'
 
 describe('ReviewJobClient', () => {
+  it('falls back from the public web origin to the public API when no Vercel variable was built', () => {
+    expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://api.cross-exam.xyz')
+    expect(resolveCrossExamApiUrl('https://configured.example/', 'https://www.cross-exam.xyz')).toBe('https://configured.example')
+    expect(resolveCrossExamApiUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:5173')
+  })
+
   it('sends a decision package to the real job endpoint and preserves the returned owner capability', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'rj_11111111-1111-4111-8111-111111111111', accessToken: 'rjv_capability-00000000000000000000000000000000' }), { status: 201 }))
     const client = new ReviewJobClient({ baseUrl: 'https://api.example/', fetchImpl })
