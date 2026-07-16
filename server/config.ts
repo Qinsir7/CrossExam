@@ -31,6 +31,20 @@ export type X402ServerConfig = {
   allowedOrigins: string[]
 }
 
+export type ProcurementWorkerConfig = {
+  databaseUrl?: string
+  dataDirectory: string
+  publicUrl: string
+  reviewerRegistry: ReviewerRegistry
+  procurementSigningKey: Hex
+  procurementMaxPerScopeAtomic: bigint
+  procurementAllowedAssets: string[]
+  procurementWorkerPollMs: number
+  procurementRetryBaseMs: number
+  procurementDispatchTimeoutMs: number
+  procurementMaxAttempts: number
+}
+
 type Environment = Record<string, string | undefined>
 
 function required(env: Environment, key: string) {
@@ -217,6 +231,34 @@ function allowedOrigins(value: string | undefined) {
     throw new Error('CROSSEXAM_ALLOWED_ORIGINS must be a comma-separated list of HTTP(S) origins without paths.')
   }
   return [...new Set(origins)]
+}
+
+/**
+ * Worker-only configuration intentionally excludes seller payment credentials,
+ * record issuer keys, and browser origins. The Railway worker should receive
+ * only what it needs to buy bounded external evidence and share the job store.
+ */
+export function loadProcurementWorkerConfig(env: Environment = process.env): ProcurementWorkerConfig {
+  const signer = privateKeySigner(env.CROSSEXAM_PROCUREMENT_SIGNING_KEY, 'CROSSEXAM_PROCUREMENT_SIGNING_KEY')
+  const procurementMaxPerScopeAtomic = positiveAtomicAmount(env.CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC, 'CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC')
+  const procurementAllowedAssets = allowedAssets(env.CROSSEXAM_PROCUREMENT_ALLOWED_ASSETS)
+  const publicUrl = env.CROSSEXAM_PUBLIC_URL?.trim()
+  if (!signer || !procurementMaxPerScopeAtomic || procurementAllowedAssets.length === 0 || !publicUrl || !/^https:\/\/.+/.test(publicUrl)) {
+    throw new Error('Worker requires a procurement signer, atomic cap, asset allowlist, and public HTTPS CROSSEXAM_PUBLIC_URL.')
+  }
+  return {
+    databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
+    dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
+    publicUrl,
+    reviewerRegistry: reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY),
+    procurementSigningKey: signer.key,
+    procurementMaxPerScopeAtomic,
+    procurementAllowedAssets,
+    procurementWorkerPollMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_WORKER_POLL_MS, 5_000, 'CROSSEXAM_PROCUREMENT_WORKER_POLL_MS', 1_000, 60_000),
+    procurementRetryBaseMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_RETRY_BASE_MS, 30_000, 'CROSSEXAM_PROCUREMENT_RETRY_BASE_MS', 1_000, 3_600_000),
+    procurementDispatchTimeoutMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS, 300_000, 'CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS', 10_000, 86_400_000),
+    procurementMaxAttempts: boundedInteger(env.CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS, 5, 'CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS', 1, 20),
+  }
 }
 
 /** Reads the seller-only configuration. Do not expose any of these values to Vite. */

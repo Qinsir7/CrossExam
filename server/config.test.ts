@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadX402ServerConfig } from './config'
+import { loadProcurementWorkerConfig, loadX402ServerConfig } from './config'
 
 const validEnvironment = {
   CROSSEXAM_PAY_TO: '0x1111111111111111111111111111111111111111',
@@ -101,6 +101,18 @@ describe('loadX402ServerConfig', () => {
     })
     expect(config.procurementMaxPerScopeAtomic).toBe(250000n)
     expect(config.procurementAllowedAssets).toEqual(['0x5555555555555555555555555555555555555555'])
+  })
+
+  it('loads worker-only configuration without seller API or issuer secrets', () => {
+    const config = loadProcurementWorkerConfig({
+      CROSSEXAM_PUBLIC_URL: 'https://api.cross-exam.xyz',
+      CROSSEXAM_DATABASE_URL: 'postgresql://cross:secret@db.example/crossexam',
+      CROSSEXAM_PROCUREMENT_SIGNING_KEY: '0x1123456789012345678901234567890123456789012345678901234567890123',
+      CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC: '100000',
+      CROSSEXAM_PROCUREMENT_ALLOWED_ASSETS: '0x5555555555555555555555555555555555555555',
+    })
+    expect(config.databaseUrl).toContain('postgresql://')
+    expect(config.procurementMaxPerScopeAtomic).toBe(100000n)
   })
 
   it('parses outcome-authority wallet bindings separately from reviewer identities', () => {
