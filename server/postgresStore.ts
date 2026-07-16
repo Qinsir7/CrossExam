@@ -87,6 +87,9 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS crossexam_review_jobs_active_idx ON crossexam_review_jobs (status, updated_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS crossexam_review_jobs_customer_payment_tx_idx
+        ON crossexam_review_jobs (lower(payload #>> '{customerPayment,transaction}'))
+        WHERE payload #>> '{customerPayment,transaction}' IS NOT NULL;
       CREATE TABLE IF NOT EXISTS crossexam_worker_heartbeats (
         worker_id TEXT PRIMARY KEY,
         observed_at TIMESTAMPTZ NOT NULL,
@@ -205,6 +208,16 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
     assertJobId(jobId)
     await this.ready()
     const result = await this.pool.query<{ payload: ReviewJob }>('SELECT payload FROM crossexam_review_jobs WHERE job_id = $1', [jobId])
+    return result.rows[0]?.payload ?? null
+  }
+
+  async findJobByCustomerPaymentTransaction(transaction: string): Promise<ReviewJob | null> {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(transaction)) throw new Error('Invalid customer payment transaction hash.')
+    await this.ready()
+    const result = await this.pool.query<{ payload: ReviewJob }>(
+      "SELECT payload FROM crossexam_review_jobs WHERE lower(payload #>> '{customerPayment,transaction}') = lower($1) LIMIT 1",
+      [transaction],
+    )
     return result.rows[0]?.payload ?? null
   }
 

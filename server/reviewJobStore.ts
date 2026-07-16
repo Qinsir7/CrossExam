@@ -16,6 +16,7 @@ export interface ReviewJobStore {
   checkHealth(): Promise<void>
   createJob(job: ReviewJob): Promise<void>
   findJob(jobId: string): Promise<ReviewJob | null>
+  findJobByCustomerPaymentTransaction(transaction: string): Promise<ReviewJob | null>
   listActiveJobs(): Promise<ReviewJob[]>
   updateJob(job: ReviewJob, expectedRevision: number): Promise<void>
   recordProcurementWorkerHeartbeat(heartbeat: ProcurementWorkerHeartbeat): Promise<void>
@@ -74,6 +75,18 @@ export class FileReviewJobStore implements ReviewJobStore {
       if (!revisions.length) return null
       const revision = Math.max(...revisions)
       return JSON.parse(await readFile(this.revisionPath(jobId, revision), 'utf8')) as ReviewJob
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+      throw error
+    }
+  }
+
+  async findJobByCustomerPaymentTransaction(transaction: string): Promise<ReviewJob | null> {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(transaction)) throw new Error('Invalid customer payment transaction hash.')
+    try {
+      const ids = (await readdir(this.jobsDirectory)).filter((entry) => /^rj_[0-9a-f-]{36}$/.test(entry))
+      const jobs = await Promise.all(ids.map((id) => this.findJob(id)))
+      return jobs.find((job) => job?.customerPayment?.transaction.toLowerCase() === transaction.toLowerCase()) ?? null
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
       throw error

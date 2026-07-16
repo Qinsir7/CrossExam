@@ -53,6 +53,21 @@ export type ReviewJobResult = RemoteDecisionAssuranceRecord & {
 
 type CreatedReviewJob = ReviewJobView & { accessToken: string }
 
+function settlementTransaction(response: Response) {
+  const encoded = response.headers.get('payment-response')
+  if (!encoded) return undefined
+  try {
+    const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const decoded = JSON.parse(globalThis.atob(padded)) as { transaction?: unknown }
+    return typeof decoded.transaction === 'string' && /^0x[0-9a-fA-F]{64}$/.test(decoded.transaction)
+      ? decoded.transaction
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The public product is intentionally split between www.cross-exam.xyz and
  * api.cross-exam.xyz. Keep a deploy-safe fallback so a missing Vercel build
@@ -130,8 +145,26 @@ export class ReviewJobClient {
       body: JSON.stringify({ jobId, accessToken }),
     })
     const body = await response.json().catch(() => null) as { message?: unknown } | null
+    const transaction = settlementTransaction(response)
+    if (transaction) {
+      try {
+        return await this.reconcileFunding(jobId, accessToken, transaction)
+      } catch (error) {
+        // If the paid response itself succeeded, keep polling the owner view;
+        // the server-side hook may still be finishing its durable write.
+        if (!response.ok) throw error
+      }
+    }
     if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : `CrossExam authorization requires a completed x402 payment (${response.status}).`)
     return body as ReviewJobView
+  }
+
+  async reconcileFunding(jobId: string, accessToken: string, transaction: string): Promise<ReviewJobView> {
+    return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/reconcile-funding`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ transaction }),
+    }) as Promise<ReviewJobView>
   }
 
   /** Browser-wallet path: show a challenge summary, then sign the x402 exact payment in the wallet. */

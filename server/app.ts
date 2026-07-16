@@ -15,20 +15,26 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
-import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, recordReviewJobFundingSettlement, reviewJobForOwner } from './reviewJob'
+import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
+import { reconcileReviewJobFunding, XLAYER_USDT0 } from './customerPayment'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
+const recoveredCustomerTransaction = '0xafd77208465b834e5537f607b3d2b3543a06cf76ecc8d025e376899c2045034d'
+const recoveredCustomerSettlementAt = new Date('2026-07-16T14:39:39.000Z').getTime()
 
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
     apiKey: config.okxApiKey,
     secretKey: config.okxSecretKey,
     passphrase: config.okxPassphrase,
+    // A paid authorization is a spend gate. Do not treat an asynchronous
+    // facilitator acknowledgement as permission to procure external work.
+    syncSettle: true,
   })
   const resourceServer = new x402ResourceServer(facilitator)
     .register('eip155:196', new ExactEvmScheme())
@@ -43,20 +49,71 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
   const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
 
-  resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
-    const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
-    if (requestContext?.path !== '/api/v1/review-jobs/authorize' || requestContext.method !== 'POST') return
-    const input = requestContext.adapter?.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
-    if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('Settled review funding request had an invalid payload.')
-    if (requirements.network !== 'eip155:196' || !/^0x[a-fA-F0-9]{40}$/.test(requirements.asset) || !/^[1-9][0-9]*$/.test(result.amount ?? requirements.amount) || !/^0x[0-9a-fA-F]{64}$/.test(result.transaction)) {
-      throw new Error('Settled review funding receipt is malformed.')
-    }
-    const job = await jobStore.findJob(input.jobId)
-    if (!job || !canAccessReviewJob(job, input.accessToken)) throw new Error('Settled review funding request no longer has owner access.')
-    const authorized = recordReviewJobFundingSettlement(job, {
-      network: 'eip155:196', asset: requirements.asset.toLowerCase(), amountAtomic: result.amount ?? requirements.amount, transaction: result.transaction,
+  const reviewAuthorizationAmountAtomic = BigInt(Math.round(Number(config.reviewAuthorizationPriceUsd) * 1_000_000)).toString()
+
+  async function reconcileFunding(job: Awaited<ReturnType<ReviewJobStore['findJob']>>, transaction: string) {
+    if (!job) throw new Error('Review job does not exist.')
+    return reconcileReviewJobFunding({
+      job,
+      transaction,
+      payTo: config.payTo,
+      expectedAmountAtomic: reviewAuthorizationAmountAtomic,
+      jobStore,
+      getSettleStatus: (tx) => facilitator.getSettleStatus(tx),
     })
-    if (authorized !== job) await jobStore.updateJob(authorized, job.revision)
+  }
+
+  async function recoverConfirmedProductionPayment(job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) {
+    if (job.fundingStatus !== 'UNFUNDED') return job
+    const createdAt = new Date(job.createdAt).getTime()
+    // Idempotent repair for the confirmed payment made while the original
+    // post-settlement database hook failed. The tight creation-time window,
+    // exact receipt, facilitator confirmation, and global transaction index
+    // prevent this public transaction from authorizing any other job.
+    if (!Number.isFinite(createdAt) || createdAt > recoveredCustomerSettlementAt || createdAt < recoveredCustomerSettlementAt - 10 * 60_000) return job
+    try {
+      const recovered = await reconcileFunding(job, recoveredCustomerTransaction)
+      console.info(`[customer-payment] recovered ${recovered.id} from confirmed transaction ${recoveredCustomerTransaction}`)
+      return recovered
+    } catch (error) {
+      console.error(`[customer-payment] recovery pending for ${job.id}: ${error instanceof Error ? error.message : 'unknown error'}`)
+      return job
+    }
+  }
+
+  resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
+    const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; routePattern?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
+    const isReviewFunding = requestContext?.method === 'POST'
+      && (requestContext.path === '/api/v1/review-jobs/authorize' || requestContext.routePattern === reviewFundingRoute)
+    if (!isReviewFunding) return
+    try {
+      const input = requestContext.adapter?.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
+      if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('Settled review funding request had an invalid payload.')
+      if (requirements.network !== 'eip155:196' || requirements.asset.toLowerCase() !== XLAYER_USDT0
+        || (result.amount ?? requirements.amount) !== reviewAuthorizationAmountAtomic
+        || !/^0x[0-9a-fA-F]{64}$/.test(result.transaction)) {
+        throw new Error('Settled review funding receipt is malformed.')
+      }
+      // Pending acknowledgements are never spend authorization. The client
+      // receives the transaction in PAYMENT-RESPONSE and calls reconciliation.
+      if (result.status !== 'success') return
+      const job = await jobStore.findJob(input.jobId)
+      if (!job || !canAccessReviewJob(job, input.accessToken)) throw new Error('Settled review funding request no longer has owner access.')
+      await reconcileReviewJobFunding({
+        job,
+        transaction: result.transaction,
+        payTo: config.payTo,
+        expectedAmountAtomic: reviewAuthorizationAmountAtomic,
+        jobStore,
+        getSettleStatus: async () => ({ success: true, status: 'success', transaction: result.transaction, network: result.network }),
+      })
+      console.info(`[customer-payment] authorized ${input.jobId} from confirmed transaction ${result.transaction}`)
+    } catch (error) {
+      // Settlement has already happened. Never turn a successful payment into
+      // an opaque 402 because a database/RPC callback had a transient failure;
+      // the authenticated reconciliation endpoint is the durable retry path.
+      console.error(`[customer-payment] post-settlement write deferred: ${error instanceof Error ? error.message : 'unknown error'}`)
+    }
   })
 
   app.disable('x-powered-by')
@@ -190,15 +247,34 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.get('/api/v1/review-jobs/:jobId', async (request, response) => {
     try {
+      let job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      job = await recoverConfirmedProductionPayment(job)
+      response.json(reviewJobForOwner(job))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid review job identifier.'
+      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/review-jobs/:jobId/reconcile-funding', async (request, response) => {
+    try {
       const job = await jobStore.findJob(request.params.jobId)
       if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
         response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
         return
       }
-      response.json(reviewJobForOwner(job))
+      const transaction = (request.body as { transaction?: unknown })?.transaction
+      if (typeof transaction !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(transaction)) {
+        response.status(422).json({ error: 'SETTLEMENT_PROOF_REJECTED', message: 'A valid customer settlement transaction is required.' })
+        return
+      }
+      response.json(reviewJobForOwner(await reconcileFunding(job, transaction)))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid review job identifier.'
-      response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+      const message = error instanceof Error ? error.message : 'Customer settlement could not be reconciled.'
+      response.status(422).json({ error: 'SETTLEMENT_PROOF_REJECTED', message })
     }
   })
   app.delete('/api/v1/review-jobs/:jobId', async (request, response) => {

@@ -16,6 +16,22 @@ const verdictLabel: Record<ClaimVerdict, string> = {
   UNRESOLVED: 'Unresolved',
 }
 
+const reviewSessionKey = 'crossexam.review-session.v1'
+
+function loadReviewSession(): { job: ReviewJobView; accessToken: string } | null {
+  try {
+    const raw = window.sessionStorage.getItem(reviewSessionKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { job?: unknown; accessToken?: unknown }
+    if (!parsed.job || typeof parsed.job !== 'object' || typeof parsed.accessToken !== 'string' || !parsed.accessToken.startsWith('rjv_')) return null
+    const job = parsed.job as ReviewJobView
+    if (typeof job.id !== 'string' || !job.id.startsWith('rj_')) return null
+    return { job, accessToken: parsed.accessToken }
+  } catch {
+    return null
+  }
+}
+
 function Mark({ type }: { type: ClaimVerdict }) {
   if (type === 'SURVIVED') return <span className="mark survived">✓</span>
   if (type === 'REFUTED') return <span className="mark refuted">×</span>
@@ -23,11 +39,12 @@ function Mark({ type }: { type: ClaimVerdict }) {
 }
 
 function App() {
-  const [runState, setRunState] = useState<'idle' | 'demo-complete' | 'queued'>('idle')
+  const [restoredReviewSession] = useState(loadReviewSession)
+  const [runState, setRunState] = useState<'idle' | 'demo-complete' | 'queued'>(restoredReviewSession ? 'queued' : 'idle')
   const [selectedClaim, setSelectedClaim] = useState<ExaminedClaim | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
-  const [activeDecision, setActiveDecision] = useState<DecisionPackage>(demoDecision)
+  const [activeDecision, setActiveDecision] = useState<DecisionPackage>(restoredReviewSession?.job.decision ?? demoDecision)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
   const [draftClaims, setDraftClaims] = useState('')
@@ -42,15 +59,22 @@ function App() {
   const [draftTokenRiskTarget, setDraftTokenRiskTarget] = useState('')
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
-  const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(null)
+  const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(restoredReviewSession?.job ?? null)
   const [reviewJobResult, setReviewJobResult] = useState<ReviewJobResult | null>(null)
-  const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(null)
+  const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(restoredReviewSession?.accessToken ?? null)
   const [reviewJobError, setReviewJobError] = useState<string | null>(null)
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
   const [authorizingReviewJob, setAuthorizingReviewJob] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
+  useEffect(() => {
+    if (reviewJob && reviewJobAccessToken) {
+      window.sessionStorage.setItem(reviewSessionKey, JSON.stringify({ job: reviewJob, accessToken: reviewJobAccessToken }))
+    } else {
+      window.sessionStorage.removeItem(reviewSessionKey)
+    }
+  }, [reviewJob, reviewJobAccessToken])
   useEffect(() => {
     if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'FAILED' || reviewJob.status === 'CANCELLED') return
     const client = new ReviewJobClient()

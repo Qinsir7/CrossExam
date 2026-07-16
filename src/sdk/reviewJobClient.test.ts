@@ -77,4 +77,22 @@ describe('ReviewJobClient', () => {
     await expect(client.authorize('rj_1', 'rjv_owner', paymentFetch)).resolves.toMatchObject({ fundingStatus: 'AUTHORIZED' })
     expect(paymentFetch).toHaveBeenCalledWith('https://api.cross.exam/api/v1/review-jobs/authorize', expect.objectContaining({ method: 'POST' }))
   })
+
+  it('reconciles a confirmed payment response instead of leaving the job unfunded', async () => {
+    const transaction = `0x${'a'.repeat(64)}`
+    const paymentResponse = btoa(JSON.stringify({ success: true, status: 'success', transaction }))
+    const paymentFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'rj_1', fundingStatus: 'UNFUNDED' }), {
+      status: 202,
+      headers: { 'payment-response': paymentResponse },
+    }))
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'rj_1', fundingStatus: 'AUTHORIZED' }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+
+    await expect(client.authorize('rj_1', 'rjv_owner', paymentFetch)).resolves.toMatchObject({ fundingStatus: 'AUTHORIZED' })
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/review-jobs/rj_1/reconcile-funding', expect.objectContaining({
+      method: 'POST',
+      headers: { authorization: 'Bearer rjv_owner', 'content-type': 'application/json' },
+      body: JSON.stringify({ transaction }),
+    }))
+  })
 })
