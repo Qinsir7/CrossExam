@@ -43,7 +43,7 @@ function App() {
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
   useEffect(() => {
-    if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'CANCELLED') return
+    if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'FAILED' || reviewJob.status === 'CANCELLED') return
     const client = new ReviewJobClient()
     const refresh = async () => {
       try {
@@ -178,6 +178,7 @@ function App() {
     AWAITING_MATCH: 'Awaiting independent reviewer match',
     AWAITING_DELIVERIES: 'Independent review procurement in progress',
     READY_FOR_ASSURANCE: 'All independent deliveries received',
+    FAILED: 'Review procurement exhausted its retry budget',
     CANCELLED: 'Review job cancelled',
   }
 

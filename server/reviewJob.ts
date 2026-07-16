@@ -6,16 +6,19 @@ import { createBlindReviewTask, type BlindReviewTask } from '../src/network/revi
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
 import { normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
 
-export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'CANCELLED'
+export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
-export type ProcurementStatus = 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED'
+export type ProcurementStatus = 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED' | 'EXHAUSTED'
 
 export type ReviewProcurement = {
   scopeId: string
   status: ProcurementStatus
   idempotencyKey: string
   externalRequestId?: string
+  /** Incremented before every external call, so a crash cannot hide a spend attempt. */
+  attempts: number
   lastAttemptAt?: string
+  nextAttemptAt?: string
   failure?: string
   payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
 }
@@ -23,7 +26,7 @@ export type ReviewProcurement = {
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
-  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_DELIVERED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
+  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
   scopeId?: string
   detail: string
 }
@@ -51,7 +54,8 @@ function event(type: ReviewJobEvent['type'], detail: string, occurredAt: string,
   return { id: `rje_${randomUUID()}`, occurredAt, type, ...(scopeId ? { scopeId } : {}), detail }
 }
 
-function jobStatus(dispatch: ReviewDispatch): ReviewJobStatus {
+function jobStatus(dispatch: ReviewDispatch, procurements: ReviewProcurement[]): ReviewJobStatus {
+  if (procurements.some((procurement) => procurement.status === 'EXHAUSTED')) return 'FAILED'
   if (dispatch.assignments.some((assignment) => assignment.status === 'AWAITING_MATCH')) return 'AWAITING_MATCH'
   return dispatch.status === 'DELIVERED' ? 'READY_FOR_ASSURANCE' : 'AWAITING_DELIVERIES'
 }
@@ -76,7 +80,13 @@ export function createReviewJob(decision: DecisionPackage, registry: ReviewerReg
   const plan = createReviewPlan(decision)
   const activeReviewers = Object.values(registry).filter((reviewer) => reviewer.status === 'ACTIVE')
   const dispatch = stageReviewPlan(plan, activeReviewers)
-  const status = jobStatus(dispatch)
+  const procurements = dispatch.assignments.filter((assignment) => assignment.reviewer).map((assignment) => ({
+    scopeId: assignment.scopeId,
+    status: 'UNSENT' as const,
+    idempotencyKey: `${id}:${assignment.scopeId}`,
+    attempts: 0,
+  }))
+  const status = jobStatus(dispatch, procurements)
   return {
     schemaVersion: '0.1',
     id,
@@ -86,11 +96,7 @@ export function createReviewJob(decision: DecisionPackage, registry: ReviewerReg
     decision,
     plan,
     dispatch,
-    procurements: dispatch.assignments.filter((assignment) => assignment.reviewer).map((assignment) => ({
-      scopeId: assignment.scopeId,
-      status: 'UNSENT',
-      idempotencyKey: `${id}:${assignment.scopeId}`,
-    })),
+    procurements,
     events: [event('JOB_CREATED', status === 'AWAITING_MATCH' ? 'Created; compatible independent reviewers are still required.' : 'Created with independent reviewers matched from the server registry.', now)],
     createdAt: now,
     updatedAt: now,
@@ -128,7 +134,7 @@ function revise(job: ReviewJob, now: string, patch: Partial<Pick<ReviewJob, 'sta
 
 /** A paid x402 authorization is required before the buyer worker may spend. */
 export function authorizeReviewJobFunding(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
-  if (job.status === 'CANCELLED') throw new Error('A cancelled review job cannot be funded.')
+  if (job.status === 'CANCELLED' || job.status === 'FAILED') throw new Error('A terminal review job cannot be funded.')
   if (job.fundingStatus === 'AUTHORIZED') return job
   return revise(job, now, { fundingStatus: 'AUTHORIZED' }, event('JOB_FUNDING_AUTHORIZED', 'x402 buyer authorization received; external procurement may now spend within the configured policy.', now))
 }
@@ -138,7 +144,7 @@ export function markProcurementDispatching(job: ReviewJob, scopeId: string, now 
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status === 'REQUESTED') throw new Error('Review scope is not available for procurement dispatch.')
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
-    ? { ...item, status: 'DISPATCHING' as const, lastAttemptAt: now, failure: undefined }
+    ? { ...item, status: 'DISPATCHING' as const, attempts: item.attempts + 1, lastAttemptAt: now, nextAttemptAt: undefined, failure: undefined }
     : item)
   return revise(job, now, { procurements }, event('REVIEW_REQUEST_DISPATCHING', 'External reviewer procurement is being dispatched with its stable idempotency key.', now, scopeId))
 }
@@ -151,18 +157,29 @@ export function markProcurementRequested(job: ReviewJob, scopeId: string, extern
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
-    ? { ...item, status: 'REQUESTED' as const, externalRequestId, ...(payment ? { payment } : {}), lastAttemptAt: now }
+    ? { ...item, status: 'REQUESTED' as const, externalRequestId, ...(payment ? { payment } : {}), lastAttemptAt: now, nextAttemptAt: undefined }
     : item)
   return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `External reviewer accepted request ${externalRequestId}.`, now, scopeId))
 }
 
-export function markProcurementFailed(job: ReviewJob, scopeId: string, reason: string, now = new Date().toISOString()): ReviewJob {
+export function markProcurementFailed(
+  job: ReviewJob,
+  scopeId: string,
+  reason: string,
+  options: { now?: string; maxAttempts?: number; retryAfterMs?: number } = {},
+): ReviewJob {
+  const now = options.now ?? new Date().toISOString()
+  const maxAttempts = options.maxAttempts ?? Number.POSITIVE_INFINITY
+  const retryAfterMs = options.retryAfterMs ?? 0
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
+  const exhausted = procurement.attempts >= maxAttempts
+  const nextAttemptAt = exhausted ? undefined : new Date(new Date(now).getTime() + retryAfterMs).toISOString()
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
-    ? { ...item, status: 'FAILED' as const, failure: reason.slice(0, 500), lastAttemptAt: now }
+    ? { ...item, status: exhausted ? 'EXHAUSTED' as const : 'FAILED' as const, failure: reason.slice(0, 500), lastAttemptAt: now, ...(nextAttemptAt ? { nextAttemptAt } : {}) }
     : item)
-  return revise(job, now, { procurements }, event('REVIEW_REQUEST_FAILED', reason.slice(0, 500), now, scopeId))
+  const status = jobStatus(job.dispatch, procurements)
+  return revise(job, now, { procurements, status }, event(exhausted ? 'REVIEW_REQUEST_EXHAUSTED' : 'REVIEW_REQUEST_FAILED', exhausted ? `Procurement attempts exhausted: ${reason.slice(0, 450)}` : reason.slice(0, 500), now, scopeId))
 }
 
 export async function recordReviewDelivery(job: ReviewJob, scopeId: string, delivery: SignedReviewDelivery, registry: ReviewerRegistry, now = new Date().toISOString()): Promise<ReviewJob> {
@@ -180,7 +197,7 @@ export async function recordReviewDelivery(job: ReviewJob, scopeId: string, deli
   // Also force the signed review's effective identity back through the
   // server-owned registry before its status is persisted.
   const normalized = normalizeReviewJobDispatch(job.decision, dispatch, registry)
-  const status = jobStatus(normalized)
+  const status = jobStatus(normalized, job.procurements)
   const delivered = revise(job, now, { dispatch: normalized, status }, event('REVIEW_DELIVERED', 'Signed reviewer delivery accepted with content-addressed evidence.', now, scopeId))
   return status === 'READY_FOR_ASSURANCE'
     ? { ...delivered, events: [...delivered.events, event('JOB_READY_FOR_ASSURANCE', 'Every independent review scope is delivered; the job can now be purchased for network assurance issuance.', now)] }

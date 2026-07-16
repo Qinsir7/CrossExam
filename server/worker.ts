@@ -18,10 +18,28 @@ const provider = new X402ReviewProvider({
   allowedAssets: config.procurementAllowedAssets,
   callbackBaseUrl: config.publicUrl,
 })
-
-const result = await new ReviewJobWorker(store, provider, {
+const worker = new ReviewJobWorker(store, provider, {
   maxAttempts: config.procurementMaxAttempts,
   retryBaseMs: config.procurementRetryBaseMs,
   dispatchTimeoutMs: config.procurementDispatchTimeoutMs,
-}).runOnce()
-console.log(JSON.stringify({ worker: 'crossexam-procurement', ...result }))
+})
+
+let stopping = false
+const stop = (signal: string) => {
+  stopping = true
+  console.log(JSON.stringify({ worker: 'crossexam-procurement', event: 'shutdown_requested', signal }))
+}
+process.once('SIGINT', () => stop('SIGINT'))
+process.once('SIGTERM', () => stop('SIGTERM'))
+
+while (!stopping) {
+  try {
+    const result = await worker.runOnce()
+    console.log(JSON.stringify({ worker: 'crossexam-procurement', event: 'tick', ...result }))
+  } catch (error) {
+    console.error(JSON.stringify({ worker: 'crossexam-procurement', event: 'tick_failed', error: error instanceof Error ? error.message : 'Unknown worker error' }))
+  }
+  if (!stopping) await new Promise<void>((resolve) => setTimeout(resolve, config.procurementWorkerPollMs))
+}
+
+if ('close' in store && typeof store.close === 'function') await store.close()

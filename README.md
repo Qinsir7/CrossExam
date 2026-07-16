@@ -49,6 +49,12 @@ For a production-style container with a persistent record volume, see [deploymen
 
 For horizontally scaled production, configure `CROSSEXAM_DATABASE_URL`; the included PostgreSQL store shares records, access grants, signed outcomes, and paid-request idempotency across API replicas.
 
+Run `npm run x402:worker` as a separate worker service against that same
+PostgreSQL database once external reviewers and a funded procurement wallet are
+configured. It uses idempotency keys, bounded exponential retry, a stale
+dispatch lease, and a hard attempt limit; it never runs inside the browser or
+API process.
+
 ## Status
 
 Production-shaped assurance core: durable blind review jobs, server-owned reviewer identity, signed network verification, buyer- and seller-side X Layer x402 rails with spend policy, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Live operation still requires real reviewer endpoints, dedicated funded wallets, seller facilitator credentials, and a public HTTPS deployment.

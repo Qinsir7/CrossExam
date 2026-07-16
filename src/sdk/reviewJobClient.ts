@@ -3,7 +3,7 @@ import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 
-export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'CANCELLED'
+export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
 
 export type ReviewJobView = {

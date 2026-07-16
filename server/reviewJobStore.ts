@@ -77,7 +77,7 @@ export class FileReviewJobStore implements ReviewJobStore {
     try {
       const ids = (await readdir(this.jobsDirectory)).filter((entry) => /^rj_[0-9a-f-]{36}$/.test(entry))
       const jobs = await Promise.all(ids.map((id) => this.findJob(id)))
-      return jobs.filter((job): job is ReviewJob => Boolean(job && job.status !== 'READY_FOR_ASSURANCE' && job.status !== 'CANCELLED'))
+      return jobs.filter((job): job is ReviewJob => Boolean(job && job.status !== 'READY_FOR_ASSURANCE' && job.status !== 'FAILED' && job.status !== 'CANCELLED'))
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return []
       throw error

@@ -35,6 +35,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_SERVICE_SIGNING_KEY`: a dedicated 32-byte EVM private key for issuing assurance records. It is mandatory when the paid x402 service is enabled; publish only its derived public address in service discovery.
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
+- `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD`: full-review sale price. Keep this independently configured from the inexpensive completed-dispatch aggregation price and above the maximum external-review cost plus an operating margin.
 - `CROSSEXAM_REVIEWER_REGISTRY`: server-owned JSON registry of each reviewer's ID, owner, model family, capabilities, evidence routes, status and EVM wallet when `/network-aggregate` is enabled. Caller-supplied reviewer metadata is not trusted for network-verified records.
 - `CROSSEXAM_OUTCOME_AUTHORITY_WALLETS`: authority-ID to EVM-wallet registry for signed outcome ingestion.
 - `CROSSEXAM_EXECUTOR_WALLETS`: executor-ID to EVM-wallet registry for signed execution receipt ingestion.
@@ -50,7 +51,7 @@ The API process never needs a buyer wallet to serve assurance records. Run procu
 - `CROSSEXAM_PUBLIC_URL`: HTTPS callback base used by reviewers to return their EIP-191-signed deliveries.
 - Each active `CROSSEXAM_REVIEWER_REGISTRY` entry needs an HTTPS `procurementEndpoint` before the worker can send it work.
 
-Run one recoverable pass with `npm run x402:procure`. A scheduler or queue may invoke it repeatedly. The worker considers only jobs whose owner has completed the x402-paid `/api/v1/review-jobs/authorize` step; creating a job cannot spend the buyer wallet. It rejects all non-`exact`, non-X-Layer, unapproved-asset, over-cap, redirecting, or no-402 procurement flows before it creates a payment signature. Every external request has a durable `{jobId}:{scopeId}` idempotency key and records the settled asset, amount and transaction reference on the job.
+Run one recoverable pass with `npm run x402:procure`, or run the production loop with `npm run x402:worker`. On Railway, create a second service from the same GitHub repository, point it at the same Postgres service, copy only the worker-required server environment variables, and set its start command to `npm run x402:worker`; it does not need a public domain. The worker considers only jobs whose owner has completed the x402-paid `/api/v1/review-jobs/authorize` step; creating a job cannot spend the buyer wallet. It rejects all non-`exact`, non-X-Layer, unapproved-asset, over-cap, redirecting, or no-402 procurement flows before it creates a payment signature. Every external request has a durable `{jobId}:{scopeId}` idempotency key and records the settled asset, amount and transaction reference on the job. It applies bounded exponential retry, a stale-dispatch lease, and a hard attempt ceiling; exhausting a single paid review scope terminates the job before it can create further scope spend.
 
 ## HTTPS and exposure
 

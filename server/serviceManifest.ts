@@ -62,7 +62,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.review-funding', endpoint: endpoint('/api/v1/review-jobs/authorize'), paid: true,
-        description: 'Authorize bounded external-review procurement through an x402 buyer payment before the worker can spend.',
+        description: 'Purchase a full independent-review authorization before the worker may spend the bounded external-review budget.',
       },
     ],
   }

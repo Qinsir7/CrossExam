@@ -269,10 +269,10 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
         payTo: config.payTo,
-        price: `$${config.priceUsd}`,
+        price: `$${config.reviewAuthorizationPriceUsd}`,
         maxTimeoutSeconds: 300,
       },
-      description: 'CrossExam buyer authorization for bounded external reviewer procurement',
+      description: 'CrossExam full-review authorization for bounded independent external reviewer procurement',
       mimeType: 'application/json',
     },
   }

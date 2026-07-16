@@ -206,7 +206,7 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
   async listActiveJobs(): Promise<ReviewJob[]> {
     await this.ready()
     const result = await this.pool.query<{ payload: ReviewJob }>(
-      "SELECT payload FROM crossexam_review_jobs WHERE status NOT IN ('READY_FOR_ASSURANCE', 'CANCELLED') ORDER BY updated_at ASC",
+      "SELECT payload FROM crossexam_review_jobs WHERE status NOT IN ('READY_FOR_ASSURANCE', 'FAILED', 'CANCELLED') ORDER BY updated_at ASC",
     )
     return result.rows.map((row) => row.payload)
   }

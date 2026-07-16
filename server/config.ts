@@ -6,6 +6,7 @@ export type X402ServerConfig = {
   port: number
   payTo: `0x${string}`
   priceUsd: string
+  reviewAuthorizationPriceUsd: string
   okxApiKey: string
   okxSecretKey: string
   okxPassphrase: string
@@ -16,6 +17,10 @@ export type X402ServerConfig = {
   procurementSigningKey?: Hex
   procurementMaxPerScopeAtomic?: bigint
   procurementAllowedAssets: string[]
+  procurementWorkerPollMs: number
+  procurementRetryBaseMs: number
+  procurementDispatchTimeoutMs: number
+  procurementMaxAttempts: number
   outcomeAuthorityWallets: Record<string, `0x${string}`>
   executorWallets: Record<string, `0x${string}`>
   dataDirectory: string
@@ -33,10 +38,10 @@ function required(env: Environment, key: string) {
   return value
 }
 
-function positiveDollarPrice(value: string) {
+function positiveDollarPrice(value: string, label = 'CROSSEXAM_X402_PRICE_USD') {
   const amount = Number(value)
   if (!Number.isFinite(amount) || amount <= 0 || amount > 10) {
-    throw new Error('CROSSEXAM_X402_PRICE_USD must be a positive amount no greater than 10.')
+    throw new Error(`${label} must be a positive amount no greater than 10.`)
   }
   return amount.toFixed(2)
 }
@@ -141,6 +146,14 @@ function allowedAssets(value: string | undefined) {
   return assets.map((asset) => asset.toLowerCase())
 }
 
+function boundedInteger(value: string | undefined, fallback: number, label: string, minimum: number, maximum: number) {
+  const parsed = Number(value ?? fallback)
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${label} must be an integer between ${minimum} and ${maximum}.`)
+  }
+  return parsed
+}
+
 function recordAccessTtl(value: string | undefined) {
   const ttl = Number(value ?? '2592000')
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 31_536_000) throw new Error('CROSSEXAM_RECORD_ACCESS_TTL_SECONDS must be between 60 and 31536000.')
@@ -206,6 +219,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     port,
     payTo: payTo as `0x${string}`,
     priceUsd: positiveDollarPrice(env.CROSSEXAM_X402_PRICE_USD ?? '0.02'),
+    reviewAuthorizationPriceUsd: positiveDollarPrice(env.CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD ?? '0.50', 'CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD'),
     okxApiKey: required(env, 'OKX_API_KEY'),
     okxSecretKey: required(env, 'OKX_SECRET_KEY'),
     okxPassphrase: required(env, 'OKX_PASSPHRASE'),
@@ -216,6 +230,10 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     procurementSigningKey: procurementSigner?.key,
     procurementMaxPerScopeAtomic,
     procurementAllowedAssets,
+    procurementWorkerPollMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_WORKER_POLL_MS, 5_000, 'CROSSEXAM_PROCUREMENT_WORKER_POLL_MS', 1_000, 60_000),
+    procurementRetryBaseMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_RETRY_BASE_MS, 30_000, 'CROSSEXAM_PROCUREMENT_RETRY_BASE_MS', 1_000, 3_600_000),
+    procurementDispatchTimeoutMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS, 300_000, 'CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS', 10_000, 86_400_000),
+    procurementMaxAttempts: boundedInteger(env.CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS, 5, 'CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS', 1, 20),
     outcomeAuthorityWallets: walletRegistry(env.CROSSEXAM_OUTCOME_AUTHORITY_WALLETS, 'CROSSEXAM_OUTCOME_AUTHORITY_WALLETS'),
     executorWallets: walletRegistry(env.CROSSEXAM_EXECUTOR_WALLETS, 'CROSSEXAM_EXECUTOR_WALLETS'),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
