@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { createDecisionPackage } from './domain/decisionPackage'
 import { createActionBinding } from './domain/actionBinding'
+import { createEvmActionBinding } from './domain/evmAction'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
@@ -31,8 +32,14 @@ function App() {
   const [draftRisk, setDraftRisk] = useState('')
   const [draftClaims, setDraftClaims] = useState('')
   const [draftActionType, setDraftActionType] = useState<ActionType>('OTHER')
+  const [draftEvmTransaction, setDraftEvmTransaction] = useState(false)
   const [draftTarget, setDraftTarget] = useState('')
   const [draftParameters, setDraftParameters] = useState('')
+  const [draftChainId, setDraftChainId] = useState('196')
+  const [draftRecipient, setDraftRecipient] = useState('')
+  const [draftCalldata, setDraftCalldata] = useState('0x')
+  const [draftValueWei, setDraftValueWei] = useState('0')
+  const [draftTokenRiskTarget, setDraftTokenRiskTarget] = useState('')
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(null)
@@ -126,34 +133,42 @@ function App() {
 
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    let actionBinding
     try {
-      actionBinding = await createActionBinding(draftActionType, draftTarget, draftParameters)
+      const binding = draftEvmTransaction
+        ? await createEvmActionBinding({
+          actionType: draftActionType,
+          chainId: Number(draftChainId),
+          to: draftRecipient,
+          data: draftCalldata,
+          valueWei: draftValueWei,
+          tokenRiskTarget: draftTokenRiskTarget || undefined,
+        })
+        : { actionBinding: await createActionBinding(draftActionType, draftTarget, draftParameters) }
+      const created = createDecisionPackage({
+        title: draftTitle,
+        valueAtRiskUsd: Number(draftRisk),
+        claimsText: draftClaims,
+        actionBinding: binding.actionBinding,
+        reviewEvidenceContext: binding.reviewEvidenceContext,
+        reviewProfile: draftEvmTransaction || ['TRADE', 'SPEND', 'DEPLOY'].includes(draftActionType) ? 'PRETRADE_ONCHAIN' : 'GENERAL',
+      })
+
+      if (created.ok === false) {
+        setFormErrors(created.errors)
+        return
+      }
+
+      setActiveDecision(created.value)
+      setRunState('idle')
+      setReviewJob(null)
+      setReviewJobResult(null)
+      setReviewJobAccessToken(null)
+      setReviewJobError(null)
+      setFormErrors([])
+      setComposerOpen(false)
     } catch (error) {
       setFormErrors([error instanceof Error ? error.message : 'Unable to create an action binding.'])
-      return
     }
-    const created = createDecisionPackage({
-      title: draftTitle,
-      valueAtRiskUsd: Number(draftRisk),
-      claimsText: draftClaims,
-      actionBinding,
-      reviewProfile: ['TRADE', 'SPEND', 'DEPLOY'].includes(draftActionType) ? 'PRETRADE_ONCHAIN' : 'GENERAL',
-    })
-
-    if (created.ok === false) {
-      setFormErrors(created.errors)
-      return
-    }
-
-    setActiveDecision(created.value)
-    setRunState('idle')
-    setReviewJob(null)
-    setReviewJobResult(null)
-    setReviewJobAccessToken(null)
-    setReviewJobError(null)
-    setFormErrors([])
-    setComposerOpen(false)
   }
 
   async function authorizeReview() {
@@ -415,8 +430,20 @@ function App() {
             <label>Proposed action<input autoFocus value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="e.g. Approve a $5,000 vendor contract" /></label>
             <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => setDraftRisk(event.target.value)} placeholder="5000" /></label>
             <label>Execution type<select value={draftActionType} onChange={(event) => setDraftActionType(event.target.value as ActionType)}><option value="SPEND">Spend</option><option value="TRADE">Trade</option><option value="DEPLOY">Deploy</option><option value="PUBLISH">Publish</option><option value="OTHER">Other</option></select></label>
-            <label>Execution target<input value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="e.g. xlayer:0x... or vendor:acme" /></label>
-            <label>Action parameters<textarea value={draftParameters} onChange={(event) => setDraftParameters(event.target.value)} placeholder="Raw transaction parameters, contract payload, or canonical action JSON" rows={3} /></label>
+            <label className="transaction-format"><input type="checkbox" checked={draftEvmTransaction} onChange={(event) => setDraftEvmTransaction(event.target.checked)} /> Bind an exact EVM transaction</label>
+            {draftEvmTransaction ? <div className="evm-transaction-fields">
+              <p>CrossExam hashes the canonical chain, recipient, calldata and native value. A token target is separately routed to contract-risk evidence.</p>
+              <div className="composer-field-grid">
+                <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => setDraftChainId(event.target.value)} placeholder="196" /></label>
+                <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => setDraftValueWei(event.target.value)} placeholder="0" /></label>
+              </div>
+              <label>Transaction recipient{draftActionType === 'DEPLOY' ? ' (empty only for contract creation)' : ''}<input value={draftRecipient} onChange={(event) => setDraftRecipient(event.target.value)} placeholder="0x…" /></label>
+              <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => setDraftCalldata(event.target.value)} placeholder="0x…" rows={3} /></label>
+              <label>Token risk target (optional)<input value={draftTokenRiskTarget} onChange={(event) => setDraftTokenRiskTarget(event.target.value)} placeholder="token:xlayer:0x…" /></label>
+            </div> : <>
+              <label>Execution target<input value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="e.g. xlayer:0x... or vendor:acme" /></label>
+              <label>Action parameters<textarea value={draftParameters} onChange={(event) => setDraftParameters(event.target.value)} placeholder="Raw transaction parameters, contract payload, or canonical action JSON" rows={3} /></label>
+            </>}
             <label>Claims that must be true<textarea value={draftClaims} onChange={(event) => setDraftClaims(event.target.value)} placeholder={'One material claim per line\nThe vendor has a valid SOC 2 report.\nCustomer data remains in the EU.'} rows={6} /></label>
             {formErrors.length > 0 && <div className="form-errors">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
             <button className="run-button" type="submit"><span className="button-cross">×</span> Structure Decision Package <span className="button-arrow">→</span></button>
