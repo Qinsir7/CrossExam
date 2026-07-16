@@ -1,5 +1,6 @@
 import { evaluatePreAction, type ActionIntent, type AssuredDecision, type PreActionDecision, type PreActionPolicy } from '../domain/preActionGate'
 import { createActionBinding } from '../domain/actionBinding'
+import { canonicalizeEvmTransaction, createEvmActionBinding, type CanonicalEvmTransaction, type EvmActionInput } from '../domain/evmAction'
 import type { ActionType, CrossExamResult, DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { Address } from 'viem'
@@ -36,6 +37,16 @@ export type BoundActionInput<T> = {
 export type VerifiedBoundActionInput<T> = BoundActionInput<T> & {
   expectedServiceSigner: Address
 }
+
+/**
+ * Production execution boundary for an EVM wallet or smart account. The SDK
+ * first re-derives the exact reviewed transaction binding, verifies the
+ * CrossExam issuer, then exposes only normalized transaction fields to the
+ * wallet callback.
+ */
+export type VerifiedEvmActionInput<T> = Pick<VerifiedBoundActionInput<T>, 'access' | 'decisionId' | 'valueAtRiskUsd' | 'expectedServiceSigner' | 'policy'>
+  & EvmActionInput
+  & { execute: (transaction: Readonly<CanonicalEvmTransaction>) => Promise<T> | T }
 
 export class CrossExamRecordAccessError extends Error {
   readonly status: number
@@ -144,5 +155,22 @@ export class CrossExamClient {
       target: binding.target,
       parameters: input.parameters.trim(),
     }))
+  }
+
+  /**
+   * EVM-native variation of executeVerifiedBoundAction. Use this immediately
+   * before walletClient.sendTransaction, writeContract, or a smart-account
+   * user-operation submission; do not preflight at an earlier UI step.
+   */
+  async executeVerifiedEvmAction<T>(input: VerifiedEvmActionInput<T>): Promise<T> {
+    const transaction = canonicalizeEvmTransaction(input)
+    const { actionBinding } = await createEvmActionBinding(input)
+    const gate = await this.preflightVerified(input.access, {
+      decisionId: input.decisionId,
+      valueAtRiskUsd: input.valueAtRiskUsd,
+      ...actionBinding,
+    }, input.expectedServiceSigner, input.policy)
+    if (!gate.executable) throw new CrossExamActionBlockedError(gate)
+    return input.execute(Object.freeze(transaction))
   }
 }

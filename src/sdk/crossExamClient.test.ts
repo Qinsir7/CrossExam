@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CrossExamActionBlockedError, CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
 import { createActionBinding } from '../domain/actionBinding'
+import { createEvmActionBinding } from '../domain/evmAction'
 import { privateKeyToAccount } from 'viem/accounts'
 import { attestDecisionAssuranceRecord } from '../../server/serviceAttestation'
 
@@ -76,6 +77,21 @@ describe('CrossExamClient', () => {
       decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parameters, execute,
     })).resolves.toEqual({ txHash: '0xverified' })
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('only exposes a canonical EVM transaction to a verified production executor', async () => {
+    const privateKey = '0x0123456789012345678901234567890123456789012345678901234567890123' as const
+    const input = { actionType: 'TRADE' as const, chainId: 196, to: '0xAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', data: '0xAABB', valueWei: '0' }
+    const { actionBinding } = await createEvmActionBinding(input)
+    const signed = await attestDecisionAssuranceRecord({ ...record, decision: { ...record.decision, actionBinding } }, privateKey)
+    const execute = vi.fn().mockResolvedValue({ txHash: '0xevm' })
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(signed), { status: 200 })) })
+
+    await expect(client.executeVerifiedEvmAction({
+      access: { recordId: record.recordId, token: 'darv_token' }, expectedServiceSigner: privateKeyToAccount(privateKey).address,
+      decisionId: 'DP-1', valueAtRiskUsd: 2000, ...input, execute,
+    })).resolves.toEqual({ txHash: '0xevm' })
+    expect(execute).toHaveBeenCalledWith({ chainId: 196, to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', data: '0xaabb', valueWei: '0' })
   })
 
   it('does not call the executor when the payload differs from the reviewed binding', async () => {

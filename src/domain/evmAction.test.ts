@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createEvmActionBinding } from './evmAction'
+import { canonicalizeEvmTransaction, createEvmActionBinding } from './evmAction'
 
 describe('createEvmActionBinding', () => {
   it('binds canonical EVM transaction fields and a distinct token-risk target', async () => {
@@ -13,5 +13,11 @@ describe('createEvmActionBinding', () => {
   it('permits recipient-less CREATE only for deployment init code', async () => {
     await expect(createEvmActionBinding({ actionType: 'DEPLOY', chainId: 196, data: '0x6000' })).resolves.toMatchObject({ actionBinding: { target: 'evm:196:create' } })
     await expect(createEvmActionBinding({ actionType: 'TRADE', chainId: 196, data: '0x' })).rejects.toThrow('DEPLOY')
+  })
+
+  it('normalizes the exact transaction that an executor will receive', () => {
+    expect(canonicalizeEvmTransaction({
+      actionType: 'TRADE', chainId: 196, to: '0xAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', data: '0xAABB', valueWei: '0',
+    })).toEqual({ chainId: 196, to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', data: '0xaabb', valueWei: '0' })
   })
 })

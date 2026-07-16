@@ -207,6 +207,36 @@ const receipt = await crossExam.executeBoundAction({
 })
 ```
 
+For an EVM wallet or smart account, use `executeVerifiedEvmAction` at the
+immediate signing boundary. It verifies the record's EIP-191 service
+attestation against a trusted issuer address, re-derives the binding from the
+transaction, applies the freshness and contradiction gate, and passes only the
+canonical transaction to the wallet callback. Do not use a signer address that
+was supplied by the untrusted record itself; pin it from your deployment
+configuration or an independently verified CrossExam manifest.
+
+```ts
+const txHash = await crossExam.executeVerifiedEvmAction({
+  access: { recordId, token: readAccess.token },
+  expectedServiceSigner: trustedCrossExamIssuer,
+  decisionId: 'DP-042',
+  valueAtRiskUsd: 5000,
+  actionType: 'TRADE',
+  chainId: 196,
+  to: '0x…',
+  data: '0x…',
+  valueWei: '0',
+  // tx is lower-cased/canonicalized and matches the reviewed hash exactly.
+  execute: (tx) => walletClient.sendTransaction({
+    account,
+    chain: xLayer,
+    to: tx.to,
+    data: tx.data,
+    value: BigInt(tx.valueWei),
+  }),
+})
+```
+
 ## Errors
 
 | Status | Meaning |
