@@ -1,4 +1,5 @@
 import express from 'express'
+import { recoverMessageAddress } from 'viem'
 import { paymentMiddleware, x402ResourceServer } from '@okxweb3/x402-express'
 import { OKXFacilitatorClient } from '@okxweb3/x402-core'
 import { ExactEvmScheme } from '@okxweb3/x402-evm/exact/server'
@@ -15,12 +16,13 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
-import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
+import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, recoverReviewJobAccess, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
-import { reconcileReviewJobFunding, XLAYER_USDT0 } from './customerPayment'
+import { reconcileReviewJobFunding, verifyUsdt0Transfer, XLAYER_USDT0 } from './customerPayment'
 import { fixedWindowRateLimit } from './rateLimit'
+import { reviewAccessRecoveryMessage } from '../src/domain/reviewAccess'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
@@ -86,7 +88,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         payTo: config.payTo,
         expectedAmountAtomic: reviewAuthorizationAmountAtomic(job),
         jobStore,
-        getSettleStatus: async () => ({ success: true, status: 'success', transaction: result.transaction, network: result.network }),
+        getSettleStatus: async () => ({ success: true, status: 'success', transaction: result.transaction, network: result.network, ...(result.payer ? { payer: result.payer } : {}) }),
       })
       console.info(`[customer-payment] authorized ${input.jobId} from confirmed transaction ${result.transaction}`)
     } catch (error) {
@@ -238,6 +240,39 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid review job request.'
       response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/review-jobs/recover-access', fixedWindowRateLimit({ limit: 10, windowMs: 60_000 }), async (request, response) => {
+    try {
+      const input = request.body as { transaction?: unknown; issuedAt?: unknown; signature?: unknown }
+      if (typeof input.transaction !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(input.transaction)
+        || typeof input.issuedAt !== 'string' || typeof input.signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(input.signature)) {
+        throw new Error('A transaction, ISO timestamp, and EIP-191 wallet signature are required.')
+      }
+      const issuedAt = new Date(input.issuedAt).getTime()
+      const ageMs = Date.now() - issuedAt
+      if (!Number.isFinite(issuedAt) || ageMs < -60_000 || ageMs > 5 * 60_000) throw new Error('The access-recovery signature has expired.')
+      const job = await jobStore.findJobByCustomerPaymentTransaction(input.transaction)
+      if (!job?.customerPayment) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      const payer = await verifyUsdt0Transfer({
+        transaction: job.customerPayment.transaction,
+        payTo: config.payTo,
+        amountAtomic: job.customerPayment.amountAtomic,
+      })
+      const signer = await recoverMessageAddress({
+        message: reviewAccessRecoveryMessage({ transaction: input.transaction, issuedAt: input.issuedAt }),
+        signature: input.signature as `0x${string}`,
+      })
+      if (signer.toLowerCase() !== payer) throw new Error('Recovery signature does not belong to the wallet that funded this review.')
+      const recovered = recoverReviewJobAccess(job, payer)
+      await jobStore.updateJob(recovered.job, job.revision)
+      response.json({ ...reviewJobForOwner(recovered.job), accessToken: recovered.accessToken })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Paid review access could not be recovered.'
+      response.status(422).json({ error: 'REVIEW_ACCESS_RECOVERY_REJECTED', message })
     }
   })
   app.get('/api/v1/review-jobs/:jobId', async (request, response) => {
@@ -393,7 +428,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
           const input = context.adapter.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
           if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('A valid review job capability is required before quoting payment.')
           const job = await jobStore.findJob(input.jobId)
-          if (!job || !canAccessReviewJob(job, input.accessToken) || job.fundingStatus !== 'UNFUNDED') {
+          if (!job || !canAccessReviewJob(job, input.accessToken) || job.fundingStatus !== 'UNFUNDED'
+            || (job.status !== 'AWAITING_MATCH' && job.status !== 'AWAITING_DELIVERIES')) {
             throw new Error('This review job cannot accept a payment authorization.')
           }
           return `$${job.quote.authorizationPriceUsdt.toFixed(2)}`

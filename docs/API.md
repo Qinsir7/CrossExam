@@ -139,6 +139,8 @@ provider which asset to inspect when the executable action targets a router.
 
 `POST /api/v1/review-jobs/{jobId}/retry` reopens a settled failed job without charging the customer again. Delivered evidence remains immutable; failed scopes are rematched only to active sources whose configured cost fits inside the original authorized per-scope budget.
 
+`POST /api/v1/review-jobs/recover-access` restores a lost paid-job owner capability without customer support or another payment. The caller signs a five-minute EIP-191 recovery message with the wallet that funded the supplied X Layer transaction. CrossExam independently re-reads the exact USDT0 Transfer log, verifies its sender and recipient, rotates the old bearer capability, and returns the paid job. Unfunded quotes cannot use wallet recovery and expire after 24 hours; funded jobs are never silently cancelled without a refund workflow.
+
 The first production X Layer route combines authenticated OKX Onchain OS liquidity evidence with an independent GoPlus X Layer token-security response. Included API quota and public security data are recorded explicitly at zero marginal cost with immutable request/response hashes; neither is represented as an on-chain payment. Paid sources remain supported when their advertised chain and input contract match the reviewed target. All external API evidence yields `PROCUREMENT_VERIFIED`, never a forged reviewer signature.
 
 Agent and browser-wallet integrations call this route through their own

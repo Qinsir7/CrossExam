@@ -1,6 +1,6 @@
 import type { ReviewJobStore } from './reviewJobStore'
 import type { ExternalEvidenceProvenance, ReviewDelivery } from '../src/network/reviewNetwork'
-import { blindTaskForProcurement, markIncludedQuotaProcurementRequested, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, type ReviewJob } from './reviewJob'
+import { blindTaskForProcurement, expireUnfundedReviewJob, markIncludedQuotaProcurementRequested, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, type ReviewJob } from './reviewJob'
 import type { ReviewerRegistry } from './reviewerRegistry'
 
 export type ExternalReviewProvider = {
@@ -21,6 +21,7 @@ export type ReviewJobWorkerOptions = {
   maxAttempts?: number
   retryBaseMs?: number
   dispatchTimeoutMs?: number
+  unfundedExpiryMs?: number
   now?: () => Date
   registry?: ReviewerRegistry
 }
@@ -37,12 +38,14 @@ export class ReviewJobWorker {
       maxAttempts: options.maxAttempts ?? 5,
       retryBaseMs: options.retryBaseMs ?? 30_000,
       dispatchTimeoutMs: options.dispatchTimeoutMs ?? 300_000,
+      unfundedExpiryMs: options.unfundedExpiryMs ?? 86_400_000,
       now: options.now ?? (() => new Date()),
       registry: options.registry ?? {},
     }
     if (!Number.isInteger(this.options.maxAttempts) || this.options.maxAttempts < 1) throw new Error('Worker maxAttempts must be a positive integer.')
     if (!Number.isInteger(this.options.retryBaseMs) || this.options.retryBaseMs < 1) throw new Error('Worker retryBaseMs must be positive.')
     if (!Number.isInteger(this.options.dispatchTimeoutMs) || this.options.dispatchTimeoutMs < 1) throw new Error('Worker dispatchTimeoutMs must be positive.')
+    if (!Number.isInteger(this.options.unfundedExpiryMs) || this.options.unfundedExpiryMs < 60_000) throw new Error('Worker unfunded expiry must be at least one minute.')
   }
 
   private now() {
@@ -73,8 +76,18 @@ export class ReviewJobWorker {
     let failed = 0
     let recovered = 0
     for (const current of await this.store.listActiveJobs()) {
-      if (current.fundingStatus !== 'AUTHORIZED') continue
       const runAt = this.now()
+      if (current.fundingStatus !== 'AUTHORIZED') {
+        if (new Date(runAt).getTime() - new Date(current.createdAt).getTime() >= this.options.unfundedExpiryMs) {
+          try {
+            const expired = expireUnfundedReviewJob(current, runAt)
+            await this.store.updateJob(expired, current.revision)
+          } catch {
+            // A concurrent worker may already have expired or funded it.
+          }
+        }
+        continue
+      }
       for (const procurement of current.procurements.filter((item) => item.status === 'DISPATCHING')) {
         try {
           if (await this.recoverStaleDispatch(current, procurement.scopeId, runAt)) recovered += 1

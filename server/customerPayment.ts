@@ -15,6 +15,7 @@ type SettlementStatus = {
   status?: 'pending' | 'success' | 'failed'
   transaction?: string
   network?: string
+  payer?: string
 }
 
 function addressTopic(address: string) {
@@ -45,7 +46,7 @@ export async function verifyUsdt0Transfer(input: {
   if (!receipt || receipt.status !== '0x1' || !Array.isArray(receipt.logs)) throw new Error('Customer settlement is not confirmed on X Layer.')
   const recipientTopic = addressTopic(input.payTo)
   const expectedAmount = BigInt(input.amountAtomic)
-  const matched = receipt.logs.some((log) => {
+  const matched = receipt.logs.find((log) => {
     if (typeof log.address !== 'string' || log.address.toLowerCase() !== XLAYER_USDT0) return false
     if (!Array.isArray(log.topics) || log.topics.length < 3) return false
     if (typeof log.topics[0] !== 'string' || log.topics[0].toLowerCase() !== TRANSFER_TOPIC) return false
@@ -54,6 +55,12 @@ export async function verifyUsdt0Transfer(input: {
     return BigInt(log.data) === expectedAmount
   })
   if (!matched) throw new Error('Transaction does not contain the required CrossExam USDT0 transfer.')
+  const payerTopic = (matched.topics as unknown[])[1]
+  if (typeof payerTopic !== 'string') throw new Error('Customer settlement payer topic is malformed.')
+  if (!/^0x[0-9a-fA-F]{64}$/.test(payerTopic) || !/^0{24}[0-9a-fA-F]{40}$/.test(payerTopic.slice(2))) {
+    throw new Error('Customer settlement payer topic is malformed.')
+  }
+  return `0x${payerTopic.slice(-40)}`.toLowerCase() as `0x${string}`
 }
 
 export async function reconcileReviewJobFunding(input: {
@@ -81,18 +88,22 @@ export async function reconcileReviewJobFunding(input: {
     || (status.network !== undefined && status.network !== 'eip155:196')) {
     throw new Error('Facilitator has not confirmed this customer settlement.')
   }
-  await verifyUsdt0Transfer({
+  const payer = await verifyUsdt0Transfer({
     transaction: input.transaction,
     payTo: input.payTo,
     amountAtomic: input.expectedAmountAtomic,
     ...(input.rpcUrl ? { rpcUrl: input.rpcUrl } : {}),
     ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
   })
+  if (status.success && 'payer' in status && typeof status.payer === 'string' && status.payer.toLowerCase() !== payer) {
+    throw new Error('Facilitator payer does not match the confirmed X Layer transfer sender.')
+  }
   const authorized = recordReviewJobFundingSettlement(input.job, {
     network: 'eip155:196',
     asset: XLAYER_USDT0,
     amountAtomic: input.expectedAmountAtomic,
     transaction: input.transaction,
+    payer,
   }, input.now)
   if (authorized !== input.job) await input.jobStore.updateJob(authorized, input.job.revision)
   return authorized

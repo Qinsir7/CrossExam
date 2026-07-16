@@ -61,6 +61,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Issue and retrieve the signed provenance-qualified record after every paid review scope is complete.',
       },
       {
+        id: 'decision-assurance.review-access-recovery', endpoint: endpoint('/api/v1/review-jobs/recover-access'), paid: false,
+        description: 'Rotate a lost paid-review owner capability with a fresh signature from the wallet proven by its X Layer settlement.',
+      },
+      {
         id: 'decision-assurance.review-funding', endpoint: endpoint('/api/v1/review-jobs/authorize'), paid: true,
         description: 'Purchase a full independent-review authorization before the worker may spend the bounded external-review budget.',
       },

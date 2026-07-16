@@ -49,15 +49,16 @@ For a production-style container with a persistent record volume, see [deploymen
 
 For horizontally scaled production, configure `CROSSEXAM_DATABASE_URL`; the included PostgreSQL store shares records, access grants, signed outcomes, and paid-request idempotency across API replicas.
 
-Run `npm run x402:worker` as a separate worker service against that same
-PostgreSQL database once external reviewers and a funded procurement wallet are
-configured. It uses idempotency keys, bounded exponential retry, a stale
-dispatch lease, and a hard attempt limit; it never runs inside the browser or
-API process.
+The API runs a recoverable embedded procurement loop against that same
+PostgreSQL database. A separate `npm run x402:worker` service is optional
+redundancy; database compare-and-swap claims prevent duplicate work across
+replicas. Zero-marginal-cost authenticated/public sources run without a buyer
+key, while paid downstream x402 sources remain spend-locked behind the
+dedicated procurement wallet and per-scope policy.
 
 ## Status
 
-Production-shaped assurance core: durable blind review jobs, server-owned reviewer identity, signed network verification, buyer- and seller-side X Layer x402 rails with spend policy, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Live operation still requires real reviewer endpoints, dedicated funded wallets, seller facilitator credentials, and a public HTTPS deployment.
+Live on [cross-exam.xyz](https://www.cross-exam.xyz/) with its API at [api.cross-exam.xyz](https://api.cross-exam.xyz/.well-known/crossexam.json): durable paid review jobs, real OKX Onchain OS liquidity evidence, independent GoPlus X Layer token-security evidence, provenance-qualified signed records, commercial ledgers, dynamic x402 quotes, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Paid downstream providers can be added without changing the customer flow when a chain-compatible API service is available.
 
 ## License
 

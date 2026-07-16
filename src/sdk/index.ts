@@ -3,6 +3,6 @@ export type { BoundActionInput, RecordAccess, RemoteDecisionAssuranceRecord, Ver
 export { CrossExamRecordAttestationError, verifyRemoteRecordAttestation } from './recordAttestation'
 export type { RemoteServiceAttestation } from './recordAttestation'
 export { ReviewJobClient, resolveCrossExamApiUrl } from './reviewJobClient'
-export type { ProcurementLedgerView, ReviewJobFundingStatus, ReviewJobResult, ReviewJobStatus, ReviewJobView } from './reviewJobClient'
-export { displayUsdt0, fetchWithBrowserX402 } from './browserX402'
+export type { CreatedReviewJob, ProcurementLedgerView, ReviewJobFundingStatus, ReviewJobResult, ReviewJobStatus, ReviewJobView } from './reviewJobClient'
+export { displayUsdt0, fetchWithBrowserX402, signReviewAccessRecovery } from './browserX402'
 export type { BrowserPaymentPreview } from './browserX402'

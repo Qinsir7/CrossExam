@@ -11,8 +11,12 @@ export type ReviewQuote = {
   economicallyAuthorized: boolean
 }
 
-function cents(value: number) {
-  return Number(value.toFixed(2))
+function ceilCents(value: number) {
+  return Math.ceil((value - Number.EPSILON) * 100) / 100
+}
+
+function tokenPrecision(value: number) {
+  return Number(value.toFixed(6))
 }
 
 /**
@@ -28,9 +32,9 @@ export function quoteReview(plan: ReviewPlan, authorizationPriceFloorUsd: string
     throw new Error('Minimum gross margin must be a fraction from zero up to (but not including) one.')
   }
   const estimatedExternalCostUsdt = plan.estimatedTotalUsdt
-  const minimumAuthorizationPriceUsdt = cents(estimatedExternalCostUsdt / (1 - minimumGrossMarginFraction))
+  const minimumAuthorizationPriceUsdt = ceilCents(estimatedExternalCostUsdt / (1 - minimumGrossMarginFraction))
   const authorizationPriceUsdt = Math.max(authorizationPriceFloorUsdt, minimumAuthorizationPriceUsdt)
-  const estimatedGrossMarginUsdt = cents(authorizationPriceUsdt - estimatedExternalCostUsdt)
+  const estimatedGrossMarginUsdt = tokenPrecision(authorizationPriceUsdt - estimatedExternalCostUsdt)
   const estimatedGrossMarginFraction = authorizationPriceUsdt === 0 ? 0 : Number((estimatedGrossMarginUsdt / authorizationPriceUsdt).toFixed(4))
   return {
     currency: 'USDT',

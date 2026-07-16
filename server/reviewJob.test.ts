@@ -8,7 +8,7 @@ import type { DecisionPackage } from '../src/domain/types'
 import type { ReviewDelivery } from '../src/network/reviewNetwork'
 import { deliveryPayloadHash } from './deliveryAttestation'
 import { evidenceArtifactHash } from './evidenceIntegrity'
-import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, recordReviewJobFundingSettlement, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, cancelReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, recordReviewJobFundingSettlement, recoverReviewJobAccess, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
 import { withOkxMarketSource, type ReviewerRegistry } from './reviewerRegistry'
@@ -51,10 +51,43 @@ describe('ReviewJob lifecycle', () => {
     expect(reviewJobForOwner(created.job)).not.toHaveProperty('accessTokenHash')
   })
 
+  it('rotates a lost owner capability only for the wallet recorded on the customer settlement', () => {
+    const created = createReviewJobWithAccess(decision, registry, '2026-07-15T00:00:00.000Z')
+    const payer = '0xffc6c6162ceb6ad082ea0ecf1fe6106d955e2827' as const
+    const funded = recordReviewJobFundingSettlement(created.job, {
+      network: 'eip155:196',
+      asset: '0x779ded0c9e1022225f8e0630b35a9b54be713736',
+      amountAtomic: '2000000',
+      transaction: `0x${'a'.repeat(64)}`,
+      payer,
+    })
+    expect(() => recoverReviewJobAccess(funded, '0x1111111111111111111111111111111111111111')).toThrow('customer payer')
+    const recovered = recoverReviewJobAccess(funded, payer)
+    expect(canAccessReviewJob(recovered.job, created.accessToken)).toBe(false)
+    expect(canAccessReviewJob(recovered.job, recovered.accessToken)).toBe(true)
+    expect(recovered.job.customerPayment?.payer).toBe(payer)
+  })
+
   it('persists a bounded procurement-worker heartbeat separately from review jobs', async () => {
     const jobStore = await store()
     await jobStore.recordProcurementWorkerHeartbeat({ observedAt: '2026-07-15T00:00:00.000Z', lastEvent: 'heartbeat' })
     await expect(jobStore.getProcurementWorkerHeartbeat()).resolves.toEqual({ observedAt: '2026-07-15T00:00:00.000Z', lastEvent: 'heartbeat' })
+  })
+
+  it('expires abandoned free quotes without spending and never cancels a funded job without a refund', async () => {
+    const jobStore = await store()
+    const job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_99999999-9999-4999-8999-999999999999')
+    await jobStore.createJob(job)
+    const worker = new ReviewJobWorker(jobStore, { async requestReview() { throw new Error('must not procure') } }, {
+      unfundedExpiryMs: 60_000,
+      now: () => new Date('2026-07-15T00:01:00.000Z'),
+    })
+    await expect(worker.runOnce()).resolves.toEqual({ claimed: 0, requested: 0, failed: 0, recovered: 0 })
+    expect(await jobStore.findJob(job.id)).toMatchObject({ status: 'EXPIRED', fundingStatus: 'UNFUNDED' })
+    expect(await jobStore.listActiveJobs()).toHaveLength(0)
+
+    const funded = authorizeReviewJobFunding(job)
+    expect(() => cancelReviewJob(funded)).toThrow('refund workflow')
   })
 
   it('quotes matched paid evidence at server-owned provider cost, not a caller-supplied estimate', () => {
@@ -92,7 +125,7 @@ describe('ReviewJob lifecycle', () => {
         requests.push({ scopeId: input.scopeId, idempotencyKey: input.idempotencyKey, withheld: input.task.withheldContext })
         return { externalRequestId: `external-${input.scopeId}`, payment: { network: 'eip155:196', asset: '0x5555555555555555555555555555555555555555', amountAtomic: '120000', transaction: `0x${'1'.repeat(64)}` } }
       },
-    })
+    }, { now: () => new Date('2026-07-15T00:00:30.000Z') })
 
     await expect(worker.runOnce()).resolves.toEqual({ claimed: 0, requested: 0, failed: 0, recovered: 0 })
     const authorized = authorizeReviewJobFunding(job, '2026-07-15T00:00:01.000Z')

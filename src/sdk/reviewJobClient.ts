@@ -2,9 +2,9 @@ import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
-import { fetchWithBrowserX402, type BrowserPaymentPreview } from './browserX402'
+import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
-export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
+export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED' | 'EXPIRED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
 
 export type ReviewJobView = {
@@ -12,6 +12,7 @@ export type ReviewJobView = {
   revision: number
   status: ReviewJobStatus
   fundingStatus: ReviewJobFundingStatus
+  customerPayment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string; payer?: `0x${string}` }
   decision: DecisionPackage
   plan: ReviewPlan
   quote: {
@@ -43,7 +44,7 @@ export type ProcurementLedgerView = {
   jobId: string
   commercial: {
     customerAuthorization: 'UNFUNDED' | 'AUTHORIZED'
-    customerSettlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+    customerSettlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string; payer?: `0x${string}` }
     quote: ReviewJobView['quote']
     grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS' | 'REALIZED_SAME_ASSET'
     realizedGrossMargin?: { asset: string; amountAtomic: string }
@@ -67,7 +68,7 @@ export type ReviewJobResult = RemoteDecisionAssuranceRecord & {
   readAccess: { token: string; expiresAt: string }
 }
 
-type CreatedReviewJob = ReviewJobView & { accessToken: string }
+export type CreatedReviewJob = ReviewJobView & { accessToken: string }
 
 function settlementTransaction(response: Response) {
   const encoded = response.headers.get('payment-response')
@@ -136,6 +137,15 @@ export class ReviewJobClient {
 
   async create(decision: DecisionPackage): Promise<CreatedReviewJob> {
     return this.request('/api/v1/review-jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(decision) }) as Promise<CreatedReviewJob>
+  }
+
+  async recoverWithBrowserWallet(transaction: string): Promise<CreatedReviewJob> {
+    const proof = await signReviewAccessRecovery(transaction)
+    return this.request('/api/v1/review-jobs/recover-access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(proof),
+    }) as Promise<CreatedReviewJob>
   }
 
   async get(jobId: string, accessToken: string): Promise<ReviewJobView> {

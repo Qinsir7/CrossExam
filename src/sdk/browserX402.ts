@@ -1,4 +1,5 @@
 import type { Address } from 'viem'
+import { reviewAccessRecoveryMessage } from '../domain/reviewAccess'
 
 const XLAYER_CHAIN_ID = 196
 const XLAYER_USDT0 = '0x779ded0c9e1022225f8e0630b35a9b54be713736'
@@ -103,4 +104,22 @@ export function displayUsdt0(amountAtomic: string) {
   const whole = value / 1_000_000n
   const fraction = (value % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
   return fraction ? `${whole}.${fraction}` : whole.toString()
+}
+
+function utf8Hex(value: string) {
+  return `0x${[...new TextEncoder().encode(value)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Proves control of the wallet that funded a paid review; no transaction is sent. */
+export async function signReviewAccessRecovery(transaction: string) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(transaction)) throw new Error('Enter a valid X Layer payment transaction hash.')
+  const provider = injectedProvider()
+  const accounts = await provider.request({ method: 'eth_requestAccounts' })
+  const address = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : undefined
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) throw new Error('The connected wallet did not return an EVM account.')
+  const issuedAt = new Date().toISOString()
+  const message = reviewAccessRecoveryMessage({ transaction, issuedAt })
+  const signature = await provider.request({ method: 'personal_sign', params: [utf8Hex(message), address] })
+  if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) throw new Error('The wallet did not return a valid access-recovery signature.')
+  return { transaction, issuedAt, signature }
 }

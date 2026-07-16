@@ -8,7 +8,7 @@ import { verifyDeliveryAttestation, type SignedReviewDelivery } from './delivery
 import { applyMatchedProviderCosts, normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
 import { quoteReview, type ReviewQuote } from './reviewPricing'
 
-export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
+export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED' | 'EXPIRED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
 export type ProcurementStatus = 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED' | 'EXHAUSTED'
 
@@ -38,12 +38,13 @@ export type X402Settlement = {
   asset: string
   amountAtomic: string
   transaction: string
+  payer?: `0x${string}`
 }
 
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
-  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_PROVIDER_REMATCHED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'PAID_EVIDENCE_RECEIVED' | 'AUTHENTICATED_EVIDENCE_RECEIVED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
+  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_PROVIDER_REMATCHED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'PAID_EVIDENCE_RECEIVED' | 'AUTHENTICATED_EVIDENCE_RECEIVED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED' | 'JOB_EXPIRED'
   scopeId?: string
   detail: string
 }
@@ -201,6 +202,23 @@ function assertX402Settlement(payment: X402Settlement) {
     || !/^[1-9][0-9]*$/.test(payment.amountAtomic) || !/^0x[0-9a-fA-F]{64}$/.test(payment.transaction)) {
     throw new Error('x402 settlement is malformed.')
   }
+  if (payment.payer !== undefined && !/^0x[a-fA-F0-9]{40}$/.test(payment.payer)) throw new Error('x402 settlement payer is malformed.')
+}
+
+export function recoverReviewJobAccess(job: ReviewJob, payer: `0x${string}`, now = new Date().toISOString()) {
+  if (!job.customerPayment || job.fundingStatus !== 'AUTHORIZED') throw new Error('Only a funded review job supports wallet recovery.')
+  if (job.customerPayment.payer && job.customerPayment.payer.toLowerCase() !== payer.toLowerCase()) throw new Error('Recovery wallet does not match the recorded customer payer.')
+  const accessToken = `rjv_${randomBytes(32).toString('base64url')}`
+  return {
+    accessToken,
+    job: {
+      ...job,
+      customerPayment: { ...job.customerPayment, payer },
+      accessTokenHash: tokenHash(accessToken),
+      revision: job.revision + 1,
+      updatedAt: now,
+    },
+  }
 }
 
 /**
@@ -208,7 +226,7 @@ function assertX402Settlement(payment: X402Settlement) {
  * payment. The worker treats this flag as its sole permission to spend.
  */
 export function recordReviewJobFundingSettlement(job: ReviewJob, payment: X402Settlement, now = new Date().toISOString()): ReviewJob {
-  if (job.status === 'CANCELLED' || job.status === 'FAILED') throw new Error('A terminal review job cannot be funded.')
+  if (job.status === 'CANCELLED' || job.status === 'FAILED' || job.status === 'EXPIRED') throw new Error('A terminal review job cannot be funded.')
   assertX402Settlement(payment)
   if (job.fundingStatus === 'AUTHORIZED') {
     if (job.customerPayment?.transaction !== payment.transaction) throw new Error('Review job is already funded by a different settled payment.')
@@ -219,7 +237,7 @@ export function recordReviewJobFundingSettlement(job: ReviewJob, payment: X402Se
 
 /** Test and offline helper. Production funding must call recordReviewJobFundingSettlement. */
 export function authorizeReviewJobFunding(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
-  if (job.status === 'CANCELLED' || job.status === 'FAILED') throw new Error('A terminal review job cannot be funded.')
+  if (job.status === 'CANCELLED' || job.status === 'FAILED' || job.status === 'EXPIRED') throw new Error('A terminal review job cannot be funded.')
   if (job.fundingStatus === 'AUTHORIZED') return job
   return revise(job, now, { fundingStatus: 'AUTHORIZED' }, event('JOB_FUNDING_AUTHORIZED', 'Offline authorization recorded without an x402 settlement; this mode must not be used by the production payment route.', now))
 }
@@ -371,8 +389,17 @@ export function recordPaidEvidenceDelivery(
 
 export function cancelReviewJob(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
   if (job.status === 'READY_FOR_ASSURANCE') throw new Error('A ready-for-assurance job cannot be cancelled; either issue or expire it explicitly.')
-  if (job.status === 'CANCELLED') return job
+  if (job.fundingStatus === 'AUTHORIZED') throw new Error('A funded review job cannot be cancelled until an explicit refund workflow is available.')
+  if (job.status === 'CANCELLED' || job.status === 'EXPIRED') return job
   return revise(job, now, { status: 'CANCELLED' }, event('JOB_CANCELLED', 'Review job cancelled before a decision-grade assurance record was issued.', now))
+}
+
+/** Releases an abandoned free quote without ever touching a funded job. */
+export function expireUnfundedReviewJob(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
+  if (job.fundingStatus !== 'UNFUNDED') throw new Error('A funded review job cannot be expired without an explicit refund workflow.')
+  if (job.status === 'CANCELLED' || job.status === 'EXPIRED') return job
+  if (job.status === 'READY_FOR_ASSURANCE' || job.status === 'FAILED') throw new Error('A terminal review job cannot be expired as an abandoned quote.')
+  return revise(job, now, { status: 'EXPIRED' }, event('JOB_EXPIRED', 'Unfunded review quote expired before any external procurement or customer settlement.', now))
 }
 
 /**

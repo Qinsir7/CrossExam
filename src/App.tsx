@@ -67,6 +67,7 @@ function App() {
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
   const [authorizingReviewJob, setAuthorizingReviewJob] = useState(false)
   const [retryingReviewJob, setRetryingReviewJob] = useState(false)
+  const [recoveringReviewJob, setRecoveringReviewJob] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -78,7 +79,7 @@ function App() {
     }
   }, [reviewJob, reviewJobAccessToken])
   useEffect(() => {
-    if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'FAILED' || reviewJob.status === 'CANCELLED') return
+    if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'FAILED' || reviewJob.status === 'CANCELLED' || reviewJob.status === 'EXPIRED') return
     const client = new ReviewJobClient()
     const refresh = async () => {
       try {
@@ -262,12 +263,34 @@ function App() {
     }
   }
 
+  async function recoverPaidReview() {
+    const transaction = window.prompt('Enter the X Layer transaction hash for your CrossExam payment. Your wallet will sign an access-recovery message; no transaction or payment will be sent.')
+    if (!transaction) return
+    setRecoveringReviewJob(true)
+    setReviewJobError(null)
+    try {
+      const recovered = await new ReviewJobClient().recoverWithBrowserWallet(transaction.trim())
+      const { accessToken, ...job } = recovered
+      setActiveDecision(job.decision)
+      setReviewJob(job)
+      setReviewJobAccessToken(accessToken)
+      setReviewJobResult(null)
+      setGateDecision(null)
+      setRunState('queued')
+    } catch (error) {
+      setReviewJobError(error instanceof Error ? error.message : 'Paid review access could not be recovered.')
+    } finally {
+      setRecoveringReviewJob(false)
+    }
+  }
+
   const reviewStatusLabel: Record<ReviewJobView['status'], string> = {
     AWAITING_MATCH: 'Awaiting independent reviewer match',
     AWAITING_DELIVERIES: 'Independent review procurement in progress',
     READY_FOR_ASSURANCE: 'All independent deliveries received',
     FAILED: 'Review procurement exhausted its retry budget',
     CANCELLED: 'Review job cancelled',
+    EXPIRED: 'Unfunded review quote expired',
   }
 
   return (
@@ -282,7 +305,10 @@ function App() {
           <a href="#protocol">Protocol</a>
           <a href="#network">Network</a>
         </div>
-        <button className="new-decision-button" onClick={() => setComposerOpen(true)}>New decision <span>+</span></button>
+        <div className="topbar-actions">
+          <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
+          <button className="new-decision-button" onClick={() => setComposerOpen(true)}>New decision <span>+</span></button>
+        </div>
       </nav>
 
       <section className="hero" id="top">
@@ -359,7 +385,7 @@ function App() {
             </button>
           ) : (
             <div className="completed-run">
-              <span className="live-dot" /> {ran ? 'Cross-examination complete · 3 independent scopes · 00:19' : 'Decision structured · external evidence procurement pending'}
+              <span className="live-dot" /> {ran ? 'Cross-examination complete · 3 independent scopes · 00:19' : reviewJob ? reviewStatusLabel[reviewJob.status] : 'Decision structured · external evidence procurement pending'}
               <button onClick={() => setRunState('idle')}>{ran ? 'Reset demo' : 'Edit package'}</button>
             </div>
           )}
@@ -418,7 +444,7 @@ function App() {
               </div>
             )}
             <div className="execution-guard">
-              <div className="guard-heading"><span>Execution guard</span><small>NETWORK VERIFIED</small></div>
+              <div className="guard-heading"><span>Execution guard</span><small>{reviewJobResult?.attributionStatus ?? 'NETWORK VERIFIED'}</small></div>
               <p>Bound to {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.actionType.toLowerCase()} · {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.target}</p>
               {gateDecision ? (
                 <div className={`gate-outcome ${gateDecision.executable ? 'permit' : 'blocked'}`}>
@@ -430,18 +456,18 @@ function App() {
                 <button className="guard-button" onClick={() => setGateDecision(realGate ?? demoGate)}>Attempt guarded execution <span>→</span></button>
               )}
             </div>
-            {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
+            {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
           </aside>
         </div>
       </section>
 
       {runState === 'queued' && reviewJob && (
         <section className="queued-panel" aria-live="polite">
-          <span className="queued-icon">×</span>
+          <span className="queued-icon">{reviewJob.status === 'READY_FOR_ASSURANCE' ? '✓' : '×'}</span>
           <div>
-            <span className="card-kicker">Review request staged</span>
-            <h2>CrossExam will not invent a verdict.</h2>
-            <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : 'It will only advance on a server-recorded external procurement and an attributable signed delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
+            <span className="card-kicker">Review lifecycle · {reviewStatusLabel[reviewJob.status]}</span>
+            <h2>{reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Evidence received. Assurance issued.' : 'CrossExam will not invent a verdict.'}</h2>
+            <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Every scope has a retained, content-addressed external response and the signed CrossExam record is now bound to the reviewed action.' : 'It advances only after a server-recorded external procurement and a provenance-qualified delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
           </div>
           <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.quote.authorizationPriceUsdt} USDT authorization</span><span>{reviewJob.quote.estimatedGrossMarginUsdt} USDT estimated gross margin</span><span>{reviewJob.fundingStatus}</span></div>
           {reviewJob.fundingStatus === 'UNFUNDED' && <button className="run-button" onClick={() => void authorizeReview()} disabled={authorizingReviewJob}>
