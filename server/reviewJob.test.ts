@@ -8,7 +8,7 @@ import type { DecisionPackage } from '../src/domain/types'
 import type { ReviewDelivery } from '../src/network/reviewNetwork'
 import { deliveryPayloadHash } from './deliveryAttestation'
 import { evidenceArtifactHash } from './evidenceIntegrity'
-import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, recordReviewJobFundingSettlement, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
@@ -125,6 +125,22 @@ describe('ReviewJob lifecycle', () => {
     expect(buildProcurementLedger(job)).toMatchObject({
       commercial: { customerAuthorization: 'AUTHORIZED', grossMarginStatus: 'AWAITING_REVIEWER_SETTLEMENTS' },
       settledByAsset: [{ asset: '0x5555555555555555555555555555555555555555', amountAtomic: '360000', payments: 3 }],
+    })
+  })
+
+  it('reports realized atomic gross margin only after customer and every procurement settlement share an asset', () => {
+    let job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_55555555-5555-4555-8555-555555555555')
+    const asset = '0x5555555555555555555555555555555555555555'
+    job = recordReviewJobFundingSettlement(job, { network: 'eip155:196', asset, amountAtomic: '2000000', transaction: `0x${'a'.repeat(64)}` }, '2026-07-15T00:00:01.000Z')
+    for (const [index, procurement] of job.procurements.entries()) {
+      job = markProcurementDispatching(job, procurement.scopeId, `2026-07-15T00:0${index + 2}:00.000Z`)
+      job = markProcurementRequested(job, procurement.scopeId, `external-${procurement.scopeId}`, { network: 'eip155:196', asset, amountAtomic: '100000', transaction: `0x${String(index + 1).repeat(64)}` }, `2026-07-15T00:0${index + 2}:01.000Z`)
+    }
+    expect(buildProcurementLedger(job).commercial).toMatchObject({
+      customerAuthorization: 'AUTHORIZED',
+      customerSettlement: { asset, amountAtomic: '2000000' },
+      grossMarginStatus: 'REALIZED_SAME_ASSET',
+      realizedGrossMargin: { asset, amountAtomic: '1700000' },
     })
   })
 

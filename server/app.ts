@@ -15,7 +15,7 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
-import { authorizeReviewJobFunding, canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, recordReviewJobFundingSettlement, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
@@ -42,6 +42,22 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const recordStore = dependencies.recordStore ?? sharedProductionStore ?? new FileAssuranceRecordStore(config.dataDirectory)
   const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
   const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
+
+  resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
+    const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
+    if (requestContext?.path !== '/api/v1/review-jobs/authorize' || requestContext.method !== 'POST') return
+    const input = requestContext.adapter?.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
+    if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('Settled review funding request had an invalid payload.')
+    if (requirements.network !== 'eip155:196' || !/^0x[a-fA-F0-9]{40}$/.test(requirements.asset) || !/^[1-9][0-9]*$/.test(result.amount ?? requirements.amount) || !/^0x[0-9a-fA-F]{64}$/.test(result.transaction)) {
+      throw new Error('Settled review funding receipt is malformed.')
+    }
+    const job = await jobStore.findJob(input.jobId)
+    if (!job || !canAccessReviewJob(job, input.accessToken)) throw new Error('Settled review funding request no longer has owner access.')
+    const authorized = recordReviewJobFundingSettlement(job, {
+      network: 'eip155:196', asset: requirements.asset.toLowerCase(), amountAtomic: result.amount ?? requirements.amount, transaction: result.transaction,
+    })
+    if (authorized !== job) await jobStore.updateJob(authorized, job.revision)
+  })
 
   app.disable('x-powered-by')
   app.use((request, response, next) => {
@@ -396,9 +412,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
         return
       }
-      const authorized = authorizeReviewJobFunding(job)
-      if (authorized !== job) await jobStore.updateJob(authorized, job.revision)
-      response.json(reviewJobForOwner(authorized))
+      if (job.fundingStatus === 'AUTHORIZED') {
+        response.status(409).json({ error: 'REVIEW_JOB_ALREADY_AUTHORIZED', message: 'This job already has a settled customer authorization; a second payment is not accepted.' })
+        return
+      }
+      // The x402 middleware settles only after this handler returns. Its
+      // onAfterSettle hook records the authorization before the worker can
+      // spend; callers should poll the job once they receive PAYMENT-RESPONSE.
+      response.status(202).json({ ...reviewJobForOwner(job), fundingStatus: 'UNFUNDED', settlementPending: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Review job funding could not be authorized.'
       response.status(422).json({ error: 'REVIEW_FUNDING_REJECTED', message })

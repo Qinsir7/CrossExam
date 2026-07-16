@@ -32,6 +32,13 @@ export type ReviewProcurement = {
   }
 }
 
+export type X402Settlement = {
+  network: 'eip155:196'
+  asset: string
+  amountAtomic: string
+  transaction: string
+}
+
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
@@ -46,6 +53,8 @@ export type ReviewJob = {
   revision: number
   status: ReviewJobStatus
   fundingStatus: ReviewJobFundingStatus
+  /** Recorded only after the x402 facilitator reports a successful settlement. */
+  customerPayment?: X402Settlement
   decision: DecisionPackage
   plan: ReviewPlan
   quote: ReviewQuote
@@ -156,15 +165,37 @@ export function blindTaskForProcurement(job: ReviewJob, scopeId: string): BlindR
   return createBlindReviewTask(job.decision, job.plan, scopeId)
 }
 
-function revise(job: ReviewJob, now: string, patch: Partial<Pick<ReviewJob, 'status' | 'fundingStatus' | 'dispatch' | 'procurements'>>, nextEvent: ReviewJobEvent): ReviewJob {
+function revise(job: ReviewJob, now: string, patch: Partial<Pick<ReviewJob, 'status' | 'fundingStatus' | 'customerPayment' | 'dispatch' | 'procurements'>>, nextEvent: ReviewJobEvent): ReviewJob {
   return { ...job, ...patch, revision: job.revision + 1, updatedAt: now, events: [...job.events, nextEvent] }
 }
 
 /** A paid x402 authorization is required before the buyer worker may spend. */
+function assertX402Settlement(payment: X402Settlement) {
+  if (payment.network !== 'eip155:196' || !/^0x[a-fA-F0-9]{40}$/.test(payment.asset)
+    || !/^[1-9][0-9]*$/.test(payment.amountAtomic) || !/^0x[0-9a-fA-F]{64}$/.test(payment.transaction)) {
+    throw new Error('x402 settlement is malformed.')
+  }
+}
+
+/**
+ * Records authorization only after the facilitator settles the customer
+ * payment. The worker treats this flag as its sole permission to spend.
+ */
+export function recordReviewJobFundingSettlement(job: ReviewJob, payment: X402Settlement, now = new Date().toISOString()): ReviewJob {
+  if (job.status === 'CANCELLED' || job.status === 'FAILED') throw new Error('A terminal review job cannot be funded.')
+  assertX402Settlement(payment)
+  if (job.fundingStatus === 'AUTHORIZED') {
+    if (job.customerPayment?.transaction !== payment.transaction) throw new Error('Review job is already funded by a different settled payment.')
+    return job
+  }
+  return revise(job, now, { fundingStatus: 'AUTHORIZED', customerPayment: payment }, event('JOB_FUNDING_AUTHORIZED', `x402 customer authorization settled in transaction ${payment.transaction}; external procurement may now spend within the configured policy.`, now))
+}
+
+/** Test and offline helper. Production funding must call recordReviewJobFundingSettlement. */
 export function authorizeReviewJobFunding(job: ReviewJob, now = new Date().toISOString()): ReviewJob {
   if (job.status === 'CANCELLED' || job.status === 'FAILED') throw new Error('A terminal review job cannot be funded.')
   if (job.fundingStatus === 'AUTHORIZED') return job
-  return revise(job, now, { fundingStatus: 'AUTHORIZED' }, event('JOB_FUNDING_AUTHORIZED', 'x402 buyer authorization received; external procurement may now spend within the configured policy.', now))
+  return revise(job, now, { fundingStatus: 'AUTHORIZED' }, event('JOB_FUNDING_AUTHORIZED', 'Offline authorization recorded without an x402 settlement; this mode must not be used by the production payment route.', now))
 }
 
 export function markProcurementDispatching(job: ReviewJob, scopeId: string, now = new Date().toISOString()): ReviewJob {

@@ -1,13 +1,15 @@
-import type { ReviewJob } from './reviewJob'
+import type { ReviewJob, X402Settlement } from './reviewJob'
 import type { ReviewQuote } from './reviewPricing'
 
 export type ProcurementLedger = {
   jobId: string
   commercial: {
     customerAuthorization: 'UNFUNDED' | 'AUTHORIZED'
+    customerSettlement?: X402Settlement
     quote: ReviewQuote
-    /** Actual reviewer spend stays token-denominated until an accounting asset is configured. */
-    grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS'
+    /** A realized margin is reported only when every settled leg uses one asset. */
+    grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS' | 'REALIZED_SAME_ASSET'
+    realizedGrossMargin?: { asset: string; amountAtomic: string }
   }
   estimatedTotalUsdt: number
   scopes: Array<{
@@ -41,12 +43,21 @@ export function buildProcurementLedger(job: ReviewJob): ProcurementLedger {
       ...(payment ? { settlement: payment } : {}),
     }
   })
+  const customerPayment = job.customerPayment
+  const sameAssetCosts = customerPayment && [...totals.keys()].every((asset) => asset === customerPayment.asset)
+  const settledCost = sameAssetCosts && customerPayment ? [...totals.values()].reduce((sum, total) => sum + total.amount, 0n) : undefined
+  const fullySettled = scopes.every((scope) => scope.procurementStatus === 'REQUESTED')
+  const realizedGrossMargin = customerPayment && settledCost !== undefined && fullySettled
+    ? { asset: customerPayment.asset, amountAtomic: (BigInt(customerPayment.amountAtomic) - settledCost).toString() }
+    : undefined
   return {
     jobId: job.id,
     commercial: {
       customerAuthorization: job.fundingStatus,
+      ...(customerPayment ? { customerSettlement: customerPayment } : {}),
       quote: job.quote,
-      grossMarginStatus: totals.size === 0 ? 'ESTIMATED_ONLY' : 'AWAITING_REVIEWER_SETTLEMENTS',
+      grossMarginStatus: realizedGrossMargin ? 'REALIZED_SAME_ASSET' : totals.size === 0 ? 'ESTIMATED_ONLY' : 'AWAITING_REVIEWER_SETTLEMENTS',
+      ...(realizedGrossMargin ? { realizedGrossMargin } : {}),
     },
     estimatedTotalUsdt: job.plan.estimatedTotalUsdt,
     scopes,
