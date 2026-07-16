@@ -96,6 +96,27 @@ function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 
+function hasProviderReadableTokenTarget(decision: DecisionPackage) {
+  const target = decision.reviewEvidenceContext?.tokenRiskTarget ?? decision.actionBinding?.target ?? ''
+  return /^(?:token|contract):[a-z0-9_-]+:0x[a-fA-F0-9]{40}$/.test(target)
+}
+
+/**
+ * A deterministic paid adapter must be able to form its request before the
+ * buyer authorizes any spending. In particular, a router transaction does not
+ * identify the token that CertiK should scan, so never defer this error until
+ * after an unrelated liquidity provider has already been paid.
+ */
+function assertProviderInputCompatibility(decision: DecisionPackage, dispatch: ReviewDispatch, registry: ReviewerRegistry) {
+  const certikAssignment = dispatch.assignments.find((assignment) => {
+    const provider = assignment.reviewer ? registry[assignment.reviewer.id] : undefined
+    return assignment.scopeId === 'contract-token-risk' && provider?.responseAdapter === 'CERTIK_TOKEN_SCAN_V1'
+  })
+  if (certikAssignment && !hasProviderReadableTokenTarget(decision)) {
+    throw new Error('This pre-trade review needs reviewEvidenceContext.tokenRiskTarget formatted as token:<chain>:0x<contract-address> before CertiK procurement can be authorized.')
+  }
+}
+
 export function createReviewJob(
   decision: DecisionPackage,
   registry: ReviewerRegistry,
@@ -108,6 +129,7 @@ export function createReviewJob(
   const canonicalPlan = createReviewPlan(decision)
   const activeReviewers = Object.values(registry).filter((reviewer) => reviewer.status === 'ACTIVE')
   const initialDispatch = stageReviewPlan(canonicalPlan, activeReviewers)
+  assertProviderInputCompatibility(decision, initialDispatch, registry)
   const plan = applyMatchedProviderCosts(canonicalPlan, initialDispatch, registry)
   const quote = quoteReview(plan, pricing.authorizationPriceUsd ?? '2.00', pricing.minimumGrossMarginFraction ?? 0.4)
   if (!quote.economicallyAuthorized) {

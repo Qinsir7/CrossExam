@@ -62,6 +62,20 @@ describe('ReviewJob lifecycle', () => {
     expect(job.quote.estimatedExternalCostUsdt).toBe(0.101)
   })
 
+  it('rejects a CertiK-routed pre-trade job before it can authorize unrelated procurement without a token target', () => {
+    const paidRegistry: ReviewerRegistry = {
+      liquidity: { ...registry.source, id: 'liquidity', ownerId: 'liquidity-owner', capabilities: ['execution liquidity'], procurementProtocol: 'PAID_EVIDENCE_V1', estimatedUnitCostUsdt: 0.1 },
+      certik: { ...registry.challenger, id: 'certik', ownerId: 'certik-owner', capabilities: ['contract token risk'], procurementProtocol: 'PAID_EVIDENCE_V1', responseAdapter: 'CERTIK_TOKEN_SCAN_V1', estimatedUnitCostUsdt: 0.001 },
+    }
+    const pretrade: DecisionPackage = {
+      ...decision,
+      reviewProfile: 'PRETRADE_ONCHAIN',
+      actionBinding: { actionType: 'TRADE', target: 'evm:196:0x1111111111111111111111111111111111111111', parametersHash: '0xbound' },
+    }
+    expect(() => createReviewJob(pretrade, paidRegistry)).toThrow('tokenRiskTarget')
+    expect(() => createReviewJob({ ...pretrade, reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x2222222222222222222222222222222222222222' } }, paidRegistry)).not.toThrow()
+  })
+
   it('durably stages independent procurements and sends blind tasks with stable idempotency keys', async () => {
     const jobStore = await store()
     const job = createReviewJob(decision, registry, '2026-07-15T00:00:00.000Z', 'rj_11111111-1111-4111-8111-111111111111')
