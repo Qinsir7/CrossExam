@@ -2,6 +2,7 @@ import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
+import { fetchWithBrowserX402, type BrowserPaymentPreview } from './browserX402'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'FAILED' | 'CANCELLED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
@@ -32,7 +33,13 @@ export type ReviewJobView = {
 
 export type ProcurementLedgerView = {
   jobId: string
-  commercial: { customerAuthorization: 'UNFUNDED' | 'AUTHORIZED'; quote: ReviewJobView['quote']; grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS' }
+  commercial: {
+    customerAuthorization: 'UNFUNDED' | 'AUTHORIZED'
+    customerSettlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+    quote: ReviewJobView['quote']
+    grossMarginStatus: 'ESTIMATED_ONLY' | 'AWAITING_REVIEWER_SETTLEMENTS' | 'REALIZED_SAME_ASSET'
+    realizedGrossMargin?: { asset: string; amountAtomic: string }
+  }
   estimatedTotalUsdt: number
   scopes: Array<{ scopeId: string; title: string; estimatedFeeUsdt: number; procurementStatus: string; externalRequestId?: string; settlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string } }>
   settledByAsset: Array<{ asset: string; amountAtomic: string; payments: number }>
@@ -84,6 +91,11 @@ export class ReviewJobClient {
     const body = await response.json().catch(() => null) as { message?: unknown } | null
     if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : `CrossExam authorization requires a completed x402 payment (${response.status}).`)
     return body as ReviewJobView
+  }
+
+  /** Browser-wallet path: show a challenge summary, then sign the x402 exact payment in the wallet. */
+  async authorizeWithBrowserWallet(jobId: string, accessToken: string, confirm: (preview: BrowserPaymentPreview) => boolean | Promise<boolean>): Promise<ReviewJobView> {
+    return this.authorize(jobId, accessToken, (input, init) => fetchWithBrowserX402(input, init ?? {}, confirm))
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {

@@ -6,6 +6,7 @@ import { evaluatePreAction, type PreActionDecision } from './domain/preActionGat
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import { ReviewJobClient, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
+import { displayUsdt0 } from './sdk/browserX402'
 import './App.css'
 
 const verdictLabel: Record<ClaimVerdict, string> = {
@@ -39,6 +40,7 @@ function App() {
   const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(null)
   const [reviewJobError, setReviewJobError] = useState<string | null>(null)
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
+  const [authorizingReviewJob, setAuthorizingReviewJob] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -136,6 +138,7 @@ function App() {
       valueAtRiskUsd: Number(draftRisk),
       claimsText: draftClaims,
       actionBinding,
+      reviewProfile: ['TRADE', 'SPEND', 'DEPLOY'].includes(draftActionType) ? 'PRETRADE_ONCHAIN' : 'GENERAL',
     })
 
     if (created.ok === false) {
@@ -151,6 +154,26 @@ function App() {
     setReviewJobError(null)
     setFormErrors([])
     setComposerOpen(false)
+  }
+
+  async function authorizeReview() {
+    if (!reviewJob || !reviewJobAccessToken) return
+    setAuthorizingReviewJob(true)
+    setReviewJobError(null)
+    try {
+      const client = new ReviewJobClient()
+      const pending = await client.authorizeWithBrowserWallet(reviewJob.id, reviewJobAccessToken, (preview) => window.confirm(
+        `Authorize CrossExam review payment?\n\nAmount: ${displayUsdt0(preview.amountAtomic)} USDT0\nNetwork: X Layer\nRecipient: ${preview.payTo}\n${preview.description ?? ''}\n\nCrossExam will not release external procurement until the facilitator confirms settlement.`,
+      ))
+      setReviewJob(pending)
+      // The service returns 202 before final settlement; poll once now so a
+      // fast facilitator confirmation is reflected immediately.
+      window.setTimeout(() => { void client.get(reviewJob.id, reviewJobAccessToken).then(setReviewJob).catch(() => undefined) }, 1_500)
+    } catch (error) {
+      setReviewJobError(error instanceof Error ? error.message : 'Wallet authorization failed.')
+    } finally {
+      setAuthorizingReviewJob(false)
+    }
   }
 
   async function queueReview() {
@@ -356,6 +379,9 @@ function App() {
             <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : 'It will only advance on a server-recorded external procurement and an attributable signed delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
           </div>
           <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.quote.authorizationPriceUsdt} USDT authorization</span><span>{reviewJob.quote.estimatedGrossMarginUsdt} USDT estimated gross margin</span><span>{reviewJob.fundingStatus}</span></div>
+          {reviewJob.fundingStatus === 'UNFUNDED' && <button className="run-button" onClick={() => void authorizeReview()} disabled={authorizingReviewJob}>
+            <span className="button-cross">×</span> {authorizingReviewJob ? 'Waiting for wallet approval' : `Authorize ${reviewJob.quote.authorizationPriceUsdt} USDT review`} <span className="button-arrow">→</span>
+          </button>}
           <div className="review-plan-list">
             {reviewJob.plan.scopes.map((scope) => {
               const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
