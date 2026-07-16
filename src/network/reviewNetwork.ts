@@ -8,6 +8,8 @@ export type ReviewerProfile = {
   modelFamily: string
   evidenceRoutes: string[]
   capabilities: string[]
+  /** Server-owned preference among otherwise compatible sources. */
+  selectionPriority?: number
 }
 
 export type EvidenceArtifact = {
@@ -24,14 +26,15 @@ export type EvidenceArtifact = {
  * A paid external response can be independently tied to an x402 settlement
  * without pretending that the source signed CrossExam's reviewer delivery.
  */
-export type PaidEvidenceProvenance = {
-  kind: 'X402_PAID_EVIDENCE_V1'
+export type ExternalEvidenceProvenance = {
+  kind: 'X402_PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1'
   sourceId: string
   endpoint: string
   observedAt: string
   requestHash: `0x${string}`
   responseHash: `0x${string}`
-  payment: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+  payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+  authentication?: { scheme: 'OKX_HMAC_SHA256'; includedQuota: true }
 }
 
 export type ReviewDelivery = {
@@ -39,7 +42,7 @@ export type ReviewDelivery = {
   deliveredAt: string
   artifacts: EvidenceArtifact[]
   findings: Finding[]
-  provenance?: PaidEvidenceProvenance
+  provenance?: ExternalEvidenceProvenance
 }
 
 export type AssignmentStatus = 'AWAITING_MATCH' | 'MATCHED' | 'DELIVERED'
@@ -80,7 +83,8 @@ export function stageReviewPlan(plan: ReviewPlan, registry: ReviewerProfile[]): 
   const assignments = plan.scopes.map((scope) => {
     const candidates = registry
       .filter((reviewer) => compatible(scope, reviewer) && !usedOwners.has(reviewer.ownerId))
-      .sort((left, right) => noveltyScore(right, usedModels, usedEvidenceRoutes) - noveltyScore(left, usedModels, usedEvidenceRoutes))
+      .sort((left, right) => (right.selectionPriority ?? 0) - (left.selectionPriority ?? 0)
+        || noveltyScore(right, usedModels, usedEvidenceRoutes) - noveltyScore(left, usedModels, usedEvidenceRoutes))
 
     const selected = candidates[0]
     if (!selected) {

@@ -1,13 +1,14 @@
 import type { ReviewJobStore } from './reviewJobStore'
-import type { PaidEvidenceProvenance, ReviewDelivery } from '../src/network/reviewNetwork'
-import { blindTaskForProcurement, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, type ReviewJob } from './reviewJob'
+import type { ExternalEvidenceProvenance, ReviewDelivery } from '../src/network/reviewNetwork'
+import { blindTaskForProcurement, markIncludedQuotaProcurementRequested, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, type ReviewJob } from './reviewJob'
 import type { ReviewerRegistry } from './reviewerRegistry'
 
 export type ExternalReviewProvider = {
   requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{
     externalRequestId: string
     payment?: ReviewJob['procurements'][number]['payment']
-    evidence?: { delivery: ReviewDelivery; provenance: PaidEvidenceProvenance; responseBody: string }
+    includedQuota?: { sourceId: string }
+    evidence?: { delivery: ReviewDelivery; provenance: ExternalEvidenceProvenance; responseBody: string }
   }>
 }
 
@@ -104,7 +105,11 @@ export class ReviewJobWorker {
             idempotencyKey: claimedJob.procurements.find((item) => item.scopeId === procurement.scopeId)!.idempotencyKey,
             task: blindTaskForProcurement(claimedJob, procurement.scopeId),
           })
-          const requestedJob = markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.payment)
+          const requestedJob = response.payment
+            ? markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.payment)
+            : response.includedQuota
+              ? markIncludedQuotaProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.includedQuota.sourceId)
+              : (() => { throw new Error('External evidence source returned neither a settlement nor an included-quota receipt.') })()
           await this.store.updateJob(requestedJob, claimedJob.revision)
           requested += 1
           if (response.evidence) {

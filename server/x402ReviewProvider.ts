@@ -4,6 +4,7 @@ import type { PaymentRequired, PaymentRequirements } from '@okxweb3/x402-core/ty
 import { ExactEvmScheme, toClientEvmSigner } from '@okxweb3/x402-evm'
 import { privateKeyToAccount } from 'viem/accounts'
 import { keccak256, stringToHex, type Hex } from 'viem'
+import { createHmac } from 'node:crypto'
 import type { ExternalReviewProvider } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
 import { evidenceArtifactHash } from './evidenceIntegrity'
@@ -17,6 +18,7 @@ export type X402ReviewProviderOptions = {
   maxPerScopeAtomic: bigint
   allowedAssets: string[]
   callbackBaseUrl: string
+  okxMarketCredentials?: { apiKey: string; secretKey: string; passphrase: string }
   fetchImpl?: FetchLike
 }
 
@@ -75,7 +77,52 @@ function evidenceRequest(reviewer: RegisteredReviewer, input: Parameters<Externa
     url.searchParams.set('address', matched[2])
     return { url: url.toString(), method: 'GET' }
   }
+  if (reviewer.responseAdapter === 'OKX_TOKEN_LIQUIDITY_V1') {
+    const target = input.task.reviewEvidenceContext?.tokenRiskTarget ?? input.task.actionBinding?.target ?? ''
+    const matched = /^(?:token|contract):([a-z0-9_-]+):(0x[a-fA-F0-9]{40})$/.exec(target)
+    if (!matched) throw new Error('OKX token liquidity evidence requires token:<chain>:0x<contract-address>.')
+    const chainIndex = matched[1] === 'xlayer' ? '196' : matched[1]
+    if (chainIndex !== '196') throw new Error('The first production liquidity policy supports X Layer targets only.')
+    const url = new URL(reviewer.procurementEndpoint!)
+    url.searchParams.set('chainIndex', chainIndex)
+    url.searchParams.set('tokenContractAddress', matched[2].toLowerCase())
+    return { url: url.toString(), method: 'GET' }
+  }
   throw new Error('External evidence source has no approved response adapter.')
+}
+
+function okxMarketHeaders(url: string, credentials: NonNullable<X402ReviewProviderOptions['okxMarketCredentials']>) {
+  const parsed = new URL(url)
+  const requestPath = `${parsed.pathname}${parsed.search}`
+  const timestamp = new Date().toISOString()
+  const signature = createHmac('sha256', credentials.secretKey).update(`${timestamp}GET${requestPath}`).digest('base64')
+  return {
+    'OK-ACCESS-KEY': credentials.apiKey,
+    'OK-ACCESS-SIGN': signature,
+    'OK-ACCESS-PASSPHRASE': credentials.passphrase,
+    'OK-ACCESS-TIMESTAMP': timestamp,
+  }
+}
+
+function okxLiquidityFindings(input: Parameters<ExternalReviewProvider['requestReview']>[0], reviewer: RegisteredReviewer, response: Record<string, unknown>, artifactId: string) {
+  if (response.code !== '0' || !Array.isArray(response.data)) throw new Error('OKX Market liquidity response returned an unsuccessful API envelope.')
+  const pools = response.data.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object'))
+  const liquidities = pools.map((pool) => Number(pool.liquidityUsd)).filter((value) => Number.isFinite(value) && value >= 0)
+  if (!liquidities.length) throw new Error('OKX Market liquidity response contains no usable pool liquidity values.')
+  const totalLiquidityUsd = liquidities.reduce((sum, value) => sum + value, 0)
+  const ratio = totalLiquidityUsd / input.task.valueAtRiskUsd
+  const contradiction = pools.length === 0 || ratio < 10
+  const verdict = contradiction ? 'CONTRADICTS' as const : 'INSUFFICIENT_EVIDENCE' as const
+  const explanation = `OKX Onchain OS Market observed ${pools.length} top pool(s) with ${totalLiquidityUsd.toFixed(2)} USD aggregate liquidity (${ratio.toFixed(2)}× the reviewed value at risk). ${contradiction ? 'This is below the 10× hard liquidity floor and materially contradicts safe execution.' : 'Pool TVL alone does not prove route-specific executable depth or slippage, so CrossExam does not upgrade it to support.'}`
+  return input.task.claims.map((claim) => ({
+    claimId: claim.id,
+    reviewerId: reviewer.id,
+    verdict,
+    confidence: contradiction ? 0.9 : 1,
+    materiality: claim.materiality,
+    evidence: explanation,
+    evidenceArtifactIds: [artifactId],
+  }))
 }
 
 function certikFindings(input: Parameters<ExternalReviewProvider['requestReview']>[0], reviewer: RegisteredReviewer, response: Record<string, unknown>, artifactId: string) {
@@ -127,10 +174,13 @@ export class X402ReviewProvider implements ExternalReviewProvider {
   {
     const reviewer = this.options.registry[input.reviewerId]
     if (!reviewer?.procurementEndpoint || !/^https:\/\/.+/.test(reviewer.procurementEndpoint)
-      || (reviewer.procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && reviewer.procurementProtocol !== 'PAID_EVIDENCE_V1')) {
+      || (reviewer.procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1'
+        && reviewer.procurementProtocol !== 'PAID_EVIDENCE_V1'
+        && reviewer.procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1')) {
       throw new Error('Matched source has no approved external procurement endpoint.')
     }
-    const externalRequest = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1'
+    const evidenceProtocol = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1' || reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+    const externalRequest = evidenceProtocol
       ? evidenceRequest(reviewer, input)
       : JSON.stringify({
         schemaVersion: '0.1',
@@ -142,37 +192,49 @@ export class X402ReviewProvider implements ExternalReviewProvider {
     const request = typeof externalRequest === 'string'
       ? { url: reviewer.procurementEndpoint, method: 'POST' as const, body: externalRequest }
       : externalRequest
-    const headers = { ...(request.body ? { 'content-type': 'application/json' } : {}), 'idempotency-key': input.idempotencyKey }
+    const marketCredentials = this.options.okxMarketCredentials
+    if (reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && !marketCredentials) {
+      throw new Error('OKX Market evidence source requires worker-only API credentials.')
+    }
+    const authenticatedHeaders = reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+      ? okxMarketHeaders(request.url, marketCredentials!)
+      : {}
+    const headers = { ...authenticatedHeaders, ...(request.body ? { 'content-type': 'application/json' } : {}), 'idempotency-key': input.idempotencyKey }
     const initial = await this.fetchImpl(request.url, { method: request.method, headers, ...(request.body ? { body: request.body } : {}), redirect: 'error' })
-    if (initial.status !== 402) {
+    const includedQuota = reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && initial.ok
+    if (!includedQuota && initial.status !== 402) {
       throw new Error(`External reviewer must return x402 Payment Required before accepting work (received ${initial.status}).`)
     }
-    const required = this.http.getPaymentRequiredResponse((name) => initial.headers.get(name))
-    const allowed = selectAllowedRequirements(required, this.options, reviewer)
-    const payment = await this.http.createPaymentPayload({ ...required, accepts: allowed })
-    const paid = await this.fetchImpl(request.url, {
+    const required = includedQuota ? undefined : this.http.getPaymentRequiredResponse((name) => initial.headers.get(name))
+    const allowed = required ? selectAllowedRequirements(required, this.options, reviewer) : undefined
+    const payment = required && allowed ? await this.http.createPaymentPayload({ ...required, accepts: allowed }) : undefined
+    const paid = includedQuota ? initial : await this.fetchImpl(request.url, {
       method: request.method,
-      headers: { ...headers, ...this.http.encodePaymentSignatureHeader(payment) },
+      headers: {
+        ...(reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? okxMarketHeaders(request.url, marketCredentials!) : headers),
+        ...this.http.encodePaymentSignatureHeader(payment!),
+        'idempotency-key': input.idempotencyKey,
+      },
       ...(request.body ? { body: request.body } : {}),
       redirect: 'error',
     })
     if (!paid.ok) throw new Error(`External reviewer rejected the paid procurement request (${paid.status}).`)
-    const settlement = this.http.getPaymentSettleResponse((name) => paid.headers.get(name))
-    if (!settlement.success || settlement.network !== 'eip155:196' || !settlement.transaction?.trim()) {
+    const settlement = includedQuota ? undefined : this.http.getPaymentSettleResponse((name) => paid.headers.get(name))
+    if (!includedQuota && (!settlement?.success || settlement.network !== 'eip155:196' || !settlement.transaction?.trim())) {
       throw new Error('External reviewer response lacks a successful X Layer payment settlement confirmation.')
     }
-    const accepted = payment.accepted
-    const amountAtomic = settlement.amount ?? accepted.amount
-    if (!/^[1-9][0-9]*$/.test(amountAtomic) || BigInt(amountAtomic) > this.options.maxPerScopeAtomic) {
+    const accepted = payment?.accepted
+    const amountAtomic = settlement && accepted ? settlement.amount ?? accepted.amount : undefined
+    if (amountAtomic !== undefined && (!/^[1-9][0-9]*$/.test(amountAtomic) || BigInt(amountAtomic) > this.options.maxPerScopeAtomic)) {
       throw new Error('Settlement amount violates the approved procurement spend policy.')
     }
-    const recordedPayment = {
+    const recordedPayment = settlement && accepted && amountAtomic ? {
         network: 'eip155:196',
         asset: accepted.asset.toLowerCase(),
         amountAtomic,
         transaction: settlement.transaction,
-    } as const
-    if (reviewer.procurementProtocol === 'PAID_EVIDENCE_V1') {
+    } as const : undefined
+    if (evidenceProtocol) {
       const responseBody = boundedResponse(await paid.text())
       const observedAt = new Date().toISOString()
       const requestHash = keccak256(stringToHex(JSON.stringify({ method: request.method, url: request.url, ...(request.body ? { body: request.body } : {}) })))
@@ -190,6 +252,8 @@ export class X402ReviewProvider implements ExternalReviewProvider {
         artifacts: [{ ...artifact, contentHash: evidenceArtifactHash(artifact) }],
         findings: reviewer.responseAdapter === 'CERTIK_TOKEN_SCAN_V1'
           ? certikFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
+          : reviewer.responseAdapter === 'OKX_TOKEN_LIQUIDITY_V1'
+            ? okxLiquidityFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
           : input.task.claims.map((claim) => ({
             claimId: claim.id,
             reviewerId: reviewer.id,
@@ -200,18 +264,20 @@ export class X402ReviewProvider implements ExternalReviewProvider {
             evidenceArtifactIds: [artifact.id],
           })),
         provenance: {
-          kind: 'X402_PAID_EVIDENCE_V1' as const,
+          kind: includedQuota ? 'AUTHENTICATED_API_EVIDENCE_V1' as const : 'X402_PAID_EVIDENCE_V1' as const,
           sourceId: reviewer.id,
           endpoint: reviewer.procurementEndpoint,
           observedAt,
           requestHash,
           responseHash,
-          payment: recordedPayment,
+          ...(recordedPayment ? { payment: recordedPayment } : {}),
+          ...(includedQuota ? { authentication: { scheme: 'OKX_HMAC_SHA256' as const, includedQuota: true as const } } : {}),
         },
       }
       return {
         externalRequestId: `evidence-${responseHash.slice(2, 18)}`,
-        payment: recordedPayment,
+        ...(recordedPayment ? { payment: recordedPayment } : {}),
+        ...(includedQuota ? { includedQuota: { sourceId: reviewer.id } } : {}),
         evidence: { delivery, provenance: delivery.provenance, responseBody },
       }
     }

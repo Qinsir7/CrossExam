@@ -8,10 +8,10 @@ import type { DecisionPackage } from '../src/domain/types'
 import type { ReviewDelivery } from '../src/network/reviewNetwork'
 import { deliveryPayloadHash } from './deliveryAttestation'
 import { evidenceArtifactHash } from './evidenceIntegrity'
-import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, recordReviewJobFundingSettlement, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, recordReviewJobFundingSettlement, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
-import type { ReviewerRegistry } from './reviewerRegistry'
+import { withOkxMarketSource, type ReviewerRegistry } from './reviewerRegistry'
 import { buildProcurementLedger } from './procurementLedger'
 import { aggregateProcurementVerifiedAssurance } from './assuranceService'
 
@@ -122,6 +122,27 @@ describe('ReviewJob lifecycle', () => {
     expect(failed?.procurements.filter((procurement) => procurement.status === 'EXHAUSTED')).toHaveLength(1)
     expect(failed?.procurements.find((procurement) => procurement.status === 'EXHAUSTED')).toMatchObject({ attempts: 1 })
     expect((await jobStore.listActiveJobs())).toHaveLength(0)
+  })
+
+  it('reopens a settled failed job against a better source without charging the customer again', () => {
+    const originalRegistry: ReviewerRegistry = {
+      depth: { ...registry.source, id: 'depth', ownerId: 'depth-owner', capabilities: ['execution liquidity'], procurementEndpoint: 'https://depth.example/api', procurementProtocol: 'PAID_EVIDENCE_V1', responseAdapter: 'OPAQUE_JSON_V1', paymentRecipient: '0x4444444444444444444444444444444444444444', estimatedUnitCostUsdt: 0.1 },
+      certik: { ...registry.challenger, id: 'certik', ownerId: 'certik-owner', capabilities: ['contract token risk'], procurementEndpoint: 'https://skills-for-okx.certik.com/api/token-scan', procurementProtocol: 'PAID_EVIDENCE_V1', responseAdapter: 'CERTIK_TOKEN_SCAN_V1', paymentRecipient: '0x5555555555555555555555555555555555555555', estimatedUnitCostUsdt: 0.001 },
+    }
+    const pretrade: DecisionPackage = { ...decision, reviewProfile: 'PRETRADE_ONCHAIN', reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x6666666666666666666666666666666666666666' } }
+    let job = createReviewJob(pretrade, originalRegistry, '2026-07-15T00:00:00.000Z')
+    job = recordReviewJobFundingSettlement(job, { network: 'eip155:196', asset: '0x7777777777777777777777777777777777777777', amountAtomic: '2000000', transaction: `0x${'a'.repeat(64)}` })
+    for (const procurement of [...job.procurements]) job = markProcurementDispatching(job, procurement.scopeId)
+    for (const procurement of [...job.procurements]) job = markProcurementFailed(job, procurement.scopeId, 'provider unavailable', { maxAttempts: 1 })
+    expect(job.status).toBe('FAILED')
+
+    const retried = retryFailedReviewJob(job, withOkxMarketSource(originalRegistry), '2026-07-15T00:10:00.000Z')
+    expect(retried.status).toBe('AWAITING_DELIVERIES')
+    expect(retried.fundingStatus).toBe('AUTHORIZED')
+    expect(retried.customerPayment).toEqual(job.customerPayment)
+    expect(retried.dispatch.assignments.find((item) => item.scopeId === 'execution-liquidity')?.reviewer?.id).toBe('okx-onchainos-liquidity')
+    expect(retried.dispatch.assignments.find((item) => item.scopeId === 'contract-token-risk')?.reviewer?.id).toBe('certik')
+    expect(retried.procurements.every((item) => item.status === 'UNSENT' && item.attempts === 0)).toBe(true)
   })
 
   it('accepts only signed delivery after a recorded external request and becomes ready only when every scope returns', async () => {

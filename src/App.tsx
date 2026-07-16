@@ -65,6 +65,7 @@ function App() {
   const [reviewJobError, setReviewJobError] = useState<string | null>(null)
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
   const [authorizingReviewJob, setAuthorizingReviewJob] = useState(false)
+  const [retryingReviewJob, setRetryingReviewJob] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -233,6 +234,19 @@ function App() {
       setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not create the review job.')
     } finally {
       setCreatingReviewJob(false)
+    }
+  }
+
+  async function retryReview() {
+    if (!reviewJob || !reviewJobAccessToken) return
+    setRetryingReviewJob(true)
+    setReviewJobError(null)
+    try {
+      setReviewJob(await new ReviewJobClient().retry(reviewJob.id, reviewJobAccessToken))
+    } catch (error) {
+      setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not retry external evidence procurement.')
+    } finally {
+      setRetryingReviewJob(false)
     }
   }
 
@@ -420,6 +434,9 @@ function App() {
           <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.quote.authorizationPriceUsdt} USDT authorization</span><span>{reviewJob.quote.estimatedGrossMarginUsdt} USDT estimated gross margin</span><span>{reviewJob.fundingStatus}</span></div>
           {reviewJob.fundingStatus === 'UNFUNDED' && <button className="run-button" onClick={() => void authorizeReview()} disabled={authorizingReviewJob}>
             <span className="button-cross">×</span> {authorizingReviewJob ? 'Waiting for wallet approval' : `Authorize ${reviewJob.quote.authorizationPriceUsdt} USDT review`} <span className="button-arrow">→</span>
+          </button>}
+          {reviewJob.status === 'FAILED' && reviewJob.fundingStatus === 'AUTHORIZED' && <button className="run-button" onClick={() => void retryReview()} disabled={retryingReviewJob}>
+            <span className="button-cross">×</span> {retryingReviewJob ? 'Rebinding evidence sources' : 'Retry without another payment'} <span className="button-arrow">→</span>
           </button>}
           <div className="review-plan-list">
             {reviewJob.plan.scopes.map((scope) => {

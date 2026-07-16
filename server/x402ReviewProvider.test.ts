@@ -15,7 +15,7 @@ const registry: ReviewerRegistry = {
 const input = {
   jobId: 'rj_11111111-1111-4111-8111-111111111111', scopeId: 'evidence-integrity', reviewerId: 'reviewer', idempotencyKey: 'rj_11111111-1111-4111-8111-111111111111:evidence-integrity',
   task: {
-    schemaVersion: '0.1' as const, taskId: 'RT-1', decisionId: 'DP-1', scope: { id: 'evidence-integrity', title: 'Evidence', objective: 'Verify', requiredCapability: 'source verification' }, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.9 }],
+    schemaVersion: '0.1' as const, taskId: 'RT-1', decisionId: 'DP-1', valueAtRiskUsd: 1_000, scope: { id: 'evidence-integrity', title: 'Evidence', objective: 'Verify', requiredCapability: 'source verification' }, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.9 }],
     instructions: [], deliveryRequirements: { addressEveryClaim: true as const, requireTraceableArtifact: true as const, requireArtifactContentHash: true as const, requireFindingArtifactReferences: true as const, acceptedVerdicts: ['SUPPORTS', 'CONTRADICTS', 'INSUFFICIENT_EVIDENCE'] as ['SUPPORTS', 'CONTRADICTS', 'INSUFFICIENT_EVIDENCE'] },
     withheldContext: ['origin_recommendation', 'other_reviewer_findings', 'aggregate_verdict'] as ['origin_recommendation', 'other_reviewer_findings', 'aggregate_verdict'],
   },
@@ -104,5 +104,42 @@ describe('X402ReviewProvider', () => {
       ...input, reviewerId: 'certik', scopeId: 'contract-token-risk',
       task: { ...input.task, scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, actionBinding: { actionType: 'TRADE', target: 'token:eth:0x1111111111111111111111111111111111111111', parametersHash: `0x${'3'.repeat(64)}` } },
     })).rejects.toThrow('payment recipient')
+  })
+
+  it('records authenticated OKX liquidity evidence under included quota without inventing a settlement', async () => {
+    const marketRegistry: ReviewerRegistry = {
+      market: {
+        id: 'market', displayName: 'OKX Onchain OS Market', ownerId: 'okx-market', modelFamily: 'market-data',
+        evidenceRoutes: ['okx-liquidity'], capabilities: ['execution liquidity'], status: 'ACTIVE', selectionPriority: 100,
+        procurementEndpoint: 'https://web3.okx.com/api/v6/dex/market/token/top-liquidity',
+        procurementProtocol: 'AUTHENTICATED_API_EVIDENCE_V1', responseAdapter: 'OKX_TOKEN_LIQUIDITY_V1', estimatedUnitCostUsdt: 0.005,
+      },
+    }
+    const provider = new X402ReviewProvider({
+      registry: marketRegistry, signingKey, maxPerScopeAtomic: 250000n, allowedAssets: [asset], callbackBaseUrl: 'https://crossexam.example',
+      okxMarketCredentials: { apiKey: 'key', secretKey: 'secret', passphrase: 'passphrase' },
+      fetchImpl: async (url, init) => {
+        expect(url).toContain('chainIndex=196')
+        expect(url).toContain('tokenContractAddress=0x1111111111111111111111111111111111111111')
+        expect(new Headers(init.headers).get('ok-access-key')).toBe('key')
+        expect(new Headers(init.headers).get('ok-access-sign')).toBeTruthy()
+        return new Response(JSON.stringify({ code: '0', data: [{ pool: 'TOKEN/USDT', liquidityUsd: '5000' }], msg: '' }), { status: 200 })
+      },
+    })
+    const result = await provider.requestReview({
+      ...input,
+      reviewerId: 'market',
+      scopeId: 'execution-liquidity',
+      task: {
+        ...input.task,
+        valueAtRiskUsd: 1_000,
+        scope: { ...input.task.scope, id: 'execution-liquidity', requiredCapability: 'execution liquidity' },
+        reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x1111111111111111111111111111111111111111' },
+      },
+    })
+    expect(result.payment).toBeUndefined()
+    expect(result.includedQuota).toEqual({ sourceId: 'market' })
+    expect(result.evidence?.provenance.kind).toBe('AUTHENTICATED_API_EVIDENCE_V1')
+    expect(result.evidence?.delivery.findings[0]).toMatchObject({ verdict: 'CONTRADICTS', confidence: 0.9 })
   })
 })

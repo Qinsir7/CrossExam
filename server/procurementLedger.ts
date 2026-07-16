@@ -19,6 +19,7 @@ export type ProcurementLedger = {
     procurementStatus: string
     externalRequestId?: string
     settlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+    costBasis?: 'SETTLED_X402' | 'INCLUDED_API_QUOTA'
   }>
   settledByAsset: Array<{ asset: string; amountAtomic: string; payments: number }>
   outstandingScopeIds: string[]
@@ -41,6 +42,7 @@ export function buildProcurementLedger(job: ReviewJob): ProcurementLedger {
       procurementStatus: procurement?.status ?? 'UNMATCHED',
       ...(procurement?.externalRequestId ? { externalRequestId: procurement.externalRequestId } : {}),
       ...(payment ? { settlement: payment } : {}),
+      ...(payment ? { costBasis: 'SETTLED_X402' as const } : procurement?.includedQuota ? { costBasis: 'INCLUDED_API_QUOTA' as const } : {}),
     }
   })
   const customerPayment = job.customerPayment

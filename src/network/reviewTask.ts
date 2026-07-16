@@ -5,6 +5,7 @@ export type BlindReviewTask = {
   schemaVersion: '0.1'
   taskId: string
   decisionId: string
+  valueAtRiskUsd: number
   scope: Pick<ReviewScope, 'id' | 'title' | 'objective' | 'requiredCapability'>
   claims: DecisionPackage['claims']
   /** Exact target binding is necessary for tool-based pre-trade evidence, but not the origin recommendation. */
@@ -37,6 +38,7 @@ export function createBlindReviewTask(decision: DecisionPackage, plan: ReviewPla
     schemaVersion: '0.1',
     taskId: `RT-${plan.id.replace('RP-', '')}-${scope.id}`,
     decisionId: decision.id,
+    valueAtRiskUsd: decision.valueAtRiskUsd,
     scope: {
       id: scope.id,
       title: scope.title,

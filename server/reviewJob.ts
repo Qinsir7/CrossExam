@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { keccak256, stringToHex } from 'viem'
 import { createReviewPlan, type ReviewPlan } from '../src/domain/reviewPlan'
 import type { DecisionPackage } from '../src/domain/types'
-import { acceptReviewDelivery, stageReviewPlan, type PaidEvidenceProvenance, type ReviewDelivery, type ReviewDispatch } from '../src/network/reviewNetwork'
+import { acceptReviewDelivery, stageReviewPlan, type ExternalEvidenceProvenance, type ReviewDelivery, type ReviewDispatch } from '../src/network/reviewNetwork'
 import { createBlindReviewTask, type BlindReviewTask } from '../src/network/reviewTask'
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
 import { applyMatchedProviderCosts, normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
@@ -23,6 +23,7 @@ export type ReviewProcurement = {
   nextAttemptAt?: string
   failure?: string
   payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+  includedQuota?: { sourceId: string; authentication: 'OKX_HMAC_SHA256' }
   evidence?: {
     observedAt: string
     requestHash: `0x${string}`
@@ -42,7 +43,7 @@ export type X402Settlement = {
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
-  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'PAID_EVIDENCE_RECEIVED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
+  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_PROVIDER_REMATCHED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'PAID_EVIDENCE_RECEIVED' | 'AUTHENTICATED_EVIDENCE_RECEIVED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
   scopeId?: string
   detail: string
 }
@@ -246,6 +247,16 @@ export function markProcurementRequested(job: ReviewJob, scopeId: string, extern
   return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `External reviewer accepted request ${externalRequestId}.`, now, scopeId))
 }
 
+export function markIncludedQuotaProcurementRequested(job: ReviewJob, scopeId: string, externalRequestId: string, sourceId: string, now = new Date().toISOString()): ReviewJob {
+  if (!externalRequestId.trim() || !sourceId.trim()) throw new Error('Authenticated evidence request identifiers are required.')
+  const procurement = job.procurements.find((item) => item.scopeId === scopeId)
+  if (!procurement || procurement.status !== 'DISPATCHING') throw new Error('Review scope was not claimed for procurement dispatch.')
+  const procurements = job.procurements.map((item) => item.scopeId === scopeId
+    ? { ...item, status: 'REQUESTED' as const, externalRequestId, includedQuota: { sourceId, authentication: 'OKX_HMAC_SHA256' as const }, lastAttemptAt: now, nextAttemptAt: undefined }
+    : item)
+  return revise(job, now, { procurements }, event('REVIEW_REQUESTED', `Authenticated external evidence source accepted request ${externalRequestId} within included quota.`, now, scopeId))
+}
+
 export function markProcurementFailed(
   job: ReviewJob,
   scopeId: string,
@@ -297,7 +308,7 @@ export function recordPaidEvidenceDelivery(
   job: ReviewJob,
   scopeId: string,
   delivery: ReviewDelivery,
-  provenance: PaidEvidenceProvenance,
+  provenance: ExternalEvidenceProvenance,
   responseBody: string,
   registry: ReviewerRegistry,
   now = new Date().toISOString(),
@@ -305,17 +316,26 @@ export function recordPaidEvidenceDelivery(
   if (job.status !== 'AWAITING_DELIVERIES') throw new Error('This review job is not accepting paid evidence.')
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   const assignment = job.dispatch.assignments.find((item) => item.scopeId === scopeId)
-  if (!procurement || procurement.status !== 'REQUESTED' || !procurement.payment || !assignment?.reviewer) {
-    throw new Error('Paid evidence is accepted only after a settled external procurement.')
+  if (!procurement || procurement.status !== 'REQUESTED' || !assignment?.reviewer) {
+    throw new Error('External evidence is accepted only after its procurement is recorded.')
   }
   const source = registry[assignment.reviewer.id]
-  if (!source || source.procurementProtocol !== 'PAID_EVIDENCE_V1' || delivery.reviewerId !== source.id || delivery.provenance?.kind !== 'X402_PAID_EVIDENCE_V1') {
+  const supportedSource = source?.procurementProtocol === 'PAID_EVIDENCE_V1' || source?.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+  if (!source || !supportedSource || delivery.reviewerId !== source.id || !delivery.provenance) {
     throw new Error('Paid evidence provenance does not match the configured external evidence source.')
   }
+  const paymentMatches = provenance.kind === 'X402_PAID_EVIDENCE_V1'
+    && Boolean(procurement.payment && provenance.payment
+      && provenance.payment.transaction === procurement.payment.transaction
+      && provenance.payment.asset === procurement.payment.asset
+      && provenance.payment.amountAtomic === procurement.payment.amountAtomic)
+  const quotaMatches = provenance.kind === 'AUTHENTICATED_API_EVIDENCE_V1'
+    && Boolean(procurement.includedQuota?.sourceId === source.id
+      && provenance.authentication?.scheme === 'OKX_HMAC_SHA256'
+      && provenance.authentication.includedQuota)
   if (provenance.sourceId !== source.id || provenance.endpoint !== source.procurementEndpoint
     || provenance.requestHash !== delivery.provenance.requestHash || provenance.responseHash !== delivery.provenance.responseHash
-    || provenance.payment.transaction !== procurement.payment.transaction || provenance.payment.asset !== procurement.payment.asset
-    || provenance.payment.amountAtomic !== procurement.payment.amountAtomic) {
+    || (!paymentMatches && !quotaMatches)) {
     throw new Error('Paid evidence provenance does not match the persisted settlement.')
   }
   if (Buffer.byteLength(responseBody, 'utf8') > 65_536) throw new Error('Paid evidence response exceeds the retained evidence limit.')
@@ -328,7 +348,15 @@ export function recordPaidEvidenceDelivery(
   const procurements = job.procurements.map((item) => item.scopeId === scopeId
     ? { ...item, evidence: { observedAt: provenance.observedAt, requestHash: provenance.requestHash, responseHash: provenance.responseHash, responseBody } }
     : item)
-  const delivered = revise(job, now, { dispatch: normalized, procurements, status }, event('PAID_EVIDENCE_RECEIVED', 'Paid external evidence was recorded with request, response, and settlement hashes; it is not reviewer-signed.', now, scopeId))
+  const paid = provenance.kind === 'X402_PAID_EVIDENCE_V1'
+  const delivered = revise(job, now, { dispatch: normalized, procurements, status }, event(
+    paid ? 'PAID_EVIDENCE_RECEIVED' : 'AUTHENTICATED_EVIDENCE_RECEIVED',
+    paid
+      ? 'Paid external evidence was recorded with request, response, and settlement hashes; it is not reviewer-signed.'
+      : 'Authenticated external evidence was recorded with immutable request and response hashes under included API quota; it is not reviewer-signed.',
+    now,
+    scopeId,
+  ))
   return status === 'READY_FOR_ASSURANCE'
     ? { ...delivered, events: [...delivered.events, event('JOB_READY_FOR_ASSURANCE', 'Every review scope is complete; provenance-qualified assurance can now be issued.', now)] }
     : delivered
@@ -338,4 +366,67 @@ export function cancelReviewJob(job: ReviewJob, now = new Date().toISOString()):
   if (job.status === 'READY_FOR_ASSURANCE') throw new Error('A ready-for-assurance job cannot be cancelled; either issue or expire it explicitly.')
   if (job.status === 'CANCELLED') return job
   return revise(job, now, { status: 'CANCELLED' }, event('JOB_CANCELLED', 'Review job cancelled before a decision-grade assurance record was issued.', now))
+}
+
+/**
+ * Reopens a funded terminal job without charging the customer again. Failed
+ * scopes are rebound to the best currently active compatible source while
+ * delivered evidence remains immutable. A replacement may never exceed the
+ * price already authorized for that scope.
+ */
+export function retryFailedReviewJob(job: ReviewJob, registry: ReviewerRegistry, now = new Date().toISOString()): ReviewJob {
+  if (job.status !== 'FAILED' || job.fundingStatus !== 'AUTHORIZED' || !job.customerPayment) {
+    throw new Error('Only a settled, failed review job can retry procurement without another customer payment.')
+  }
+  const failedScopes = new Set(job.procurements.filter((item) => item.status === 'FAILED' || item.status === 'EXHAUSTED').map((item) => item.scopeId))
+  if (!failedScopes.size) throw new Error('Failed review job has no retryable procurement scope.')
+  const occupiedOwners = new Set(job.dispatch.assignments
+    .filter((assignment) => assignment.status === 'DELIVERED' && assignment.reviewer)
+    .map((assignment) => assignment.reviewer!.ownerId))
+  const replacements = new Map<string, ReviewerRegistry[string]>()
+  for (const scopeId of failedScopes) {
+    const scope = job.plan.scopes.find((candidate) => candidate.id === scopeId)
+    const previous = job.dispatch.assignments.find((assignment) => assignment.scopeId === scopeId)?.reviewer
+    if (!scope) throw new Error('Retryable procurement does not belong to the canonical review plan.')
+    const candidates = Object.values(registry).filter((candidate) => candidate.status === 'ACTIVE'
+      && candidate.procurementEndpoint
+      && candidate.capabilities.includes(scope.requiredCapability)
+      && !occupiedOwners.has(candidate.ownerId)
+      && (candidate.estimatedUnitCostUsdt ?? scope.estimatedFeeUsdt) <= scope.estimatedFeeUsdt)
+      .sort((left, right) => Number(right.id !== previous?.id) - Number(left.id !== previous?.id)
+        || (right.selectionPriority ?? 0) - (left.selectionPriority ?? 0))
+    const replacement = candidates[0]
+    if (!replacement) throw new Error(`No compatible source can retry ${scopeId} within the customer's authorized scope budget.`)
+    replacements.set(scopeId, replacement)
+    occupiedOwners.add(replacement.ownerId)
+  }
+  const dispatch = {
+    ...job.dispatch,
+    status: 'MATCHED' as const,
+    assignments: job.dispatch.assignments.map((assignment) => {
+      const replacement = replacements.get(assignment.scopeId)
+      return replacement ? {
+        ...assignment,
+        status: 'MATCHED' as const,
+        reviewer: {
+          id: replacement.id,
+          displayName: replacement.displayName,
+          ownerId: replacement.ownerId,
+          modelFamily: replacement.modelFamily,
+          evidenceRoutes: replacement.evidenceRoutes,
+        },
+        delivery: undefined,
+        reason: 'Rematched after an external provider failure without increasing the authorized scope budget.',
+      } : assignment
+    }),
+  }
+  const normalized = normalizeReviewJobDispatch(job.decision, dispatch, registry)
+  const procurements = job.procurements.map((procurement) => replacements.has(procurement.scopeId) ? {
+    scopeId: procurement.scopeId,
+    status: 'UNSENT' as const,
+    idempotencyKey: `${job.id}:${procurement.scopeId}:retry:${job.revision + 1}`,
+    attempts: 0,
+  } : procurement)
+  const replacementSummary = [...replacements.entries()].map(([scopeId, provider]) => `${scopeId}→${provider.id}`).join(', ')
+  return revise(job, now, { status: 'AWAITING_DELIVERIES', dispatch: normalized, procurements }, event('REVIEW_PROVIDER_REMATCHED', `Failed procurement reopened without another customer payment: ${replacementSummary}.`, now))
 }

@@ -13,6 +13,7 @@ const provider = new X402ReviewProvider({
   maxPerScopeAtomic: config.procurementMaxPerScopeAtomic,
   allowedAssets: config.procurementAllowedAssets,
   callbackBaseUrl: config.publicUrl,
+  okxMarketCredentials: { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
 })
 const worker = new ReviewJobWorker(store, provider, {
   maxAttempts: config.procurementMaxAttempts,

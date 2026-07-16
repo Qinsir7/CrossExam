@@ -103,16 +103,20 @@ describe('loadX402ServerConfig', () => {
     expect(config.procurementAllowedAssets).toEqual(['0x5555555555555555555555555555555555555555'])
   })
 
-  it('loads worker-only configuration without seller API or issuer secrets', () => {
+  it('loads worker-only configuration with market-data credentials but without issuer secrets', () => {
     const config = loadProcurementWorkerConfig({
       CROSSEXAM_PUBLIC_URL: 'https://api.cross-exam.xyz',
       CROSSEXAM_DATABASE_URL: 'postgresql://cross:secret@db.example/crossexam',
       CROSSEXAM_PROCUREMENT_SIGNING_KEY: '0x1123456789012345678901234567890123456789012345678901234567890123',
       CROSSEXAM_PROCUREMENT_MAX_PER_SCOPE_ATOMIC: '100000',
       CROSSEXAM_PROCUREMENT_ALLOWED_ASSETS: '0x5555555555555555555555555555555555555555',
+      OKX_API_KEY: 'market-key',
+      OKX_SECRET_KEY: 'market-secret',
+      OKX_PASSPHRASE: 'market-passphrase',
     })
     expect(config.databaseUrl).toContain('postgresql://')
     expect(config.procurementMaxPerScopeAtomic).toBe(100000n)
+    expect(config.reviewerRegistry['okx-onchainos-liquidity'].responseAdapter).toBe('OKX_TOKEN_LIQUIDITY_V1')
   })
 
   it('parses outcome-authority wallet bindings separately from reviewer identities', () => {

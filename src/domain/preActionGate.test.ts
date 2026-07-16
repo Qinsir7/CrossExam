@@ -45,6 +45,18 @@ describe('evaluatePreAction', () => {
     expect(gate.status).toBe('REQUIRE_NETWORK_VERIFICATION')
   })
 
+  it('never weakens a high-value BLOCK because the evidence is procurement-verified', () => {
+    const gate = evaluatePreAction(assured({
+      attributionStatus: 'PROCUREMENT_VERIFIED',
+      result: {
+        claims: [], action: 'BLOCK', effectiveIndependence: 1.5, materialRefutations: 1, materialUnresolved: 0,
+        reversalConditions: [{ claimId: 'C-1', kind: 'OVERTURN_CONTRADICTION', requirement: 'Resolve the contradiction.', basedOnEvidence: 'External evidence.' }],
+      },
+    }), { decisionId: 'DP-1', valueAtRiskUsd: 5_000, actionType: 'SPEND', target: 'vendor:demo', parametersHash: '0xspend-demo' })
+
+    expect(gate).toMatchObject({ status: 'DENY', executable: false, requiredClaimIds: ['C-1'] })
+  })
+
   it('denies a substituted target even when the amount and decision ID match', () => {
     const gate = evaluatePreAction(assured(), { decisionId: 'DP-1', valueAtRiskUsd: 5_000, actionType: 'SPEND', target: 'attacker:wallet', parametersHash: '0xspend-demo' })
 

@@ -1,6 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
-import type { ReviewerRegistry } from './reviewerRegistry'
+import { withOkxMarketSource, type ReviewerRegistry } from './reviewerRegistry'
 
 export type X402ServerConfig = {
   port: number
@@ -43,6 +43,9 @@ export type ProcurementWorkerConfig = {
   procurementRetryBaseMs: number
   procurementDispatchTimeoutMs: number
   procurementMaxAttempts: number
+  okxApiKey: string
+  okxSecretKey: string
+  okxPassphrase: string
 }
 
 type Environment = Record<string, string | undefined>
@@ -124,47 +127,54 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
     const displayName = typeof candidate.displayName === 'string' ? candidate.displayName.trim() : ''
     const ownerId = typeof candidate.ownerId === 'string' ? candidate.ownerId.trim() : ''
     const modelFamily = typeof candidate.modelFamily === 'string' ? candidate.modelFamily.trim() : ''
-    const wallet = typeof candidate.wallet === 'string' ? candidate.wallet : ''
+    const wallet = typeof candidate.wallet === 'string' ? candidate.wallet : undefined
     const procurementEndpoint = typeof candidate.procurementEndpoint === 'string' ? candidate.procurementEndpoint.trim() : undefined
     const procurementProtocol = candidate.procurementProtocol
     const responseAdapter = candidate.responseAdapter
     const paymentRecipient = typeof candidate.paymentRecipient === 'string' ? candidate.paymentRecipient : undefined
     const estimatedUnitCostUsdt = typeof candidate.estimatedUnitCostUsdt === 'number' ? candidate.estimatedUnitCostUsdt : undefined
+    const selectionPriority = typeof candidate.selectionPriority === 'number' ? candidate.selectionPriority : undefined
     const evidenceRequestBody = candidate.evidenceRequestBody
     const status = candidate.status === undefined ? 'ACTIVE' : candidate.status
     const evidenceRoutes = candidate.evidenceRoutes
     const capabilities = candidate.capabilities
     if (!id || !displayName || !ownerId || !modelFamily
-      || !/^0x[a-fA-F0-9]{40}$/.test(wallet)
+      || (wallet !== undefined && !/^0x[a-fA-F0-9]{40}$/.test(wallet))
+      || (procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && !wallet)
       || (procurementEndpoint !== undefined && !/^https:\/\/.+/.test(procurementEndpoint))
-      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1')
+      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1')
       || (procurementEndpoint === undefined && procurementProtocol !== undefined)
       || (procurementProtocol === 'CROSSEXAM_SIGNED_CALLBACK_V1' && responseAdapter !== undefined)
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && responseAdapter !== 'OPAQUE_JSON_V1' && responseAdapter !== 'CERTIK_TOKEN_SCAN_V1')
+      || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && responseAdapter !== 'OKX_TOKEN_LIQUIDITY_V1')
+      || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && procurementEndpoint !== 'https://web3.okx.com/api/v6/dex/market/token/top-liquidity')
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && (!paymentRecipient || !/^0x[a-fA-F0-9]{40}$/.test(paymentRecipient)))
       || (procurementProtocol === 'PAID_EVIDENCE_V1' && (estimatedUnitCostUsdt === undefined || !Number.isFinite(estimatedUnitCostUsdt) || estimatedUnitCostUsdt <= 0 || estimatedUnitCostUsdt > 1_000))
       || (procurementProtocol !== 'PAID_EVIDENCE_V1' && paymentRecipient !== undefined)
-      || (procurementProtocol !== 'PAID_EVIDENCE_V1' && estimatedUnitCostUsdt !== undefined)
+      || (procurementProtocol !== 'PAID_EVIDENCE_V1' && procurementProtocol !== 'AUTHENTICATED_API_EVIDENCE_V1' && estimatedUnitCostUsdt !== undefined)
+      || (procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' && (estimatedUnitCostUsdt === undefined || estimatedUnitCostUsdt < 0 || estimatedUnitCostUsdt > 1_000))
+      || (selectionPriority !== undefined && (!Number.isFinite(selectionPriority) || selectionPriority < -1_000 || selectionPriority > 1_000))
       || (evidenceRequestBody !== undefined && (!evidenceRequestBody || Array.isArray(evidenceRequestBody) || typeof evidenceRequestBody !== 'object'))
       || (status !== 'ACTIVE' && status !== 'SUSPENDED')
       || !Array.isArray(evidenceRoutes) || !evidenceRoutes.length || evidenceRoutes.some((route) => typeof route !== 'string' || !route.trim())
       || !Array.isArray(capabilities) || !capabilities.length || capabilities.some((capability) => typeof capability !== 'string' || !capability.trim())
-      || registry[id] || wallets.has(wallet.toLowerCase())) {
+      || registry[id] || (wallet !== undefined && wallets.has(wallet.toLowerCase()))) {
       throw new Error('CROSSEXAM_REVIEWER_REGISTRY contains an invalid or duplicate reviewer binding.')
     }
-    wallets.add(wallet.toLowerCase())
+    if (wallet) wallets.add(wallet.toLowerCase())
     registry[id] = {
       id,
       displayName,
       ownerId,
       modelFamily,
-      wallet: wallet as Address,
+      ...(wallet ? { wallet: wallet as Address } : {}),
+      ...(selectionPriority !== undefined ? { selectionPriority } : {}),
       status,
       ...(procurementEndpoint ? { procurementEndpoint } : {}),
-      ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' } : {}),
-      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { responseAdapter: responseAdapter as 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' } : {}),
+      ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1' } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? { responseAdapter: responseAdapter as 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1' } : {}),
       ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { paymentRecipient: paymentRecipient as Address } : {}),
-      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { estimatedUnitCostUsdt: estimatedUnitCostUsdt! } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' || procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? { estimatedUnitCostUsdt: estimatedUnitCostUsdt! } : {}),
       ...(procurementProtocol === 'PAID_EVIDENCE_V1' && evidenceRequestBody ? { evidenceRequestBody: evidenceRequestBody as Record<string, unknown> } : {}),
       evidenceRoutes: evidenceRoutes as string[],
       capabilities: capabilities as string[],
@@ -250,7 +260,7 @@ export function loadProcurementWorkerConfig(env: Environment = process.env): Pro
     databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
     dataDirectory: env.CROSSEXAM_DATA_DIR?.trim() || '.crossexam-data',
     publicUrl,
-    reviewerRegistry: reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY),
+    reviewerRegistry: withOkxMarketSource(reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY)),
     procurementSigningKey: signer.key,
     procurementMaxPerScopeAtomic,
     procurementAllowedAssets,
@@ -258,6 +268,9 @@ export function loadProcurementWorkerConfig(env: Environment = process.env): Pro
     procurementRetryBaseMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_RETRY_BASE_MS, 30_000, 'CROSSEXAM_PROCUREMENT_RETRY_BASE_MS', 1_000, 3_600_000),
     procurementDispatchTimeoutMs: boundedInteger(env.CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS, 300_000, 'CROSSEXAM_PROCUREMENT_DISPATCH_TIMEOUT_MS', 10_000, 86_400_000),
     procurementMaxAttempts: boundedInteger(env.CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS, 5, 'CROSSEXAM_PROCUREMENT_MAX_ATTEMPTS', 1, 20),
+    okxApiKey: required(env, 'OKX_API_KEY'),
+    okxSecretKey: required(env, 'OKX_SECRET_KEY'),
+    okxPassphrase: required(env, 'OKX_PASSPHRASE'),
   }
 }
 
@@ -297,7 +310,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     syncFacilitatorOnStart,
     serviceSigningKey: signer?.key,
     serviceSignerAddress: signer?.address,
-    reviewerRegistry: reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY),
+    reviewerRegistry: withOkxMarketSource(reviewerRegistry(env.CROSSEXAM_REVIEWER_REGISTRY)),
     procurementSigningKey: procurementSigner?.key,
     procurementMaxPerScopeAtomic,
     procurementAllowedAssets,

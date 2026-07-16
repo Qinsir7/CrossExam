@@ -5,14 +5,14 @@ import type { ReviewerProfile, ReviewDispatch } from '../src/network/reviewNetwo
 import type { ReviewerWalletRegistry } from './deliveryAttestation'
 
 export type RegisteredReviewer = ReviewerProfile & {
-  wallet: Address
+  wallet?: Address
   status: 'ACTIVE' | 'SUSPENDED'
   /** HTTPS x402 endpoint that accepts CrossExam blind-review procurement. */
   procurementEndpoint?: string
   /** Signed callbacks are network-verifiable; paid evidence is intentionally weaker. */
-  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1'
+  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' | 'AUTHENTICATED_API_EVIDENCE_V1'
   /** Controls a server-owned, deterministic normalizer for a paid response. */
-  responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1'
+  responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' | 'OKX_TOKEN_LIQUIDITY_V1'
   /** Immutable x402 merchant recipient expected from a paid-evidence source. */
   paymentRecipient?: Address
   /** Conservative USDT estimate supplied from the provider's public x402 quote. */
@@ -23,8 +23,31 @@ export type RegisteredReviewer = ReviewerProfile & {
 
 export type ReviewerRegistry = Record<string, RegisteredReviewer>
 
+export const OKX_MARKET_SOURCE_ID = 'okx-onchainos-liquidity'
+
+/** Built-in official market source; HMAC credentials remain worker-only. */
+export function withOkxMarketSource(registry: ReviewerRegistry): ReviewerRegistry {
+  return {
+    ...registry,
+    [OKX_MARKET_SOURCE_ID]: {
+      id: OKX_MARKET_SOURCE_ID,
+      displayName: 'OKX Onchain OS Market',
+      ownerId: 'okx-onchainos-market',
+      modelFamily: 'aggregated-onchain-market-data',
+      evidenceRoutes: ['okx-market-token-liquidity'],
+      capabilities: ['execution liquidity'],
+      selectionPriority: 100,
+      status: 'ACTIVE',
+      procurementEndpoint: 'https://web3.okx.com/api/v6/dex/market/token/top-liquidity',
+      procurementProtocol: 'AUTHENTICATED_API_EVIDENCE_V1',
+      responseAdapter: 'OKX_TOKEN_LIQUIDITY_V1',
+      estimatedUnitCostUsdt: 0.005,
+    },
+  }
+}
+
 export function reviewerWalletRegistry(registry: ReviewerRegistry): ReviewerWalletRegistry {
-  return Object.fromEntries(Object.values(registry).map((reviewer) => [reviewer.id, reviewer.wallet]))
+  return Object.fromEntries(Object.values(registry).filter((reviewer) => reviewer.wallet).map((reviewer) => [reviewer.id, reviewer.wallet!]))
 }
 
 /**
@@ -69,11 +92,11 @@ export function normalizeReviewJobDispatch(
     if (assignment.delivery && assignment.delivery.reviewerId !== reviewer.id) {
       throw new Error('Delivered review identity does not match the registered reviewer.')
     }
-    if (usedOwners.has(reviewer.ownerId) || usedWallets.has(reviewer.wallet.toLowerCase())) {
+    if (usedOwners.has(reviewer.ownerId) || (reviewer.wallet && usedWallets.has(reviewer.wallet.toLowerCase()))) {
       throw new Error('Network-verified dispatch cannot reuse a reviewer owner or wallet across scopes.')
     }
     usedOwners.add(reviewer.ownerId)
-    usedWallets.add(reviewer.wallet.toLowerCase())
+    if (reviewer.wallet) usedWallets.add(reviewer.wallet.toLowerCase())
     return {
       ...assignment,
       reviewer: {
@@ -99,7 +122,10 @@ export function normalizeNetworkVerifiedDispatch(
   if (normalized.assignments.some((assignment) => !assignment.reviewer || !assignment.delivery)) {
     throw new Error('Network-verified dispatch has an incomplete review scope.')
   }
-  if (normalized.assignments.some((assignment) => registry[assignment.reviewer!.id]?.procurementProtocol === 'PAID_EVIDENCE_V1')) {
+  if (normalized.assignments.some((assignment) => {
+    const protocol = registry[assignment.reviewer!.id]?.procurementProtocol
+    return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+  })) {
     throw new Error('A paid evidence source cannot be represented as a network-verified reviewer.')
   }
   return normalized

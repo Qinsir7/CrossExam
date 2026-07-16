@@ -65,11 +65,15 @@ export async function aggregateProcurementVerifiedAssurance(
     if (!assignment.delivery || !assignment.reviewer) throw new Error('A procurement-verified result requires every delivered scope.')
     const reviewer = registry[assignment.reviewer.id]
     if (!reviewer) throw new Error('A procurement-verified result references an unknown source.')
-    if (reviewer.procurementProtocol === 'PAID_EVIDENCE_V1') {
+    if (reviewer.procurementProtocol === 'PAID_EVIDENCE_V1' || reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1') {
       const provenance = assignment.delivery.provenance
-      if (!provenance || provenance.kind !== 'X402_PAID_EVIDENCE_V1' || provenance.sourceId !== reviewer.id
+      const validPayment = provenance?.kind === 'X402_PAID_EVIDENCE_V1' && provenance.payment
+        && /^0x[0-9a-f]+$/i.test(provenance.payment.transaction)
+      const validAuthentication = provenance?.kind === 'AUTHENTICATED_API_EVIDENCE_V1'
+        && provenance.authentication?.scheme === 'OKX_HMAC_SHA256' && provenance.authentication.includedQuota
+      if (!provenance || provenance.sourceId !== reviewer.id
         || provenance.endpoint !== reviewer.procurementEndpoint || !/^0x[0-9a-f]{64}$/i.test(provenance.requestHash)
-        || !/^0x[0-9a-f]{64}$/i.test(provenance.responseHash) || !/^0x[0-9a-f]+$/i.test(provenance.payment.transaction)) {
+        || !/^0x[0-9a-f]{64}$/i.test(provenance.responseHash) || (!validPayment && !validAuthentication)) {
         throw new Error('Paid evidence delivery has incomplete or mismatched provenance.')
       }
       hasPaidEvidence = true

@@ -86,21 +86,22 @@ export function evaluatePreAction(
   )) {
     return { status: 'DENY', executable: false, reasons: ['The action target or parameters do not match the reviewed action binding.'], requiredClaimIds: [] }
   }
-  if (intent.valueAtRiskUsd >= policy.requireNetworkVerificationAtOrAboveUsd && assured.attributionStatus !== 'NETWORK_VERIFIED') {
-    return { status: 'REQUIRE_NETWORK_VERIFICATION', executable: false, reasons: ['This action exceeds the policy threshold and needs network-verified reviewer delivery.'], requiredClaimIds: [] }
-  }
-
   const requiredClaimIds = assured.result.reversalConditions.map((condition) => condition.claimId)
-  if (assured.result.action === 'PROCEED') {
-    return { status: 'PERMIT', executable: true, reasons: [actionReason(assured.result.action)], requiredClaimIds: [] }
-  }
+  // Negative evidence is fail-closed at every attribution level. Verification
+  // strength can restrict a PROCEED decision, but must never weaken BLOCK/HOLD.
   if (assured.result.action === 'BLOCK') {
     return { status: 'DENY', executable: false, reasons: [actionReason(assured.result.action)], requiredClaimIds }
   }
-  return {
-    status: 'REMEDIATE',
-    executable: false,
-    reasons: [actionReason(assured.result.action), ...assured.result.reversalConditions.map((condition) => condition.requirement)],
-    requiredClaimIds,
+  if (assured.result.action !== 'PROCEED') {
+    return {
+      status: 'REMEDIATE',
+      executable: false,
+      reasons: [actionReason(assured.result.action), ...assured.result.reversalConditions.map((condition) => condition.requirement)],
+      requiredClaimIds,
+    }
   }
+  if (intent.valueAtRiskUsd >= policy.requireNetworkVerificationAtOrAboveUsd && assured.attributionStatus !== 'NETWORK_VERIFIED') {
+    return { status: 'REQUIRE_NETWORK_VERIFICATION', executable: false, reasons: ['This action exceeds the policy threshold and needs network-verified reviewer delivery before a positive execution decision.'], requiredClaimIds: [] }
+  }
+  return { status: 'PERMIT', executable: true, reasons: [actionReason(assured.result.action)], requiredClaimIds: [] }
 }

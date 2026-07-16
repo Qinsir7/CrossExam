@@ -135,7 +135,11 @@ value before creating the action hash. A Decision Package may also carry
 `token:<provider-chain>:0x<contract>`; this explicitly tells a contract-risk
 provider which asset to inspect when the executable action targets a router.
 
-`POST /api/v1/review-jobs/authorize` is x402-paid and takes `{ "jobId", "accessToken" }`. It has its own `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD` price floor, separate from completed-dispatch aggregation, so a full review can be sold above bounded external cost. The endpoint returns `202` while settlement is pending; only the x402 facilitator's successful settlement callback changes the job to `AUTHORIZED` and records its transaction, asset, and atomic amount. Only then will the procurement worker consider it for external x402 review purchases. This separates an inexpensive intent to request review from authorization to spend within the server's configured per-scope policy.
+`POST /api/v1/review-jobs/authorize` is x402-paid and takes `{ "jobId", "accessToken" }`. It has its own `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD` price floor, separate from completed-dispatch aggregation, so a full review can be sold above bounded external cost. Only a confirmed settlement changes the job to `AUTHORIZED` and records its transaction, asset, and atomic amount. The client and server can idempotently reconcile a confirmed transaction when a post-settlement database write is interrupted. Only then will the procurement worker consider the job for bounded external evidence acquisition.
+
+`POST /api/v1/review-jobs/{jobId}/retry` reopens a settled failed job without charging the customer again. Delivered evidence remains immutable; failed scopes are rematched only to active sources whose configured cost fits inside the original authorized per-scope budget.
+
+The first production pre-trade route combines authenticated OKX Onchain OS liquidity evidence with x402-settled CertiK token-risk evidence. Included API quota is recorded explicitly as zero marginal cost with HMAC-authenticated request/response hashes; it is never represented as an on-chain payment. Both ordinary paid and authenticated API evidence yield `PROCUREMENT_VERIFIED`, never a forged reviewer signature.
 
 Agent and browser-wallet integrations call this route through their own
 x402-capable fetcher. The CrossExam SDK exposes `ReviewJobClient.authorize`

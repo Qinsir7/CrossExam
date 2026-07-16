@@ -134,6 +134,13 @@ export class ReviewJobClient {
     return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/result`, { headers: { authorization: `Bearer ${accessToken}` } }) as Promise<ReviewJobResult>
   }
 
+  async retry(jobId: string, accessToken: string): Promise<ReviewJobView> {
+    return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}` },
+    }) as Promise<ReviewJobView>
+  }
+
   /**
    * Agent callers provide an x402-capable fetch implementation (or a browser
    * wallet adapter). CrossExam never receives the caller's private key.

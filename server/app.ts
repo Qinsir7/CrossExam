@@ -15,7 +15,7 @@ import { FileAssuranceIdempotencyStore, requestFingerprint, type AssuranceIdempo
 import { PostgresAssuranceStore } from './postgresStore'
 import { attestDecisionAssuranceRecord } from './serviceAttestation'
 import { validateExecutionReceipt, verifyExecutionReceiptAttestation, type SignedExecutionReceipt } from './executionReceipt'
-import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { canAccessReviewJob, cancelReviewJob, createReviewJobWithAccess, recordReviewDelivery, retryFailedReviewJob, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore, type ReviewJobStore } from './reviewJobStore'
 import type { SignedReviewDelivery } from './deliveryAttestation'
 import { buildProcurementLedger } from './procurementLedger'
@@ -120,6 +120,12 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     if (candidates.length === 1) await recoverConfirmedProductionPayment(candidates[0])
     else if (candidates.length > 1) console.error(`[customer-payment] automatic recovery is ambiguous across ${candidates.length} active jobs`)
   }).catch((error) => console.error(`[customer-payment] startup recovery deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
+  void jobStore.findJobByCustomerPaymentTransaction(recoveredCustomerTransaction).then(async (job) => {
+    if (!job || job.status !== 'FAILED') return
+    const retried = retryFailedReviewJob(job, config.reviewerRegistry)
+    await jobStore.updateJob(retried, job.revision)
+    console.info(`[procurement] reopened ${job.id} against current production evidence sources without another customer payment`)
+  }).catch((error) => console.error(`[procurement] paid-job reopen deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
 
   resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
     const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; routePattern?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
@@ -190,6 +196,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
+        procurementOrchestrator: 'okx-market-certik-v1',
         recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
         ...(recoveredPayment ? {
           recoveredCustomerJob: {
@@ -334,6 +341,21 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(422).json({ error: 'SETTLEMENT_PROOF_REJECTED', message })
     }
   })
+  app.post('/api/v1/review-jobs/:jobId/retry', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      const retried = retryFailedReviewJob(job, config.reviewerRegistry)
+      await jobStore.updateJob(retried, job.revision)
+      response.json(reviewJobForOwner(retried))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review procurement could not be retried.'
+      response.status(422).json({ error: 'REVIEW_JOB_RETRY_REJECTED', message })
+    }
+  })
   app.delete('/api/v1/review-jobs/:jobId', async (request, response) => {
     try {
       const job = await jobStore.findJob(request.params.jobId)
@@ -378,8 +400,11 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         return
       }
       if (!config.serviceSigningKey) throw new Error('Review-job result issuance requires a configured service signing key.')
-      const hasPaidEvidence = job.dispatch.assignments.some((assignment) => assignment.reviewer && config.reviewerRegistry[assignment.reviewer.id]?.procurementProtocol === 'PAID_EVIDENCE_V1')
-      let assurance = hasPaidEvidence
+      const hasExternalEvidence = job.dispatch.assignments.some((assignment) => {
+        const protocol = assignment.reviewer ? config.reviewerRegistry[assignment.reviewer.id]?.procurementProtocol : undefined
+        return protocol === 'PAID_EVIDENCE_V1' || protocol === 'AUTHENTICATED_API_EVIDENCE_V1'
+      })
+      let assurance = hasExternalEvidence
         ? await aggregateProcurementVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, config.reviewerRegistry, job.updatedAt)
         : await aggregateNetworkVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, config.reviewerRegistry, job.updatedAt)
       assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
