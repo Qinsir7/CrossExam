@@ -76,7 +76,7 @@ describe('X402ReviewProvider', () => {
       ...input,
       reviewerId: 'certik',
       scopeId: 'contract-token-risk',
-      task: { ...input.task, scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, actionBinding: { actionType: 'TRADE', target: 'token:eth:0x1111111111111111111111111111111111111111', parametersHash: `0x${'3'.repeat(64)}` } },
+      task: { ...input.task, scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, actionBinding: { actionType: 'TRADE', target: 'evm:1:0x3333333333333333333333333333333333333333', parametersHash: `0x${'3'.repeat(64)}` }, reviewEvidenceContext: { tokenRiskTarget: 'token:eth:0x1111111111111111111111111111111111111111' } },
     })
 
     expect(result.evidence?.delivery.provenance?.kind).toBe('X402_PAID_EVIDENCE_V1')

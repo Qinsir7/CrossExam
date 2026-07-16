@@ -85,6 +85,7 @@ function assertDecision(decision: DecisionPackage) {
     || !Number.isFinite(decision.valueAtRiskUsd) || decision.valueAtRiskUsd <= 0
     || !Array.isArray(decision.claims) || decision.claims.length === 0 || decision.claims.length > 64
     || (decision.reviewProfile !== undefined && decision.reviewProfile !== 'GENERAL' && decision.reviewProfile !== 'PRETRADE_ONCHAIN')
+    || (decision.reviewEvidenceContext?.tokenRiskTarget !== undefined && !/^token:[a-z0-9_-]+:0x[a-fA-F0-9]{40}$/.test(decision.reviewEvidenceContext.tokenRiskTarget))
     || new Set(decision.claims.map((claim) => claim.id)).size !== decision.claims.length
     || decision.claims.some((claim) => !claim.id.trim() || !claim.statement.trim() || !Number.isFinite(claim.materiality) || claim.materiality < 0 || claim.materiality > 1)) {
     throw new Error('Review job requires a valid, bounded Decision Package.')

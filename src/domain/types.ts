@@ -16,6 +16,12 @@ export type ActionBinding = {
   parametersHash: string
 }
 
+/** Additional evidence target bound into a Decision Package, never inferred by a provider. */
+export type ReviewEvidenceContext = {
+  /** Provider-readable token identifier, e.g. token:eth:0x…; may differ from a router execution target. */
+  tokenRiskTarget?: string
+}
+
 /** A product-level route that determines which independent evidence scopes buy. */
 export type ReviewProfile = 'GENERAL' | 'PRETRADE_ONCHAIN'
 
@@ -48,6 +54,7 @@ export type DecisionPackage = {
   valueAtRiskUsd: number
   claims: DecisionClaim[]
   actionBinding?: ActionBinding
+  reviewEvidenceContext?: ReviewEvidenceContext
   reviewProfile?: ReviewProfile
 }
 

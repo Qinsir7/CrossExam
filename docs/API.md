@@ -128,6 +128,13 @@ product's focused two-scope route: `execution liquidity` and `contract token
 risk`. This is the intended path for high-value swaps, approvals, transfers,
 and deployments; each provider must come from a distinct configured owner.
 
+For transaction-native clients, use `createEvmActionBinding` from
+`src/domain/evmAction`. It canonicalizes `chainId`, recipient, calldata and
+value before creating the action hash. A Decision Package may also carry
+`reviewEvidenceContext.tokenRiskTarget` in the form
+`token:<provider-chain>:0x<contract>`; this explicitly tells a contract-risk
+provider which asset to inspect when the executable action targets a router.
+
 `POST /api/v1/review-jobs/authorize` is x402-paid and takes `{ "jobId", "accessToken" }`. It has its own `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD` price floor, separate from completed-dispatch aggregation, so a full review can be sold above bounded external cost. The endpoint returns `202` while settlement is pending; only the x402 facilitator's successful settlement callback changes the job to `AUTHORIZED` and records its transaction, asset, and atomic amount. Only then will the procurement worker consider it for external x402 review purchases. This separates an inexpensive intent to request review from authorization to spend within the server's configured per-scope policy.
 
 Agent and browser-wallet integrations call this route through their own

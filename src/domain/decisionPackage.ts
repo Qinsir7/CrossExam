@@ -1,10 +1,11 @@
-import type { ActionBinding, DecisionPackage, ReviewProfile } from './types'
+import type { ActionBinding, DecisionPackage, ReviewEvidenceContext, ReviewProfile } from './types'
 
 export type DecisionPackageInput = {
   title: string
   valueAtRiskUsd: number
   claimsText: string
   actionBinding?: ActionBinding
+  reviewEvidenceContext?: ReviewEvidenceContext
   reviewProfile?: ReviewProfile
 }
 
@@ -45,6 +46,7 @@ export function createDecisionPackage(input: DecisionPackageInput): DecisionPack
       title,
       valueAtRiskUsd: input.valueAtRiskUsd,
       ...(input.actionBinding ? { actionBinding: input.actionBinding } : {}),
+      ...(input.reviewEvidenceContext ? { reviewEvidenceContext: input.reviewEvidenceContext } : {}),
       ...(input.reviewProfile ? { reviewProfile: input.reviewProfile } : {}),
       claims: claims.map((statement, index) => ({
         id: `C-${String(index + 1).padStart(2, '0')}`,

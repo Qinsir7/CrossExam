@@ -10,12 +10,13 @@ const decision: DecisionPackage = {
 
 describe('createBlindReviewTask', () => {
   it('gives challengers claims and evidence requirements but no peer verdict context', () => {
-    const task = createBlindReviewTask(decision, createReviewPlan(decision), 'assumption-challenge')
+    const task = createBlindReviewTask({ ...decision, reviewEvidenceContext: { tokenRiskTarget: 'token:eth:0x1111111111111111111111111111111111111111' } }, createReviewPlan(decision), 'assumption-challenge')
 
     expect(task.claims).toEqual(decision.claims)
     expect(task.withheldContext).toContain('other_reviewer_findings')
     expect(task).not.toHaveProperty('originRecommendation')
     expect(task).not.toHaveProperty('peerFindings')
     expect(task).not.toHaveProperty('aggregateVerdict')
+    expect(task.reviewEvidenceContext).toEqual({ tokenRiskTarget: 'token:eth:0x1111111111111111111111111111111111111111' })
   })
 })

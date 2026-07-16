@@ -67,7 +67,7 @@ function evidenceRequest(reviewer: RegisteredReviewer, input: Parameters<Externa
     return { url: reviewer.procurementEndpoint!, method: 'POST', body: JSON.stringify(reviewer.evidenceRequestBody ?? {}) }
   }
   if (reviewer.responseAdapter === 'CERTIK_TOKEN_SCAN_V1') {
-    const target = input.task.actionBinding?.target ?? ''
+    const target = input.task.reviewEvidenceContext?.tokenRiskTarget ?? input.task.actionBinding?.target ?? ''
     const matched = /^(?:token|contract):([a-z0-9_-]+):(0x[a-fA-F0-9]{40})$/.exec(target)
     if (!matched) throw new Error('CertiK Token Scan requires actionBinding.target formatted as token:<chain>:0x<contract-address>.')
     const url = new URL(reviewer.procurementEndpoint!)
