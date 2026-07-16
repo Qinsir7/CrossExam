@@ -3,11 +3,18 @@ import { ReviewJobClient, resolveCrossExamApiUrl } from './reviewJobClient'
 
 describe('ReviewJobClient', () => {
   it('uses the same-origin Vercel API proxy for public web deployments', () => {
-    expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/crossexam-api')
-    expect(resolveCrossExamApiUrl('https://stale-preview.example/', 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/crossexam-api')
-    expect(resolveCrossExamApiUrl(undefined, 'https://cross-exam-git-main-qinsir7.vercel.app')).toBe('https://cross-exam-git-main-qinsir7.vercel.app/crossexam-api')
+    expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/review-service')
+    expect(resolveCrossExamApiUrl('https://stale-preview.example/', 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/review-service')
+    expect(resolveCrossExamApiUrl(undefined, 'https://cross-exam-git-main-qinsir7.vercel.app')).toBe('https://cross-exam-git-main-qinsir7.vercel.app/review-service')
     expect(resolveCrossExamApiUrl('https://configured.example/', 'http://localhost:5173')).toBe('https://configured.example')
     expect(resolveCrossExamApiUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:5173')
+  })
+
+  it('removes the blocked public API path segment when using the same-origin proxy', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'rj_1', accessToken: 'rjv_owner' }), { status: 201 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://www.cross-exam.xyz/review-service', fetchImpl })
+    await client.create({ id: 'DP-1', title: 'Review this', valueAtRiskUsd: 100, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.8 }] })
+    expect(fetchImpl).toHaveBeenCalledWith('https://www.cross-exam.xyz/review-service/v1/review-jobs', expect.objectContaining({ method: 'POST' }))
   })
 
   it('sends a decision package to the real job endpoint and preserves the returned owner capability', async () => {

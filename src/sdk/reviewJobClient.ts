@@ -66,7 +66,7 @@ export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: s
       // The public web app reaches the API through Vercel's same-origin
       // rewrite. This eliminates browser CORS/extension interference while
       // Vercel forwards the request to the canonical API over HTTPS.
-      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz' || host.endsWith('.vercel.app')) return `${origin.origin}/crossexam-api`
+      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz' || host.endsWith('.vercel.app')) return `${origin.origin}/review-service`
     } catch {
       // A configured URL below can still support unusual local environments.
     }
@@ -84,6 +84,7 @@ export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: s
 
 export class ReviewJobClient {
   private readonly baseUrl: string
+  private readonly usesPublicProxy: boolean
   private readonly fetchImpl: typeof fetch
 
   constructor(options: { baseUrl?: string; fetchImpl?: typeof fetch } = {}) {
@@ -91,7 +92,12 @@ export class ReviewJobClient {
       options.baseUrl ?? import.meta.env.VITE_CROSSEXAM_API_URL,
       typeof window === 'undefined' ? undefined : window.location.origin,
     )
+    this.usesPublicProxy = this.baseUrl.endsWith('/review-service')
     this.fetchImpl = options.fetchImpl ?? fetch
+  }
+
+  private endpoint(path: string) {
+    return `${this.baseUrl}${this.usesPublicProxy ? path.replace(/^\/api/, '') : path}`
   }
 
   async create(decision: DecisionPackage): Promise<CreatedReviewJob> {
@@ -115,7 +121,7 @@ export class ReviewJobClient {
    * wallet adapter). CrossExam never receives the caller's private key.
    */
   async authorize(jobId: string, accessToken: string, paymentFetch: typeof fetch = this.fetchImpl): Promise<ReviewJobView> {
-    const response = await paymentFetch(`${this.baseUrl}/api/v1/review-jobs/authorize`, {
+    const response = await paymentFetch(this.endpoint('/api/v1/review-jobs/authorize'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jobId, accessToken }),
@@ -133,9 +139,10 @@ export class ReviewJobClient {
   private async request(path: string, init: RequestInit): Promise<unknown> {
     let response: Response
     try {
-      response = await this.fetchImpl(`${this.baseUrl}${path}`, init)
-    } catch {
-      throw new Error('CrossExam service is unreachable. Configure VITE_CROSSEXAM_API_URL or use the deployed app origin.')
+      response = await this.fetchImpl(this.endpoint(path), init)
+    } catch (error) {
+      const cause = error instanceof Error && error.message ? error.message : 'unknown browser network error'
+      throw new Error(`CrossExam request did not leave the browser (${cause}). Request: ${this.endpoint(path)}`)
     }
     const body = await response.json().catch(() => null) as { message?: unknown } | null
     if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : `CrossExam service rejected the request (${response.status}).`)

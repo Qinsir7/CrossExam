@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/crossexam-api/:path*",
-      "destination": "https://api.cross-exam.xyz/:path*"
+      "source": "/review-service/:path*",
+      "destination": "https://api.cross-exam.xyz/api/:path*"
     }
   ]
 }
