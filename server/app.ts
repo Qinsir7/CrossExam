@@ -205,7 +205,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
         procurementOrchestrator: 'okx-market-goplus-v2',
-        embeddedProcurement: config.procurementSigningKey && config.procurementMaxPerScopeAtomic && config.procurementAllowedAssets.length && config.publicUrl ? 'ENABLED' : 'DISABLED',
+        embeddedProcurement: !config.publicUrl ? 'DISABLED' : config.procurementSigningKey && config.procurementMaxPerScopeAtomic && config.procurementAllowedAssets.length ? 'ENABLED_WITH_PAYMENT' : 'ENABLED_READ_ONLY',
         recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
         ...(recoveredPayment ? {
           recoveredCustomerJob: {

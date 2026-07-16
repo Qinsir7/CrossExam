@@ -10,13 +10,13 @@ import { X402ReviewProvider } from './x402ReviewProvider'
  * latter as a single deployment dependency.
  */
 export function startEmbeddedProcurementRuntime(config: X402ServerConfig) {
-  if (!config.procurementSigningKey || !config.procurementMaxPerScopeAtomic || !config.procurementAllowedAssets.length || !config.publicUrl) return undefined
+  if (!config.publicUrl) return undefined
   const store = config.databaseUrl ? new PostgresAssuranceStore(config.databaseUrl) : new FileReviewJobStore(config.dataDirectory)
   const provider = new X402ReviewProvider({
     registry: config.reviewerRegistry,
-    signingKey: config.procurementSigningKey,
-    maxPerScopeAtomic: config.procurementMaxPerScopeAtomic,
-    allowedAssets: config.procurementAllowedAssets,
+    ...(config.procurementSigningKey ? { signingKey: config.procurementSigningKey } : {}),
+    ...(config.procurementMaxPerScopeAtomic ? { maxPerScopeAtomic: config.procurementMaxPerScopeAtomic } : {}),
+    ...(config.procurementAllowedAssets.length ? { allowedAssets: config.procurementAllowedAssets } : {}),
     callbackBaseUrl: config.publicUrl,
     okxMarketCredentials: { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
   })

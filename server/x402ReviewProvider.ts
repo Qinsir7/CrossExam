@@ -14,9 +14,9 @@ type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
 export type X402ReviewProviderOptions = {
   registry: ReviewerRegistry
-  signingKey: Hex
-  maxPerScopeAtomic: bigint
-  allowedAssets: string[]
+  signingKey?: Hex
+  maxPerScopeAtomic?: bigint
+  allowedAssets?: string[]
   callbackBaseUrl: string
   okxMarketCredentials?: { apiKey: string; secretKey: string; passphrase: string }
   fetchImpl?: FetchLike
@@ -26,9 +26,9 @@ function allowedRequirement(requirement: PaymentRequirements, options: X402Revie
   return requirement.scheme === 'exact'
     && requirement.network === 'eip155:196'
     && /^0x[a-fA-F0-9]{40}$/.test(requirement.payTo)
-    && options.allowedAssets.includes(requirement.asset.toLowerCase())
+    && Boolean(options.maxPerScopeAtomic && options.allowedAssets?.includes(requirement.asset.toLowerCase()))
     && /^[1-9][0-9]*$/.test(requirement.amount)
-    && BigInt(requirement.amount) <= options.maxPerScopeAtomic
+    && BigInt(requirement.amount) <= (options.maxPerScopeAtomic ?? 0n)
 }
 
 function selectAllowedRequirements(payment: PaymentRequired, options: X402ReviewProviderOptions, reviewer: RegisteredReviewer) {
@@ -199,18 +199,20 @@ function certikFindings(input: Parameters<ExternalReviewProvider['requestReview'
  */
 export class X402ReviewProvider implements ExternalReviewProvider {
   private readonly options: X402ReviewProviderOptions
-  private readonly http: x402HTTPClient
+  private readonly http?: x402HTTPClient
   private readonly fetchImpl: FetchLike
 
   constructor(options: X402ReviewProviderOptions) {
-    if (options.maxPerScopeAtomic <= 0n || !options.allowedAssets.length) throw new Error('X402 procurement requires an explicit positive spend policy.')
-    this.options = { ...options, allowedAssets: options.allowedAssets.map((asset) => asset.toLowerCase()) }
-    const account = privateKeyToAccount(options.signingKey)
-    const core = x402Client.fromConfig({
-      schemes: [{ network: 'eip155:196', client: new ExactEvmScheme(toClientEvmSigner(account)) }],
-      policies: [(_version, requirements) => requirements.filter((requirement) => allowedRequirement(requirement, this.options))],
-    })
-    this.http = new x402HTTPClient(core)
+    this.options = { ...options, allowedAssets: (options.allowedAssets ?? []).map((asset) => asset.toLowerCase()) }
+    if (options.signingKey) {
+      if (!options.maxPerScopeAtomic || options.maxPerScopeAtomic <= 0n || !options.allowedAssets?.length) throw new Error('X402 procurement requires an explicit positive spend policy.')
+      const account = privateKeyToAccount(options.signingKey)
+      const core = x402Client.fromConfig({
+        schemes: [{ network: 'eip155:196', client: new ExactEvmScheme(toClientEvmSigner(account)) }],
+        policies: [(_version, requirements) => requirements.filter((requirement) => allowedRequirement(requirement, this.options))],
+      })
+      this.http = new x402HTTPClient(core)
+    }
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
   }
 
@@ -254,27 +256,28 @@ export class X402ReviewProvider implements ExternalReviewProvider {
     if (!includedQuota && initial.status !== 402) {
       throw new Error(`External reviewer must return x402 Payment Required before accepting work (received ${initial.status}).`)
     }
-    const required = includedQuota ? undefined : this.http.getPaymentRequiredResponse((name) => initial.headers.get(name))
+    if (!includedQuota && !this.http) throw new Error('Paid external evidence requires the dedicated procurement signer and spend policy.')
+    const required = includedQuota ? undefined : this.http!.getPaymentRequiredResponse((name) => initial.headers.get(name))
     const allowed = required ? selectAllowedRequirements(required, this.options, reviewer) : undefined
-    const payment = required && allowed ? await this.http.createPaymentPayload({ ...required, accepts: allowed }) : undefined
+    const payment = required && allowed ? await this.http!.createPaymentPayload({ ...required, accepts: allowed }) : undefined
     const paid = includedQuota ? initial : await this.fetchImpl(request.url, {
       method: request.method,
       headers: {
         ...(reviewer.procurementProtocol === 'AUTHENTICATED_API_EVIDENCE_V1' ? okxMarketHeaders(request.url, marketCredentials!) : headers),
-        ...this.http.encodePaymentSignatureHeader(payment!),
+        ...this.http!.encodePaymentSignatureHeader(payment!),
         'idempotency-key': input.idempotencyKey,
       },
       ...(request.body ? { body: request.body } : {}),
       redirect: 'error',
     })
     if (!paid.ok) throw new Error(`External reviewer rejected the paid procurement request (${paid.status}).`)
-    const settlement = includedQuota ? undefined : this.http.getPaymentSettleResponse((name) => paid.headers.get(name))
+    const settlement = includedQuota ? undefined : this.http!.getPaymentSettleResponse((name) => paid.headers.get(name))
     if (!includedQuota && (!settlement?.success || settlement.network !== 'eip155:196' || !settlement.transaction?.trim())) {
       throw new Error('External reviewer response lacks a successful X Layer payment settlement confirmation.')
     }
     const accepted = payment?.accepted
     const amountAtomic = settlement && accepted ? settlement.amount ?? accepted.amount : undefined
-    if (amountAtomic !== undefined && (!/^[1-9][0-9]*$/.test(amountAtomic) || BigInt(amountAtomic) > this.options.maxPerScopeAtomic)) {
+    if (amountAtomic !== undefined && (!/^[1-9][0-9]*$/.test(amountAtomic) || BigInt(amountAtomic) > (this.options.maxPerScopeAtomic ?? 0n))) {
       throw new Error('Settlement amount violates the approved procurement spend policy.')
     }
     const recordedPayment = settlement && accepted && amountAtomic ? {
