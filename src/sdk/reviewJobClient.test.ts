@@ -15,4 +15,28 @@ describe('ReviewJobClient', () => {
     const client = new ReviewJobClient({ fetchImpl: async () => new Response(JSON.stringify({ message: 'No independent reviewer is active.' }), { status: 422 }) })
     await expect(client.create({ id: 'DP-1', title: 'Review this', valueAtRiskUsd: 100, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.8 }] })).rejects.toThrow('No independent reviewer')
   })
+
+  it('retrieves the signed result of a completed review job with the owner capability', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      schemaVersion: '0.1',
+      recordId: 'dar_1234567890abcdef12345678',
+      issuedAt: '2026-07-16T00:00:00.000Z',
+      attributionStatus: 'NETWORK_VERIFIED',
+      decision: { id: 'DP-1' },
+      dispatch: { id: 'dispatch-1' },
+      result: { action: 'HOLD' },
+      persistence: 'CREATED',
+      readAccess: { token: 'darv_result', expiresAt: '2026-08-16T00:00:00.000Z' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+
+    await expect(client.getResult('rj_1', 'rjv_owner')).resolves.toMatchObject({
+      recordId: 'dar_1234567890abcdef12345678',
+      attributionStatus: 'NETWORK_VERIFIED',
+      persistence: 'CREATED',
+    })
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/review-jobs/rj_1/result', {
+      headers: { authorization: 'Bearer rjv_owner' },
+    })
+  })
 })

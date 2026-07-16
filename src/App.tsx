@@ -5,7 +5,7 @@ import { createActionBinding } from './domain/actionBinding'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
-import { ReviewJobClient, type ReviewJobView } from './sdk/reviewJobClient'
+import { ReviewJobClient, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
 import './App.css'
 
 const verdictLabel: Record<ClaimVerdict, string> = {
@@ -35,6 +35,7 @@ function App() {
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(null)
+  const [reviewJobResult, setReviewJobResult] = useState<ReviewJobResult | null>(null)
   const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(null)
   const [reviewJobError, setReviewJobError] = useState<string | null>(null)
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
@@ -56,10 +57,24 @@ function App() {
     return () => window.clearInterval(timer)
   }, [reviewJob?.id, reviewJob?.status, reviewJobAccessToken])
 
-  const result = useMemo(
+  useEffect(() => {
+    if (!reviewJob || reviewJob.status !== 'READY_FOR_ASSURANCE' || !reviewJobAccessToken || reviewJobResult) return
+    const client = new ReviewJobClient()
+    void client.getResult(reviewJob.id, reviewJobAccessToken)
+      .then((record) => {
+        setReviewJobResult(record)
+        setSelectedClaim(record.result.claims[0] ?? null)
+        setReviewJobError(null)
+      })
+      .catch((error) => setReviewJobError(error instanceof Error ? error.message : 'Unable to issue the completed assurance record.'))
+  }, [reviewJob, reviewJobAccessToken, reviewJobResult])
+
+  const demoResult = useMemo(
     () => runCrossExam(demoDecision, demoReviewers, demoFindings),
     [],
   )
+
+  const result = reviewJobResult?.result ?? demoResult
 
   const counts = useMemo(
     () => ({
@@ -76,7 +91,7 @@ function App() {
     decisionId: demoDecision.id,
     valueAtRiskUsd: demoDecision.valueAtRiskUsd,
     attributionStatus: 'NETWORK_VERIFIED',
-    result,
+    result: demoResult,
     actionBinding: demoDecision.actionBinding,
   }, {
     decisionId: demoDecision.id,
@@ -84,7 +99,28 @@ function App() {
     actionType: demoDecision.actionBinding!.actionType,
     target: demoDecision.actionBinding!.target,
     parametersHash: demoDecision.actionBinding!.parametersHash,
-  }), [result])
+  }), [demoResult])
+
+  const realGate = useMemo(() => {
+    const record = reviewJobResult
+    const binding = record?.decision.actionBinding
+    if (!record || !binding) return null
+    return evaluatePreAction({
+      recordId: record.recordId,
+      issuedAt: record.issuedAt,
+      decisionId: record.decision.id,
+      valueAtRiskUsd: record.decision.valueAtRiskUsd,
+      attributionStatus: record.attributionStatus,
+      result: record.result,
+      actionBinding: binding,
+    }, {
+      decisionId: record.decision.id,
+      valueAtRiskUsd: record.decision.valueAtRiskUsd,
+      actionType: binding.actionType,
+      target: binding.target,
+      parametersHash: binding.parametersHash,
+    })
+  }, [reviewJobResult])
 
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -110,6 +146,7 @@ function App() {
     setActiveDecision(created.value)
     setRunState('idle')
     setReviewJob(null)
+    setReviewJobResult(null)
     setReviewJobAccessToken(null)
     setReviewJobError(null)
     setFormErrors([])
@@ -207,29 +244,25 @@ function App() {
             <span className="round-pill">Round 01</span>
           </div>
 
-          <div className="exam-grid">
-            <article className="exam-agent coral">
-              <div className="agent-number">01</div>
-              <span className="agent-signal">Independent scope</span>
-              <h3>Liquidity<br />Scout</h3>
-              <p>Reconstructs executable depth and tests the price-impact premise.</p>
-              <div className="agent-footer"><span>Onchain</span><span>0.18 USDT</span></div>
-            </article>
-            <article className="exam-agent gold">
-              <div className="agent-number">02</div>
-              <span className="agent-signal">Independent scope</span>
-              <h3>Contract<br />Examiner</h3>
-              <p>Challenges privileged paths, proxy changes, and transfer controls.</p>
-              <div className="agent-footer"><span>Static analysis</span><span>0.22 USDT</span></div>
-            </article>
-            <article className="exam-agent blue">
-              <div className="agent-number">03</div>
-              <span className="agent-signal">Independent scope</span>
-              <h3>Evidence<br />Desk</h3>
-              <p>Validates primary sources, timing claims, and causal assumptions.</p>
-              <div className="agent-footer"><span>Open web</span><span>0.12 USDT</span></div>
-            </article>
-          </div>
+          {isDemo ? <div className="exam-grid">
+            <article className="exam-agent coral"><div className="agent-number">01</div><span className="agent-signal">Independent scope</span><h3>Liquidity<br />Scout</h3><p>Reconstructs executable depth and tests the price-impact premise.</p><div className="agent-footer"><span>Onchain</span><span>0.18 USDT</span></div></article>
+            <article className="exam-agent gold"><div className="agent-number">02</div><span className="agent-signal">Independent scope</span><h3>Contract<br />Examiner</h3><p>Challenges privileged paths, proxy changes, and transfer controls.</p><div className="agent-footer"><span>Static analysis</span><span>0.22 USDT</span></div></article>
+            <article className="exam-agent blue"><div className="agent-number">03</div><span className="agent-signal">Independent scope</span><h3>Evidence<br />Desk</h3><p>Validates primary sources, timing claims, and causal assumptions.</p><div className="agent-footer"><span>Open web</span><span>0.12 USDT</span></div></article>
+          </div> : reviewJob ? <div className="exam-grid">
+            {reviewJob.plan.scopes.map((scope, index) => {
+              const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
+              return <article className={`exam-agent ${['coral', 'gold', 'blue'][index % 3]}`} key={scope.id}>
+                <div className="agent-number">{String(index + 1).padStart(2, '0')}</div>
+                <span className="agent-signal">{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : 'Registry matched'}</span>
+                <h3>{scope.title}</h3>
+                <p>{scope.objective}</p>
+                <div className="agent-footer"><span>{scope.requiredCapability}</span><span>{scope.estimatedFeeUsdt} USDT estimate</span></div>
+              </article>
+            })}
+          </div> : <div className="scope-placeholder">
+            <span>Review scopes are generated server-side</span>
+            <p>Submit the Decision Package to see matched reviewers, attributable pricing, and procurement state. CrossExam does not display invented reviewers for live work.</p>
+          </div>}
 
           {runState === 'idle' ? (
             <button className="run-button" onClick={() => void queueReview()} disabled={creatingReviewJob}>
@@ -246,7 +279,7 @@ function App() {
 
       {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam did not queue this decision.</strong><span>{reviewJobError}</span></section>}
 
-      <section className={`results ${ran ? 'visible' : ''}`} aria-live="polite">
+      <section className={`results ${ran || reviewJobResult ? 'visible' : ''}`} aria-live="polite">
         <div className="results-intro">
           <div>
             <div className="eyebrow"><span /> Decision assurance record</div>
@@ -278,12 +311,12 @@ function App() {
           <aside className="action-card">
             <span className="card-kicker">Recommended action</span>
             <div className="action-verdict">{result.action}</div>
-            <p>Two material assumptions were refuted. Do not execute until liquidity and concentration risks are remediated or explicitly accepted.</p>
-            <div className="score-bars">
+            <p>{result.materialRefutations > 0 ? `${result.materialRefutations} material premise${result.materialRefutations === 1 ? ' was' : 's were'} refuted. Do not execute until the recorded reversal conditions are satisfied or the risk is explicitly accepted.` : 'No material premise was refuted, but unresolved claims and the configured execution policy still apply.'}</p>
+            {isDemo && <div className="score-bars">
               <div><span>Claim integrity</span><i><b style={{ width: '46%' }} /></i><strong>46</strong></div>
               <div><span>Evidence resilience</span><i><b style={{ width: '59%' }} /></i><strong>59</strong></div>
               <div><span>Action readiness</span><i><b style={{ width: '31%' }} /></i><strong>31</strong></div>
-            </div>
+            </div>}
             <div className="action-summary">
               <span><b>{result.materialRefutations}</b> refuted</span>
               <span><b>{counts.unresolved}</b> unresolved</span>
@@ -297,7 +330,7 @@ function App() {
             )}
             <div className="execution-guard">
               <div className="guard-heading"><span>Execution guard</span><small>NETWORK VERIFIED</small></div>
-              <p>Bound to {demoDecision.actionBinding?.actionType.toLowerCase()} · {demoDecision.actionBinding?.target}</p>
+              <p>Bound to {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.actionType.toLowerCase()} · {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.target}</p>
               {gateDecision ? (
                 <div className={`gate-outcome ${gateDecision.executable ? 'permit' : 'blocked'}`}>
                   <strong>{gateDecision.status}</strong>
@@ -305,9 +338,10 @@ function App() {
                   {gateDecision.requiredClaimIds.length > 0 && <small>Remediate {gateDecision.requiredClaimIds.join(' · ')}</small>}
                 </div>
               ) : (
-                <button className="guard-button" onClick={() => setGateDecision(demoGate)}>Attempt guarded execution <span>→</span></button>
+                <button className="guard-button" onClick={() => setGateDecision(realGate ?? demoGate)}>Attempt guarded execution <span>→</span></button>
               )}
             </div>
+            {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
           </aside>
         </div>
       </section>

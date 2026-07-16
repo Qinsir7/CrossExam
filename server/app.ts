@@ -200,6 +200,32 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(422).json({ error: 'REVIEW_JOB_REJECTED', message })
     }
   })
+  app.get('/api/v1/review-jobs/:jobId/result', async (request, response) => {
+    try {
+      const job = await jobStore.findJob(request.params.jobId)
+      if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
+        response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
+        return
+      }
+      if (job.status !== 'READY_FOR_ASSURANCE' || job.fundingStatus !== 'AUTHORIZED') {
+        response.status(409).json({ error: 'REVIEW_JOB_NOT_READY', message: 'The review job has not completed every paid, signed evidence scope.' })
+        return
+      }
+      if (!config.serviceSigningKey) throw new Error('Review-job result issuance requires a configured service signing key.')
+      let assurance = await aggregateNetworkVerifiedAssurance(
+        { decision: job.decision, dispatch: job.dispatch },
+        config.reviewerRegistry,
+        job.updatedAt,
+      )
+      assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
+      const persistence = await recordStore.save(assurance)
+      const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
+      response.status(200).json({ ...assurance, persistence, readAccess: access })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Review job result is unavailable.'
+      response.status(422).json({ error: 'REVIEW_JOB_RESULT_REJECTED', message })
+    }
+  })
   app.post('/api/v1/review-jobs/:jobId/deliveries/:scopeId', async (request, response) => {
     try {
       const job = await jobStore.findJob(request.params.jobId)

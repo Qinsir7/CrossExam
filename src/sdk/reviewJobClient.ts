@@ -1,6 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
+import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 
 export type ReviewJobStatus = 'AWAITING_MATCH' | 'AWAITING_DELIVERIES' | 'READY_FOR_ASSURANCE' | 'CANCELLED'
 export type ReviewJobFundingStatus = 'UNFUNDED' | 'AUTHORIZED'
@@ -27,6 +28,11 @@ export type ProcurementLedgerView = {
   outstandingScopeIds: string[]
 }
 
+export type ReviewJobResult = RemoteDecisionAssuranceRecord & {
+  persistence: 'CREATED' | 'EXISTING'
+  readAccess: { token: string; expiresAt: string }
+}
+
 type CreatedReviewJob = ReviewJobView & { accessToken: string }
 
 export class ReviewJobClient {
@@ -48,6 +54,10 @@ export class ReviewJobClient {
 
   async getLedger(jobId: string, accessToken: string): Promise<ProcurementLedgerView> {
     return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/ledger`, { headers: { authorization: `Bearer ${accessToken}` } }) as Promise<ProcurementLedgerView>
+  }
+
+  async getResult(jobId: string, accessToken: string): Promise<ReviewJobResult> {
+    return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/result`, { headers: { authorization: `Bearer ${accessToken}` } }) as Promise<ReviewJobResult>
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {

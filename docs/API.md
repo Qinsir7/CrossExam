@@ -129,6 +129,8 @@ The review worker sends one blind task per matched scope to an external reviewer
 
 `GET /api/v1/review-jobs/{jobId}/ledger` uses the same owner capability and returns the original USDT estimate alongside actual settled external spend grouped by token asset and atomic amount. It never converts different assets into a fabricated USD total. A scope cannot be marked `REQUESTED`, or accept a delivery, until the worker has recorded a successful x402 settlement transaction for it.
 
+`GET /api/v1/review-jobs/{jobId}/result` uses the same owner capability. Once the job is `READY_FOR_ASSURANCE` and its funding is `AUTHORIZED`, it deterministically issues the registry-bound dispatch at the final delivery timestamp, verifies every reviewer signature and evidence hash again, persists the service-attested `NETWORK_VERIFIED` Decision Assurance Record, and returns a time-limited record access token. Before completion it returns `409 REVIEW_JOB_NOT_READY`; it never manufactures missing scopes.
+
 ## Truth and attribution boundary
 
 In `0.1`, an API caller may submit its own reviewer information to the declared aggregation endpoint. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam.
