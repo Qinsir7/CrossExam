@@ -67,8 +67,9 @@ export class X402ReviewProvider implements ExternalReviewProvider {
   async requestReview(input: Parameters<ExternalReviewProvider['requestReview']>[0]): Promise<Awaited<ReturnType<ExternalReviewProvider['requestReview']>>>
   {
     const reviewer = this.options.registry[input.reviewerId]
-    if (!reviewer?.procurementEndpoint || !/^https:\/\/.+/.test(reviewer.procurementEndpoint)) {
-      throw new Error('Matched reviewer has no approved HTTPS procurement endpoint.')
+    if (!reviewer?.procurementEndpoint || !/^https:\/\/.+/.test(reviewer.procurementEndpoint)
+      || reviewer.procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1') {
+      throw new Error('Matched reviewer has no approved CrossExam signed-callback procurement endpoint.')
     }
     const body = JSON.stringify({
       schemaVersion: '0.1',

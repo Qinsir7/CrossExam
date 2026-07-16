@@ -9,7 +9,7 @@ const asset = '0x5555555555555555555555555555555555555555'
 const registry: ReviewerRegistry = {
   reviewer: {
     id: 'reviewer', displayName: 'Paid reviewer', ownerId: 'independent', modelFamily: 'analysis', evidenceRoutes: ['primary'], capabilities: ['source verification'],
-    wallet: '0x1111111111111111111111111111111111111111', status: 'ACTIVE', procurementEndpoint: 'https://reviewer.example/procure',
+    wallet: '0x1111111111111111111111111111111111111111', status: 'ACTIVE', procurementEndpoint: 'https://reviewer.example/procure', procurementProtocol: 'CROSSEXAM_SIGNED_CALLBACK_V1',
   },
 }
 const input = {

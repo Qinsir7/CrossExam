@@ -61,6 +61,13 @@ describe('loadX402ServerConfig', () => {
     expect(config.reviewerRegistry['reviewer-1'].ownerId).toBe('independent-lab')
   })
 
+  it('requires the explicit signed-callback protocol before a reviewer can receive paid work', () => {
+    const withoutProtocol = '[{"id":"reviewer-1","displayName":"Source verifier","ownerId":"independent-lab","modelFamily":"retrieval","evidenceRoutes":["primary"],"capabilities":["source verification"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://reviewer.example/reviews"}]'
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: withoutProtocol })).toThrow('invalid or duplicate')
+    const withProtocol = withoutProtocol.replace('"procurementEndpoint":"https://reviewer.example/reviews"', '"procurementEndpoint":"https://reviewer.example/reviews","procurementProtocol":"CROSSEXAM_SIGNED_CALLBACK_V1"')
+    expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: withProtocol }).reviewerRegistry['reviewer-1'].procurementProtocol).toBe('CROSSEXAM_SIGNED_CALLBACK_V1')
+  })
+
   it('rejects duplicate reviewer wallet bindings in the server-owned registry', () => {
     const registry = '[{"id":"reviewer-1","displayName":"One","ownerId":"owner-1","modelFamily":"model-1","evidenceRoutes":["a"],"capabilities":["source verification"],"wallet":"0x2222222222222222222222222222222222222222"},{"id":"reviewer-2","displayName":"Two","ownerId":"owner-2","modelFamily":"model-2","evidenceRoutes":["b"],"capabilities":["adversarial research"],"wallet":"0x2222222222222222222222222222222222222222"}]'
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: registry })).toThrow('duplicate')

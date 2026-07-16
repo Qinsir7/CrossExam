@@ -9,6 +9,8 @@ export type RegisteredReviewer = ReviewerProfile & {
   status: 'ACTIVE' | 'SUSPENDED'
   /** HTTPS x402 endpoint that accepts CrossExam blind-review procurement. */
   procurementEndpoint?: string
+  /** The only protocol allowed to produce a signed NETWORK_VERIFIED delivery. */
+  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1'
 }
 
 export type ReviewerRegistry = Record<string, RegisteredReviewer>

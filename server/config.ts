@@ -103,12 +103,15 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
     const modelFamily = typeof candidate.modelFamily === 'string' ? candidate.modelFamily.trim() : ''
     const wallet = typeof candidate.wallet === 'string' ? candidate.wallet : ''
     const procurementEndpoint = typeof candidate.procurementEndpoint === 'string' ? candidate.procurementEndpoint.trim() : undefined
+    const procurementProtocol = candidate.procurementProtocol
     const status = candidate.status === undefined ? 'ACTIVE' : candidate.status
     const evidenceRoutes = candidate.evidenceRoutes
     const capabilities = candidate.capabilities
     if (!id || !displayName || !ownerId || !modelFamily
       || !/^0x[a-fA-F0-9]{40}$/.test(wallet)
       || (procurementEndpoint !== undefined && !/^https:\/\/.+/.test(procurementEndpoint))
+      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1')
+      || (procurementEndpoint === undefined && procurementProtocol !== undefined)
       || (status !== 'ACTIVE' && status !== 'SUSPENDED')
       || !Array.isArray(evidenceRoutes) || !evidenceRoutes.length || evidenceRoutes.some((route) => typeof route !== 'string' || !route.trim())
       || !Array.isArray(capabilities) || !capabilities.length || capabilities.some((capability) => typeof capability !== 'string' || !capability.trim())
@@ -124,6 +127,7 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
       wallet: wallet as Address,
       status,
       ...(procurementEndpoint ? { procurementEndpoint } : {}),
+      ...(procurementEndpoint ? { procurementProtocol: 'CROSSEXAM_SIGNED_CALLBACK_V1' as const } : {}),
       evidenceRoutes: evidenceRoutes as string[],
       capabilities: capabilities as string[],
     }

@@ -16,7 +16,8 @@ CrossExam configures an active reviewer with a unique owner, distinct wallet, sc
   "capabilities": ["source verification"],
   "wallet": "0x...",
   "status": "ACTIVE",
-  "procurementEndpoint": "https://provider.example/v1/crossexam/reviews"
+  "procurementEndpoint": "https://provider.example/v1/crossexam/reviews",
+  "procurementProtocol": "CROSSEXAM_SIGNED_CALLBACK_V1"
 }
 ```
 
@@ -31,6 +32,12 @@ The provider must first answer `402 Payment Required` with a valid x402 `PAYMENT
 ```
 
 The provider must honour the idempotency key: a retry must return the same `requestId` and must not bill a second review.
+
+An ordinary synchronous A2MCP/x402 data endpoint is **not** a CrossExam reviewer
+endpoint. CrossExam will not register it for `NETWORK_VERIFIED` work merely
+because it returns an x402 payment challenge: it must explicitly implement this
+signed callback protocol. This prevents a purchased market-data response from
+being mislabeled as an independently signed verdict.
 
 ## 3. Signed review callback
 
