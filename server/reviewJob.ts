@@ -136,9 +136,6 @@ export function createReviewJob(
   assertProviderInputCompatibility(decision, initialDispatch, registry)
   const plan = applyMatchedProviderCosts(canonicalPlan, initialDispatch, registry)
   const quote = quoteReview(plan, pricing.authorizationPriceUsd ?? '2.00', pricing.minimumGrossMarginFraction ?? 0.4)
-  if (!quote.economicallyAuthorized) {
-    throw new Error(`Full-review authorization price is uneconomic for this job; require at least ${quote.minimumAuthorizationPriceUsdt.toFixed(2)} USDT before bounded external procurement.`)
-  }
   const dispatch = stageReviewPlan(plan, activeReviewers)
   const procurements = dispatch.assignments.filter((assignment) => assignment.reviewer).map((assignment) => ({
     scopeId: assignment.scopeId,

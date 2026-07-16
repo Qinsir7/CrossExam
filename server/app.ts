@@ -24,26 +24,6 @@ import { reconcileReviewJobFunding, XLAYER_USDT0 } from './customerPayment'
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
-const recoveredCustomerTransaction = '0xafd77208465b834e5537f607b3d2b3543a06cf76ecc8d025e376899c2045034d'
-const recoveredCustomerSettlementAt = new Date('2026-07-16T14:39:39.000Z').getTime()
-
-function procurementFailureCategory(failure?: string) {
-  if (!failure) return undefined
-  if (/no approved external procurement endpoint/i.test(failure)) return 'PROVIDER_NOT_IN_WORKER_REGISTRY'
-  if (/requires worker-only API credentials/i.test(failure)) return 'MARKET_CREDENTIALS_MISSING'
-  if (/unsuccessful API envelope/i.test(failure)) return 'MARKET_API_REJECTED'
-  if (/no usable pool liquidity/i.test(failure)) return 'MARKET_DATA_EMPTY'
-  if (/neither a settlement nor an included-quota receipt/i.test(failure)) return 'COST_RECEIPT_MISSING'
-  if (/lacks a successful X Layer payment settlement/i.test(failure)) return 'SETTLEMENT_RECEIPT_MISSING'
-  if (/rejected the paid procurement request \((\d+)\)/i.test(failure)) return `PAID_REPLAY_HTTP_${/\((\d+)\)/.exec(failure)?.[1] ?? '4XX'}`
-  if (/Payment Required before accepting work \(received (\d+)\)/i.test(failure)) return `CHALLENGE_HTTP_${/received (\d+)/i.exec(failure)?.[1] ?? 'ERROR'}`
-  if (/received 500|\(500\)/i.test(failure)) return 'PROVIDER_HTTP_500'
-  if (/received 4\d\d|\(4\d\d\)/i.test(failure)) return 'PROVIDER_HTTP_4XX'
-  if (/payment|settlement|x layer|spend policy/i.test(failure)) return 'PAYMENT_OR_POLICY'
-  if (/timeout|expired/i.test(failure)) return 'TIMEOUT'
-  if (/response|json|schema|adapter/i.test(failure)) return 'INVALID_PROVIDER_RESPONSE'
-  return 'PROVIDER_ERROR'
-}
 
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
   const facilitator = new OKXFacilitatorClient({
@@ -67,7 +47,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
   const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
 
-  const reviewAuthorizationAmountAtomic = BigInt(Math.round(Number(config.reviewAuthorizationPriceUsd) * 1_000_000)).toString()
+  const reviewAuthorizationAmountAtomic = (job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) => BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
 
   async function reconcileFunding(job: Awaited<ReturnType<ReviewJobStore['findJob']>>, transaction: string) {
     if (!job) throw new Error('Review job does not exist.')
@@ -75,65 +55,11 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       job,
       transaction,
       payTo: config.payTo,
-      expectedAmountAtomic: reviewAuthorizationAmountAtomic,
+      expectedAmountAtomic: reviewAuthorizationAmountAtomic(job),
       jobStore,
       getSettleStatus: (tx) => facilitator.getSettleStatus(tx),
     })
   }
-
-  async function recoverConfirmedProductionPayment(job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) {
-    if (job.fundingStatus !== 'UNFUNDED') return job
-    const createdAt = new Date(job.createdAt).getTime()
-    // Idempotent repair for the confirmed payment made while the original
-    // post-settlement database hook failed. The tight creation-time window,
-    // exact receipt, facilitator confirmation, and global transaction index
-    // prevent this public transaction from authorizing any other job.
-    if (!Number.isFinite(createdAt) || createdAt > recoveredCustomerSettlementAt || createdAt < recoveredCustomerSettlementAt - 10 * 60_000) return job
-    try {
-      const recovered = await reconcileReviewJobFunding({
-        job,
-        transaction: recoveredCustomerTransaction,
-        payTo: config.payTo,
-        expectedAmountAtomic: reviewAuthorizationAmountAtomic,
-        jobStore,
-        // This one-off repair is bound to the exact transaction already
-        // independently confirmed on X Layer. Re-verify its receipt on every
-        // attempt without depending on facilitator status API availability.
-        getSettleStatus: async () => ({
-          success: true,
-          status: 'success',
-          transaction: recoveredCustomerTransaction,
-          network: 'eip155:196',
-        }),
-      })
-      console.info(`[customer-payment] recovered ${recovered.id} from confirmed transaction ${recoveredCustomerTransaction}`)
-      return recovered
-    } catch (error) {
-      console.error(`[customer-payment] recovery pending for ${job.id}: ${error instanceof Error ? error.message : 'unknown error'}`)
-      return job
-    }
-  }
-
-  // Recovery must not depend on the buyer keeping the original tab open. On
-  // every API deployment, repair the one unambiguous active job that could
-  // have produced the already-confirmed orphan settlement.
-  void jobStore.listActiveJobs().then(async (jobs) => {
-    const candidates = jobs.filter((job) => {
-      const createdAt = new Date(job.createdAt).getTime()
-      return job.fundingStatus === 'UNFUNDED'
-        && Number.isFinite(createdAt)
-        && createdAt <= recoveredCustomerSettlementAt
-        && createdAt >= recoveredCustomerSettlementAt - 10 * 60_000
-    })
-    if (candidates.length === 1) await recoverConfirmedProductionPayment(candidates[0])
-    else if (candidates.length > 1) console.error(`[customer-payment] automatic recovery is ambiguous across ${candidates.length} active jobs`)
-  }).catch((error) => console.error(`[customer-payment] startup recovery deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
-  void jobStore.findJobByCustomerPaymentTransaction(recoveredCustomerTransaction).then(async (job) => {
-    if (!job || (job.status !== 'FAILED' && !job.procurements.some((procurement) => procurement.status === 'FAILED' || procurement.status === 'EXHAUSTED'))) return
-    const retried = retryFailedReviewJob(job, config.reviewerRegistry)
-    await jobStore.updateJob(retried, job.revision)
-    console.info(`[procurement] reopened ${job.id} against current production evidence sources without another customer payment`)
-  }).catch((error) => console.error(`[procurement] paid-job reopen deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
 
   resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
     const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; routePattern?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
@@ -143,21 +69,21 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     try {
       const input = requestContext.adapter?.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
       if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('Settled review funding request had an invalid payload.')
+      const job = await jobStore.findJob(input.jobId)
+      if (!job || !canAccessReviewJob(job, input.accessToken)) throw new Error('Settled review funding request no longer has owner access.')
       if (requirements.network !== 'eip155:196' || requirements.asset.toLowerCase() !== XLAYER_USDT0
-        || (result.amount ?? requirements.amount) !== reviewAuthorizationAmountAtomic
+        || (result.amount ?? requirements.amount) !== reviewAuthorizationAmountAtomic(job)
         || !/^0x[0-9a-fA-F]{64}$/.test(result.transaction)) {
-        throw new Error('Settled review funding receipt is malformed.')
+        throw new Error('Settled review funding receipt does not match the immutable job quote.')
       }
       // Pending acknowledgements are never spend authorization. The client
       // receives the transaction in PAYMENT-RESPONSE and calls reconciliation.
       if (result.status !== 'success') return
-      const job = await jobStore.findJob(input.jobId)
-      if (!job || !canAccessReviewJob(job, input.accessToken)) throw new Error('Settled review funding request no longer has owner access.')
       await reconcileReviewJobFunding({
         job,
         transaction: result.transaction,
         payTo: config.payTo,
-        expectedAmountAtomic: reviewAuthorizationAmountAtomic,
+        expectedAmountAtomic: reviewAuthorizationAmountAtomic(job),
         jobStore,
         getSettleStatus: async () => ({ success: true, status: 'success', transaction: result.transaction, network: result.network }),
       })
@@ -194,33 +120,19 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   app.use(express.json({ limit: '128kb' }))
   app.get('/health', async (_request, response) => {
     try {
-      const [heartbeat, recoveredPayment] = await Promise.all([
-        jobStore.getProcurementWorkerHeartbeat(),
-        jobStore.findJobByCustomerPaymentTransaction(recoveredCustomerTransaction),
-      ])
+      const heartbeat = await jobStore.getProcurementWorkerHeartbeat()
       const ageMs = heartbeat ? Date.now() - new Date(heartbeat.observedAt).getTime() : undefined
       const procurementWorker = !heartbeat ? 'UNSEEN' : ageMs !== undefined && ageMs <= 12 * 60_000 ? 'HEALTHY' : 'STALE'
+      const evidenceSources = Object.values(config.reviewerRegistry)
+        .filter((source) => source.status === 'ACTIVE' && source.procurementProtocol)
+        .map((source) => ({ id: source.id, protocol: source.procurementProtocol, adapter: source.responseAdapter }))
       response.json({
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
         settlementRecovery: 'xlayer-receipt-v2',
         procurementOrchestrator: 'okx-market-goplus-v2',
         embeddedProcurement: !config.publicUrl ? 'DISABLED' : config.procurementSigningKey && config.procurementMaxPerScopeAtomic && config.procurementAllowedAssets.length ? 'ENABLED_WITH_PAYMENT' : 'ENABLED_READ_ONLY',
-        recoveredCustomerPayment: recoveredPayment ? 'RECOVERED' : 'PENDING',
-        ...(recoveredPayment ? {
-          recoveredCustomerJob: {
-            status: recoveredPayment.status,
-            fundingStatus: recoveredPayment.fundingStatus,
-            procurements: recoveredPayment.procurements.map((procurement) => ({
-              scopeId: procurement.scopeId,
-              providerId: recoveredPayment.dispatch.assignments.find((assignment) => assignment.scopeId === procurement.scopeId)?.reviewer?.id,
-              status: procurement.status,
-              attempts: procurement.attempts,
-              ...(procurement.nextAttemptAt ? { nextAttemptAt: procurement.nextAttemptAt } : {}),
-              ...(procurementFailureCategory(procurement.failure) ? { failureCategory: procurementFailureCategory(procurement.failure) } : {}),
-            })),
-          },
-        } : {}),
+        evidenceSources,
         network: 'eip155:196',
         recordStore: 'enabled',
         procurementWorker,
@@ -322,12 +234,11 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.get('/api/v1/review-jobs/:jobId', async (request, response) => {
     try {
-      let job = await jobStore.findJob(request.params.jobId)
+      const job = await jobStore.findJob(request.params.jobId)
       if (!job || !canAccessReviewJob(job, request.header('authorization')?.replace(/^Bearer /, '') ?? '')) {
         response.status(404).json({ error: 'REVIEW_JOB_NOT_FOUND' })
         return
       }
-      job = await recoverConfirmedProductionPayment(job)
       response.json(reviewJobForOwner(job))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid review job identifier.'
@@ -470,7 +381,15 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
         payTo: config.payTo,
-        price: `$${config.reviewAuthorizationPriceUsd}`,
+        price: async (context: { adapter: { getBody?: () => unknown } }) => {
+          const input = context.adapter.getBody?.() as { jobId?: unknown; accessToken?: unknown } | undefined
+          if (typeof input?.jobId !== 'string' || typeof input.accessToken !== 'string') throw new Error('A valid review job capability is required before quoting payment.')
+          const job = await jobStore.findJob(input.jobId)
+          if (!job || !canAccessReviewJob(job, input.accessToken) || job.fundingStatus !== 'UNFUNDED') {
+            throw new Error('This review job cannot accept a payment authorization.')
+          }
+          return `$${job.quote.authorizationPriceUsdt.toFixed(2)}`
+        },
         maxTimeoutSeconds: 300,
       },
       description: 'CrossExam full-review authorization for bounded independent external reviewer procurement',

@@ -6,7 +6,7 @@ import { createEvmActionBinding } from './domain/evmAction'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
-import { ReviewJobClient, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
+import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
 import { displayUsdt0 } from './sdk/browserX402'
 import './App.css'
 
@@ -61,6 +61,7 @@ function App() {
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(restoredReviewSession?.job ?? null)
   const [reviewJobResult, setReviewJobResult] = useState<ReviewJobResult | null>(null)
+  const [procurementLedger, setProcurementLedger] = useState<ProcurementLedgerView | null>(null)
   const [reviewJobAccessToken, setReviewJobAccessToken] = useState<string | null>(restoredReviewSession?.accessToken ?? null)
   const [reviewJobError, setReviewJobError] = useState<string | null>(null)
   const [creatingReviewJob, setCreatingReviewJob] = useState(false)
@@ -102,6 +103,17 @@ function App() {
       })
       .catch((error) => setReviewJobError(error instanceof Error ? error.message : 'Unable to issue the completed assurance record.'))
   }, [reviewJob, reviewJobAccessToken, reviewJobResult])
+
+  useEffect(() => {
+    if (!reviewJob || !reviewJobAccessToken || reviewJob.fundingStatus !== 'AUTHORIZED') {
+      setProcurementLedger(null)
+      return
+    }
+    const client = new ReviewJobClient()
+    void client.getLedger(reviewJob.id, reviewJobAccessToken)
+      .then(setProcurementLedger)
+      .catch((error) => setReviewJobError(error instanceof Error ? error.message : 'Unable to load the procurement ledger.'))
+  }, [reviewJob, reviewJobAccessToken])
 
   const demoResult = useMemo(
     () => runCrossExam(demoDecision, demoReviewers, demoFindings),
@@ -354,7 +366,7 @@ function App() {
         </section>
       </section>
 
-      {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam did not queue this decision.</strong><span>{reviewJobError}</span></section>}
+      {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam needs attention.</strong><span>{reviewJobError}</span></section>}
 
       <section className={`results ${ran || reviewJobResult ? 'visible' : ''}`} aria-live="polite">
         <div className="results-intro">
@@ -442,9 +454,25 @@ function App() {
             {reviewJob.plan.scopes.map((scope) => {
               const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
               const procurement = reviewJob.procurements.find((item) => item.scopeId === scope.id)
-              return <div key={scope.id}><span>{scope.title}</span><small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small></div>
+              return <div key={scope.id}>
+                <span>{scope.title}</span>
+                <small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small>
+                {assignment?.delivery?.provenance && <details className="evidence-proof">
+                  <summary>Verified evidence provenance</summary>
+                  <p>{assignment.delivery.provenance.kind.replaceAll('_', ' ')} · {new Date(assignment.delivery.provenance.observedAt).toLocaleString()}</p>
+                  <code>request {assignment.delivery.provenance.requestHash}</code>
+                  <code>response {assignment.delivery.provenance.responseHash}</code>
+                  {assignment.delivery.findings.map((finding) => <p key={`${scope.id}-${finding.claimId}`}><b>{finding.verdict}</b> {finding.evidence}</p>)}
+                </details>}
+              </div>
             })}
           </div>
+          {procurementLedger && <div className="economics-ledger">
+            <div><span>Customer revenue</span><strong>{procurementLedger.commercial.customerSettlement ? `${(Number(procurementLedger.commercial.customerSettlement.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : 'Pending'}</strong></div>
+            <div><span>External settled cost</span><strong>{procurementLedger.settledByAsset.length === 0 ? '0.00 USDT0' : procurementLedger.settledByAsset.map((item) => `${(Number(item.amountAtomic) / 1_000_000).toFixed(2)} USDT0`).join(' + ')}</strong></div>
+            <div><span>Realized gross margin</span><strong>{procurementLedger.commercial.realizedGrossMargin ? `${(Number(procurementLedger.commercial.realizedGrossMargin.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : procurementLedger.commercial.grossMarginStatus.replaceAll('_', ' ')}</strong></div>
+            <div><span>Evidence cost basis</span><strong>{procurementLedger.scopes.map((scope) => scope.costBasis === 'INCLUDED_API_QUOTA' ? 'Included quota' : scope.costBasis === 'SETTLED_X402' ? 'x402 settled' : 'Pending').join(' · ')}</strong></div>
+          </div>}
         </section>
       )}
 

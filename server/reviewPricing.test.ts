@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { quoteReview } from './reviewPricing'
 
 describe('quoteReview', () => {
-  it('refuses authorization pricing that cannot cover the capped external budget and margin floor', () => {
+  it('raises the authorization price to cover the capped external budget and margin floor', () => {
     const quote = quoteReview({ id: 'RP-1', decisionId: 'DP-1', estimatedTotalUsdt: 1.2, scopes: [] }, '0.50', 0.4)
     expect(quote.minimumAuthorizationPriceUsdt).toBe(2)
-    expect(quote.economicallyAuthorized).toBe(false)
+    expect(quote.authorizationPriceUsdt).toBe(2)
+    expect(quote.estimatedGrossMarginUsdt).toBe(0.8)
+    expect(quote.economicallyAuthorized).toBe(true)
   })
 
   it('keeps quoted revenue and estimated gross margin explicit', () => {

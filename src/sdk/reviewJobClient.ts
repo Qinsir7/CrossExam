@@ -25,7 +25,15 @@ export type ReviewJobView = {
     economicallyAuthorized: boolean
   }
   dispatch: ReviewDispatch
-  procurements: Array<{ scopeId: string; status: 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED' | 'EXHAUSTED'; externalRequestId?: string; failure?: string }>
+  procurements: Array<{
+    scopeId: string
+    status: 'UNSENT' | 'DISPATCHING' | 'REQUESTED' | 'FAILED' | 'EXHAUSTED'
+    externalRequestId?: string
+    failure?: string
+    payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+    includedQuota?: { sourceId: string; authentication: 'OKX_HMAC_SHA256' | 'PUBLIC_HTTPS' }
+    evidence?: { observedAt: string; requestHash: `0x${string}`; responseHash: `0x${string}`; responseBody: string }
+  }>
   events: Array<{ id: string; occurredAt: string; type: string; scopeId?: string; detail: string }>
   createdAt: string
   updatedAt: string
@@ -41,7 +49,15 @@ export type ProcurementLedgerView = {
     realizedGrossMargin?: { asset: string; amountAtomic: string }
   }
   estimatedTotalUsdt: number
-  scopes: Array<{ scopeId: string; title: string; estimatedFeeUsdt: number; procurementStatus: string; externalRequestId?: string; settlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string } }>
+  scopes: Array<{
+    scopeId: string
+    title: string
+    estimatedFeeUsdt: number
+    procurementStatus: string
+    externalRequestId?: string
+    settlement?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+    costBasis?: 'SETTLED_X402' | 'INCLUDED_API_QUOTA'
+  }>
   settledByAsset: Array<{ asset: string; amountAtomic: string; payments: number }>
   outstandingScopeIds: string[]
 }
@@ -176,7 +192,10 @@ export class ReviewJobClient {
 
   /** Browser-wallet path: show a challenge summary, then sign the x402 exact payment in the wallet. */
   async authorizeWithBrowserWallet(jobId: string, accessToken: string, confirm: (preview: BrowserPaymentPreview) => boolean | Promise<boolean>): Promise<ReviewJobView> {
-    return this.authorize(jobId, accessToken, (input, init) => fetchWithBrowserX402(input, init ?? {}, confirm))
+    const job = await this.get(jobId, accessToken)
+    if (job.fundingStatus !== 'UNFUNDED') throw new Error('This review job is already funded and cannot accept another payment.')
+    const expectedAmountAtomic = BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
+    return this.authorize(jobId, accessToken, (input, init) => fetchWithBrowserX402(input, init ?? {}, confirm, expectedAmountAtomic))
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {
