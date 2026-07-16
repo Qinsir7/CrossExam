@@ -96,6 +96,21 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
   }
 
+  // Recovery must not depend on the buyer keeping the original tab open. On
+  // every API deployment, repair the one unambiguous active job that could
+  // have produced the already-confirmed orphan settlement.
+  void jobStore.listActiveJobs().then(async (jobs) => {
+    const candidates = jobs.filter((job) => {
+      const createdAt = new Date(job.createdAt).getTime()
+      return job.fundingStatus === 'UNFUNDED'
+        && Number.isFinite(createdAt)
+        && createdAt <= recoveredCustomerSettlementAt
+        && createdAt >= recoveredCustomerSettlementAt - 10 * 60_000
+    })
+    if (candidates.length === 1) await recoverConfirmedProductionPayment(candidates[0])
+    else if (candidates.length > 1) console.error(`[customer-payment] automatic recovery is ambiguous across ${candidates.length} active jobs`)
+  }).catch((error) => console.error(`[customer-payment] startup recovery deferred: ${error instanceof Error ? error.message : 'unknown error'}`))
+
   resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
     const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; routePattern?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
     const isReviewFunding = requestContext?.method === 'POST'
@@ -161,7 +176,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.json({
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
-        settlementRecovery: 'xlayer-receipt-v1',
+        settlementRecovery: 'xlayer-receipt-v2',
         network: 'eip155:196',
         recordStore: 'enabled',
         procurementWorker,
