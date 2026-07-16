@@ -28,6 +28,32 @@ function fee(valueAtRiskUsd: number, share: number) {
  */
 export function createReviewPlan(decision: DecisionPackage): ReviewPlan {
   const claimIds = decision.claims.map((claim) => claim.id)
+  if (decision.reviewProfile === 'PRETRADE_ONCHAIN') {
+    const scopes: ReviewScope[] = [
+      {
+        id: 'execution-liquidity',
+        title: 'Execution liquidity',
+        objective: 'Measure executable liquidity, expected slippage, depth imbalance, and market conditions that could invalidate this exact onchain action.',
+        claimIds,
+        requiredCapability: 'execution liquidity',
+        estimatedFeeUsdt: fee(decision.valueAtRiskUsd, 0.5),
+      },
+      {
+        id: 'contract-token-risk',
+        title: 'Contract and token risk',
+        objective: 'Check contract controls, transfer restrictions, concentration, approval risk, and exploit signals relevant to this exact onchain action.',
+        claimIds,
+        requiredCapability: 'contract token risk',
+        estimatedFeeUsdt: fee(decision.valueAtRiskUsd, 0.5),
+      },
+    ]
+    return {
+      id: `RP-${decision.id.replace('DP-', '')}`,
+      decisionId: decision.id,
+      scopes,
+      estimatedTotalUsdt: Number(scopes.reduce((sum, scope) => sum + scope.estimatedFeeUsdt, 0).toFixed(2)),
+    }
+  }
   const scopes: ReviewScope[] = [
     {
       id: 'evidence-integrity',

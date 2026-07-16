@@ -2,16 +2,18 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { privateKeyToAccount } from 'viem/accounts'
+import { keccak256, stringToHex } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { DecisionPackage } from '../src/domain/types'
 import type { ReviewDelivery } from '../src/network/reviewNetwork'
 import { deliveryPayloadHash } from './deliveryAttestation'
 import { evidenceArtifactHash } from './evidenceIntegrity'
-import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
+import { authorizeReviewJobFunding, canAccessReviewJob, createReviewJob, createReviewJobWithAccess, markProcurementDispatching, markProcurementRequested, recordPaidEvidenceDelivery, recordReviewDelivery, reviewJobForOwner } from './reviewJob'
 import { FileReviewJobStore } from './reviewJobStore'
 import { ReviewJobWorker } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
 import { buildProcurementLedger } from './procurementLedger'
+import { aggregateProcurementVerifiedAssurance } from './assuranceService'
 
 const directories: string[] = []
 const accounts = [
@@ -121,5 +123,50 @@ describe('ReviewJob lifecycle', () => {
     expect(job.status).toBe('READY_FOR_ASSURANCE')
     expect(job.events.at(-1)?.type).toBe('JOB_READY_FOR_ASSURANCE')
     expect(buildProcurementLedger(job)).toMatchObject({ settledByAsset: [{ asset: '0x5555555555555555555555555555555555555555', amountAtomic: '360000', payments: 3 }] })
+  })
+
+  it('issues PROCUREMENT_VERIFIED only for settled generic paid evidence and never upgrades it to NETWORK_VERIFIED', async () => {
+    const evidenceRegistry: ReviewerRegistry = Object.fromEntries(Object.entries(registry).map(([id, reviewer]) => [id, {
+      ...reviewer,
+      procurementEndpoint: `https://${id}.example/evidence`,
+      procurementProtocol: 'PAID_EVIDENCE_V1' as const,
+      responseAdapter: 'OPAQUE_JSON_V1' as const,
+      evidenceRequestBody: {},
+    }]))
+    let job = createReviewJob(decision, evidenceRegistry, '2026-07-15T00:00:00.000Z', 'rj_44444444-4444-4444-8444-444444444444')
+    job = authorizeReviewJobFunding(job, '2026-07-15T00:00:01.000Z')
+
+    for (const [index, assignment] of job.dispatch.assignments.entries()) {
+      const scopeId = assignment.scopeId
+      const source = evidenceRegistry[assignment.reviewer!.id]
+      job = markProcurementDispatching(job, scopeId, `2026-07-15T00:0${index + 2}:00.000Z`)
+      const payment = { network: 'eip155:196' as const, asset: '0x5555555555555555555555555555555555555555', amountAtomic: '120000', transaction: `0x${String(index + 1).repeat(64)}` }
+      job = markProcurementRequested(job, scopeId, `external-${scopeId}`, payment, `2026-07-15T00:0${index + 2}:01.000Z`)
+      const observedAt = `2026-07-15T00:0${index + 2}:02.000Z`
+      const responseBody = JSON.stringify({ source: source.id, result: 'opaque real response' })
+      const artifact = { id: `E-${source.id}`, kind: 'TOOL_OUTPUT' as const, locator: source.procurementEndpoint!, observedAt, excerpt: responseBody }
+      const provenance = {
+        kind: 'X402_PAID_EVIDENCE_V1' as const,
+        sourceId: source.id,
+        endpoint: source.procurementEndpoint!,
+        observedAt,
+        requestHash: keccak256(stringToHex('{}')),
+        responseHash: keccak256(stringToHex(responseBody)),
+        payment,
+      }
+      const delivery = {
+        reviewerId: source.id,
+        deliveredAt: observedAt,
+        artifacts: [{ ...artifact, contentHash: evidenceArtifactHash(artifact) }],
+        findings: decision.claims.map((claim) => ({ claimId: claim.id, reviewerId: source.id, verdict: 'INSUFFICIENT_EVIDENCE' as const, confidence: 1, materiality: claim.materiality, evidence: 'The paid response is intentionally opaque pending a source-specific adapter.', evidenceArtifactIds: [artifact.id] })),
+        provenance,
+      }
+      job = recordPaidEvidenceDelivery(job, scopeId, delivery, provenance, responseBody, evidenceRegistry, observedAt)
+    }
+
+    expect(job.status).toBe('READY_FOR_ASSURANCE')
+    const assurance = await aggregateProcurementVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, evidenceRegistry, job.updatedAt)
+    expect(assurance.attributionStatus).toBe('PROCUREMENT_VERIFIED')
+    expect(assurance.result.action).toBe('CONDITIONAL')
   })
 })

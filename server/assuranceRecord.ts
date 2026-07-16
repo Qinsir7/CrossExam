@@ -14,7 +14,7 @@ export type DecisionAssuranceRecord = {
   schemaVersion: '0.1'
   recordId: string
   issuedAt: string
-  attributionStatus: 'DECLARED_BY_CALLER' | 'NETWORK_VERIFIED'
+  attributionStatus: 'DECLARED_BY_CALLER' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
   decision: DecisionPackage
   dispatch: ReviewDispatch
   result: CrossExamResult

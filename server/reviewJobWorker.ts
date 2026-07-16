@@ -1,8 +1,14 @@
 import type { ReviewJobStore } from './reviewJobStore'
-import { blindTaskForProcurement, markProcurementDispatching, markProcurementFailed, markProcurementRequested, type ReviewJob } from './reviewJob'
+import type { PaidEvidenceProvenance, ReviewDelivery } from '../src/network/reviewNetwork'
+import { blindTaskForProcurement, markProcurementDispatching, markProcurementFailed, markProcurementRequested, recordPaidEvidenceDelivery, type ReviewJob } from './reviewJob'
+import type { ReviewerRegistry } from './reviewerRegistry'
 
 export type ExternalReviewProvider = {
-  requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{ externalRequestId: string; payment?: ReviewJob['procurements'][number]['payment'] }>
+  requestReview(input: { jobId: string; scopeId: string; reviewerId: string; idempotencyKey: string; task: ReturnType<typeof blindTaskForProcurement> }): Promise<{
+    externalRequestId: string
+    payment?: ReviewJob['procurements'][number]['payment']
+    evidence?: { delivery: ReviewDelivery; provenance: PaidEvidenceProvenance; responseBody: string }
+  }>
 }
 
 /**
@@ -15,6 +21,7 @@ export type ReviewJobWorkerOptions = {
   retryBaseMs?: number
   dispatchTimeoutMs?: number
   now?: () => Date
+  registry?: ReviewerRegistry
 }
 
 export class ReviewJobWorker {
@@ -30,6 +37,7 @@ export class ReviewJobWorker {
       retryBaseMs: options.retryBaseMs ?? 30_000,
       dispatchTimeoutMs: options.dispatchTimeoutMs ?? 300_000,
       now: options.now ?? (() => new Date()),
+      registry: options.registry ?? {},
     }
     if (!Number.isInteger(this.options.maxAttempts) || this.options.maxAttempts < 1) throw new Error('Worker maxAttempts must be a positive integer.')
     if (!Number.isInteger(this.options.retryBaseMs) || this.options.retryBaseMs < 1) throw new Error('Worker retryBaseMs must be positive.')
@@ -99,6 +107,18 @@ export class ReviewJobWorker {
           const requestedJob = markProcurementRequested(claimedJob, procurement.scopeId, response.externalRequestId, response.payment)
           await this.store.updateJob(requestedJob, claimedJob.revision)
           requested += 1
+          if (response.evidence) {
+            const evidenceJob = recordPaidEvidenceDelivery(
+              requestedJob,
+              procurement.scopeId,
+              response.evidence.delivery,
+              response.evidence.provenance,
+              response.evidence.responseBody,
+              this.options.registry,
+              this.now(),
+            )
+            await this.store.updateJob(evidenceJob, requestedJob.revision)
+          }
         } catch (error) {
           const reason = error instanceof Error ? error.message : 'External reviewer procurement failed.'
           try {

@@ -3,7 +3,7 @@ import { paymentMiddleware, x402ResourceServer } from '@okxweb3/x402-express'
 import { OKXFacilitatorClient } from '@okxweb3/x402-core'
 import { ExactEvmScheme } from '@okxweb3/x402-evm/exact/server'
 import { aggregateAssurance } from './assuranceService'
-import { aggregateNetworkVerifiedAssurance } from './assuranceService'
+import { aggregateNetworkVerifiedAssurance, aggregateProcurementVerifiedAssurance } from './assuranceService'
 import type { AggregateAssuranceRequest } from './assuranceService'
 import type { X402ServerConfig } from './config'
 import { FileAssuranceRecordStore, type AssuranceRecordStore } from './recordStore'
@@ -212,11 +212,10 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         return
       }
       if (!config.serviceSigningKey) throw new Error('Review-job result issuance requires a configured service signing key.')
-      let assurance = await aggregateNetworkVerifiedAssurance(
-        { decision: job.decision, dispatch: job.dispatch },
-        config.reviewerRegistry,
-        job.updatedAt,
-      )
+      const hasPaidEvidence = job.dispatch.assignments.some((assignment) => assignment.reviewer && config.reviewerRegistry[assignment.reviewer.id]?.procurementProtocol === 'PAID_EVIDENCE_V1')
+      let assurance = hasPaidEvidence
+        ? await aggregateProcurementVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, config.reviewerRegistry, job.updatedAt)
+        : await aggregateNetworkVerifiedAssurance({ decision: job.decision, dispatch: job.dispatch }, config.reviewerRegistry, job.updatedAt)
       assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
       const persistence = await recordStore.save(assurance)
       const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)

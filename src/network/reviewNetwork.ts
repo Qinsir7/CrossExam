@@ -20,11 +20,26 @@ export type EvidenceArtifact = {
   contentHash?: `0x${string}`
 }
 
+/**
+ * A paid external response can be independently tied to an x402 settlement
+ * without pretending that the source signed CrossExam's reviewer delivery.
+ */
+export type PaidEvidenceProvenance = {
+  kind: 'X402_PAID_EVIDENCE_V1'
+  sourceId: string
+  endpoint: string
+  observedAt: string
+  requestHash: `0x${string}`
+  responseHash: `0x${string}`
+  payment: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+}
+
 export type ReviewDelivery = {
   reviewerId: string
   deliveredAt: string
   artifacts: EvidenceArtifact[]
   findings: Finding[]
+  provenance?: PaidEvidenceProvenance
 }
 
 export type AssignmentStatus = 'AWAITING_MATCH' | 'MATCHED' | 'DELIVERED'

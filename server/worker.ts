@@ -22,6 +22,7 @@ const worker = new ReviewJobWorker(store, provider, {
   maxAttempts: config.procurementMaxAttempts,
   retryBaseMs: config.procurementRetryBaseMs,
   dispatchTimeoutMs: config.procurementDispatchTimeoutMs,
+  registry: config.reviewerRegistry,
 })
 
 let stopping = false

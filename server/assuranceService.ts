@@ -4,7 +4,7 @@ import type { ReviewDispatch } from '../src/network/reviewNetwork'
 import { issueDecisionAssuranceRecord } from './assuranceRecord'
 import { assertDispatchEvidenceIntegrity } from './evidenceIntegrity'
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
-import { normalizeNetworkVerifiedDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
+import { normalizeNetworkVerifiedDispatch, normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
 
 export type AggregateAssuranceRequest = {
   decision: DecisionPackage
@@ -44,4 +44,46 @@ export async function aggregateNetworkVerifiedAssurance(
   }))
   const result = completeCrossExam(request.decision, dispatch)
   return issueDecisionAssuranceRecord(request.decision, dispatch, result, issuedAt, 'NETWORK_VERIFIED')
+}
+
+/**
+ * Evidence purchased from a normal A2MCP endpoint is payment-verifiable, but
+ * does not become a reviewer signature. This route preserves that distinction
+ * in the issued record while still allowing its evidence to trigger a safe
+ * HOLD/BLOCK decision.
+ */
+export async function aggregateProcurementVerifiedAssurance(
+  request: AggregateAssuranceRequest,
+  registry: ReviewerRegistry,
+  issuedAt = new Date().toISOString(),
+) {
+  const dispatch = normalizeReviewJobDispatch(request.decision, request.dispatch, registry)
+  assertDispatchEvidenceIntegrity(dispatch)
+  const wallets = reviewerWalletRegistry(registry)
+  let hasPaidEvidence = false
+  await Promise.all(dispatch.assignments.map(async (assignment) => {
+    if (!assignment.delivery || !assignment.reviewer) throw new Error('A procurement-verified result requires every delivered scope.')
+    const reviewer = registry[assignment.reviewer.id]
+    if (!reviewer) throw new Error('A procurement-verified result references an unknown source.')
+    if (reviewer.procurementProtocol === 'PAID_EVIDENCE_V1') {
+      const provenance = assignment.delivery.provenance
+      if (!provenance || provenance.kind !== 'X402_PAID_EVIDENCE_V1' || provenance.sourceId !== reviewer.id
+        || provenance.endpoint !== reviewer.procurementEndpoint || !/^0x[0-9a-f]{64}$/i.test(provenance.requestHash)
+        || !/^0x[0-9a-f]{64}$/i.test(provenance.responseHash) || !/^0x[0-9a-f]+$/i.test(provenance.payment.transaction)) {
+        throw new Error('Paid evidence delivery has incomplete or mismatched provenance.')
+      }
+      hasPaidEvidence = true
+      return
+    }
+    await verifyDeliveryAttestation({
+      dispatchId: dispatch.id,
+      decisionId: request.decision.id,
+      scopeId: assignment.scopeId,
+      delivery: assignment.delivery as SignedReviewDelivery,
+      reviewerWallets: wallets,
+    })
+  }))
+  if (!hasPaidEvidence) throw new Error('Use network verification when every delivery is reviewer-signed.')
+  const result = completeCrossExam(request.decision, dispatch)
+  return issueDecisionAssuranceRecord(request.decision, dispatch, result, issuedAt, 'PROCUREMENT_VERIFIED')
 }

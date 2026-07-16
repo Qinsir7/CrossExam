@@ -58,7 +58,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.review-result', endpoint: endpoint('/api/v1/review-jobs/{jobId}/result'), paid: false,
-        description: 'Issue and retrieve the signed NETWORK_VERIFIED record after every paid review scope is complete.',
+        description: 'Issue and retrieve the signed provenance-qualified record after every paid review scope is complete.',
       },
       {
         id: 'decision-assurance.review-funding', endpoint: endpoint('/api/v1/review-jobs/authorize'), paid: true,

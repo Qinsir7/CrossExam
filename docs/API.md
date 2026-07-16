@@ -123,6 +123,11 @@ The response also includes a time-limited `readAccess` bearer token. Retrieve a 
 
 `POST /api/v1/review-jobs` creates a durable, capability-protected procurement job from a valid Decision Package. The service derives the canonical three-scope plan and matches only active reviewers from the server-owned registry. It returns an `rjv_…` access token exactly once; use it as `Authorization: Bearer {token}` for `GET` or `DELETE /api/v1/review-jobs/{jobId}`. The store retains only its SHA-256 hash. New jobs are deliberately `UNFUNDED`: creation alone cannot cause CrossExam's buyer wallet to spend.
 
+Set `reviewProfile: "PRETRADE_ONCHAIN"` on a Decision Package to use the
+product's focused two-scope route: `execution liquidity` and `contract token
+risk`. This is the intended path for high-value swaps, approvals, transfers,
+and deployments; each provider must come from a distinct configured owner.
+
 `POST /api/v1/review-jobs/authorize` is x402-paid and takes `{ "jobId", "accessToken" }`. It has its own `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD` price floor, separate from completed-dispatch aggregation, so a full review can be sold above bounded external cost. After payment settlement it changes that job to `AUTHORIZED`; only then will the procurement worker consider it for external x402 review purchases. This separates an inexpensive intent to request review from authorization to spend within the server's configured per-scope policy.
 
 The review worker sends one blind task per matched scope to an external reviewer provider using a stable `{jobId}:{scopeId}` idempotency key. It records every attempted external call, applies a bounded exponential retry policy, and recovers a stale `DISPATCHING` lease only with the same idempotency key. Once its hard attempt ceiling is exhausted, the job becomes terminal `FAILED` and no remaining scope is purchased. `POST /api/v1/review-jobs/{jobId}/deliveries/{scopeId}` accepts a reviewer callback only after that external request was persisted, and only with the assigned reviewer's valid EIP-191 signature. A job becomes `READY_FOR_ASSURANCE` only after every scope returns content-addressed evidence; it can then be sent to the paid `/network-aggregate` issuer. No job endpoint fabricates reviewer work or a payment result.
@@ -131,11 +136,18 @@ The review worker sends one blind task per matched scope to an external reviewer
 
 `GET /api/v1/review-jobs/{jobId}/result` uses the same owner capability. Once the job is `READY_FOR_ASSURANCE` and its funding is `AUTHORIZED`, it deterministically issues the registry-bound dispatch at the final delivery timestamp, verifies every reviewer signature and evidence hash again, persists the service-attested `NETWORK_VERIFIED` Decision Assurance Record, and returns a time-limited record access token. Before completion it returns `409 REVIEW_JOB_NOT_READY`; it never manufactures missing scopes.
 
+When at least one configured scope is an ordinary paid evidence source, result
+issuance instead returns `PROCUREMENT_VERIFIED`. The response still binds the
+actual x402 settlement and content-addressed source output, but never asserts
+that the external source signed a CrossExam verdict. The default gate will not
+permit a high-value action on this weaker status, although it may safely hold
+or block the action when the purchased evidence is unresolved or contradictory.
+
 ## Truth and attribution boundary
 
 In `0.1`, an API caller may submit its own reviewer information to the declared aggregation endpoint. CrossExam records that as `DECLARED_BY_CALLER`; it does not claim that the reviewer identity has been independently verified by CrossExam.
 
-The network-verified endpoint is the verified mode: the signed payload binds the delivery to its dispatch ID, decision ID, scope ID, reviewer ID, artifacts, and findings. Server-owned registry data overwrites caller-supplied owner, model, capability, and evidence-route metadata. A changed artifact, missing artifact citation, replay into another scope, unregistered reviewer, reused owner or wallet, or invalid signature is rejected.
+`PROCUREMENT_VERIFIED` is the intermediate, honest paid-evidence mode: CrossExam verifies a configured source, settled payment, request hash, retained bounded response hash, and artifact graph, but does not call the response reviewer-signed. The network-verified endpoint is the stronger mode: the signed payload binds the delivery to its dispatch ID, decision ID, scope ID, reviewer ID, artifacts, and findings. Server-owned registry data overwrites caller-supplied owner, model, capability, and evidence-route metadata. A changed artifact, missing artifact citation, replay into another scope, unregistered reviewer, reused owner or wallet, or invalid signature is rejected.
 
 ## Reviewer reliability boundary
 

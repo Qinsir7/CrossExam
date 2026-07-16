@@ -39,7 +39,38 @@ because it returns an x402 payment challenge: it must explicitly implement this
 signed callback protocol. This prevents a purchased market-data response from
 being mislabeled as an independently signed verdict.
 
-## 3. Signed review callback
+## 3. Ordinary paid evidence sources
+
+CrossExam can also procure from an ordinary synchronous JSON API without asking
+the source to implement the callback contract. Register it separately with
+`"procurementProtocol":"PAID_EVIDENCE_V1"` and the explicit conservative
+`"responseAdapter":"OPAQUE_JSON_V1"`:
+
+```json
+{
+  "id": "depth-btc",
+  "displayName": "DepthBTC execution liquidity",
+  "ownerId": "mucvan-depth-btc",
+  "modelFamily": "external-paid-api",
+  "evidenceRoutes": ["btc-order-book"],
+  "capabilities": ["execution liquidity"],
+  "wallet": "0x<known-provider-payment-recipient>",
+  "status": "ACTIVE",
+  "procurementEndpoint": "https://provider.example/api/depth-btc",
+  "procurementProtocol": "PAID_EVIDENCE_V1",
+  "responseAdapter": "OPAQUE_JSON_V1",
+  "evidenceRequestBody": {}
+}
+```
+
+CrossExam retains a bounded raw JSON response, its keccak-256 hash, request
+hash, settlement transaction, asset, amount and observation time. The opaque
+adapter makes no semantic claim about that response; it emits
+`INSUFFICIENT_EVIDENCE` and therefore holds the action until a source-specific
+deterministic interpreter or a signed reviewer is available. Its final record
+is `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`.
+
+## 4. Signed review callback
 
 After independent work, POST the delivery to the callback URL supplied by CrossExam. Its EIP-191 signature binds the job dispatch ID, decision ID, scope ID, reviewer ID, artifacts and findings. Each artifact carries a keccak-256 `contentHash`; every finding cites one or more artifact IDs. The server verifies the registered wallet, content hashes, scope coverage, and reviewer identity before accepting it.
 

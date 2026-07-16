@@ -23,5 +23,6 @@ const result = await new ReviewJobWorker(store, provider, {
   maxAttempts: config.procurementMaxAttempts,
   retryBaseMs: config.procurementRetryBaseMs,
   dispatchTimeoutMs: config.procurementDispatchTimeoutMs,
+  registry: config.reviewerRegistry,
 }).runOnce()
 console.log(JSON.stringify({ worker: 'crossexam-procurement', ...result }))

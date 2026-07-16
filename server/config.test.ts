@@ -68,6 +68,13 @@ describe('loadX402ServerConfig', () => {
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: withProtocol }).reviewerRegistry['reviewer-1'].procurementProtocol).toBe('CROSSEXAM_SIGNED_CALLBACK_V1')
   })
 
+  it('accepts an explicitly bounded ordinary JSON evidence source without upgrading it to a reviewer callback', () => {
+    const evidenceSource = '[{"id":"depth","displayName":"Depth","ownerId":"depth-owner","modelFamily":"external-api","evidenceRoutes":["order-book"],"capabilities":["execution liquidity"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://depth.example/api","procurementProtocol":"PAID_EVIDENCE_V1","responseAdapter":"OPAQUE_JSON_V1","evidenceRequestBody":{}}]'
+    const source = loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: evidenceSource }).reviewerRegistry.depth
+    expect(source.procurementProtocol).toBe('PAID_EVIDENCE_V1')
+    expect(source.responseAdapter).toBe('OPAQUE_JSON_V1')
+  })
+
   it('rejects duplicate reviewer wallet bindings in the server-owned registry', () => {
     const registry = '[{"id":"reviewer-1","displayName":"One","ownerId":"owner-1","modelFamily":"model-1","evidenceRoutes":["a"],"capabilities":["source verification"],"wallet":"0x2222222222222222222222222222222222222222"},{"id":"reviewer-2","displayName":"Two","ownerId":"owner-2","modelFamily":"model-2","evidenceRoutes":["b"],"capabilities":["adversarial research"],"wallet":"0x2222222222222222222222222222222222222222"}]'
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: registry })).toThrow('duplicate')

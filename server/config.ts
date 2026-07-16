@@ -104,14 +104,19 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
     const wallet = typeof candidate.wallet === 'string' ? candidate.wallet : ''
     const procurementEndpoint = typeof candidate.procurementEndpoint === 'string' ? candidate.procurementEndpoint.trim() : undefined
     const procurementProtocol = candidate.procurementProtocol
+    const responseAdapter = candidate.responseAdapter
+    const evidenceRequestBody = candidate.evidenceRequestBody
     const status = candidate.status === undefined ? 'ACTIVE' : candidate.status
     const evidenceRoutes = candidate.evidenceRoutes
     const capabilities = candidate.capabilities
     if (!id || !displayName || !ownerId || !modelFamily
       || !/^0x[a-fA-F0-9]{40}$/.test(wallet)
       || (procurementEndpoint !== undefined && !/^https:\/\/.+/.test(procurementEndpoint))
-      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1')
+      || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1')
       || (procurementEndpoint === undefined && procurementProtocol !== undefined)
+      || (procurementProtocol === 'CROSSEXAM_SIGNED_CALLBACK_V1' && responseAdapter !== undefined)
+      || (procurementProtocol === 'PAID_EVIDENCE_V1' && responseAdapter !== 'OPAQUE_JSON_V1')
+      || (evidenceRequestBody !== undefined && (!evidenceRequestBody || Array.isArray(evidenceRequestBody) || typeof evidenceRequestBody !== 'object'))
       || (status !== 'ACTIVE' && status !== 'SUSPENDED')
       || !Array.isArray(evidenceRoutes) || !evidenceRoutes.length || evidenceRoutes.some((route) => typeof route !== 'string' || !route.trim())
       || !Array.isArray(capabilities) || !capabilities.length || capabilities.some((capability) => typeof capability !== 'string' || !capability.trim())
@@ -127,7 +132,9 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
       wallet: wallet as Address,
       status,
       ...(procurementEndpoint ? { procurementEndpoint } : {}),
-      ...(procurementEndpoint ? { procurementProtocol: 'CROSSEXAM_SIGNED_CALLBACK_V1' as const } : {}),
+      ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { responseAdapter: 'OPAQUE_JSON_V1' as const } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' && evidenceRequestBody ? { evidenceRequestBody: evidenceRequestBody as Record<string, unknown> } : {}),
       evidenceRoutes: evidenceRoutes as string[],
       capabilities: capabilities as string[],
     }

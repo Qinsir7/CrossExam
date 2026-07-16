@@ -29,4 +29,10 @@ describe('createReviewPlan', () => {
 
     expect(plan.estimatedTotalUsdt).toBeLessThan(decision.valueAtRiskUsd * 0.01)
   })
+
+  it('uses the two independent evidence routes required for a pre-trade onchain review', () => {
+    const plan = createReviewPlan({ ...decision, reviewProfile: 'PRETRADE_ONCHAIN' })
+    expect(plan.scopes.map((scope) => scope.requiredCapability)).toEqual(['execution liquidity', 'contract token risk'])
+    expect(plan.scopes).toHaveLength(2)
+  })
 })

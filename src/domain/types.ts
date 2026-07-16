@@ -16,6 +16,9 @@ export type ActionBinding = {
   parametersHash: string
 }
 
+/** A product-level route that determines which independent evidence scopes buy. */
+export type ReviewProfile = 'GENERAL' | 'PRETRADE_ONCHAIN'
+
 export type Reviewer = {
   id: string
   name: string
@@ -45,6 +48,7 @@ export type DecisionPackage = {
   valueAtRiskUsd: number
   claims: DecisionClaim[]
   actionBinding?: ActionBinding
+  reviewProfile?: ReviewProfile
 }
 
 export type ExaminedClaim = {

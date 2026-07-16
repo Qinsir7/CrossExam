@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { keccak256, stringToHex } from 'viem'
 import { createReviewPlan, type ReviewPlan } from '../src/domain/reviewPlan'
 import type { DecisionPackage } from '../src/domain/types'
-import { acceptReviewDelivery, stageReviewPlan, type ReviewDispatch } from '../src/network/reviewNetwork'
+import { acceptReviewDelivery, stageReviewPlan, type PaidEvidenceProvenance, type ReviewDelivery, type ReviewDispatch } from '../src/network/reviewNetwork'
 import { createBlindReviewTask, type BlindReviewTask } from '../src/network/reviewTask'
 import { verifyDeliveryAttestation, type SignedReviewDelivery } from './deliveryAttestation'
 import { normalizeReviewJobDispatch, reviewerWalletRegistry, type ReviewerRegistry } from './reviewerRegistry'
@@ -21,12 +22,19 @@ export type ReviewProcurement = {
   nextAttemptAt?: string
   failure?: string
   payment?: { network: 'eip155:196'; asset: string; amountAtomic: string; transaction: string }
+  evidence?: {
+    observedAt: string
+    requestHash: `0x${string}`
+    responseHash: `0x${string}`
+    /** Owner-visible bounded raw response retained for reproducible parsing. */
+    responseBody: string
+  }
 }
 
 export type ReviewJobEvent = {
   id: string
   occurredAt: string
-  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
+  type: 'JOB_CREATED' | 'JOB_FUNDING_AUTHORIZED' | 'REVIEW_REQUEST_DISPATCHING' | 'REVIEW_REQUESTED' | 'REVIEW_REQUEST_FAILED' | 'REVIEW_REQUEST_EXHAUSTED' | 'REVIEW_DELIVERED' | 'PAID_EVIDENCE_RECEIVED' | 'JOB_READY_FOR_ASSURANCE' | 'JOB_CANCELLED'
   scopeId?: string
   detail: string
 }
@@ -65,6 +73,7 @@ function assertDecision(decision: DecisionPackage) {
     || !decision.title?.trim()
     || !Number.isFinite(decision.valueAtRiskUsd) || decision.valueAtRiskUsd <= 0
     || !Array.isArray(decision.claims) || decision.claims.length === 0 || decision.claims.length > 64
+    || (decision.reviewProfile !== undefined && decision.reviewProfile !== 'GENERAL' && decision.reviewProfile !== 'PRETRADE_ONCHAIN')
     || new Set(decision.claims.map((claim) => claim.id)).size !== decision.claims.length
     || decision.claims.some((claim) => !claim.id.trim() || !claim.statement.trim() || !Number.isFinite(claim.materiality) || claim.materiality < 0 || claim.materiality > 1)) {
     throw new Error('Review job requires a valid, bounded Decision Package.')
@@ -186,6 +195,10 @@ export async function recordReviewDelivery(job: ReviewJob, scopeId: string, deli
   if (job.status !== 'AWAITING_DELIVERIES') throw new Error('This review job is not accepting deliveries.')
   const procurement = job.procurements.find((item) => item.scopeId === scopeId)
   if (!procurement || procurement.status !== 'REQUESTED') throw new Error('A review delivery is accepted only after its external procurement is recorded.')
+  const assignment = job.dispatch.assignments.find((item) => item.scopeId === scopeId)
+  if (!assignment?.reviewer || registry[assignment.reviewer.id]?.procurementProtocol === 'PAID_EVIDENCE_V1') {
+    throw new Error('Paid evidence sources cannot be represented as reviewer-signed deliveries.')
+  }
   await verifyDeliveryAttestation({
     dispatchId: job.dispatch.id,
     decisionId: job.decision.id,
@@ -201,6 +214,48 @@ export async function recordReviewDelivery(job: ReviewJob, scopeId: string, deli
   const delivered = revise(job, now, { dispatch: normalized, status }, event('REVIEW_DELIVERED', 'Signed reviewer delivery accepted with content-addressed evidence.', now, scopeId))
   return status === 'READY_FOR_ASSURANCE'
     ? { ...delivered, events: [...delivered.events, event('JOB_READY_FOR_ASSURANCE', 'Every independent review scope is delivered; the job can now be purchased for network assurance issuance.', now)] }
+    : delivered
+}
+
+/** Stores a paid ordinary-A2MCP response as evidence, never as a reviewer signature. */
+export function recordPaidEvidenceDelivery(
+  job: ReviewJob,
+  scopeId: string,
+  delivery: ReviewDelivery,
+  provenance: PaidEvidenceProvenance,
+  responseBody: string,
+  registry: ReviewerRegistry,
+  now = new Date().toISOString(),
+): ReviewJob {
+  if (job.status !== 'AWAITING_DELIVERIES') throw new Error('This review job is not accepting paid evidence.')
+  const procurement = job.procurements.find((item) => item.scopeId === scopeId)
+  const assignment = job.dispatch.assignments.find((item) => item.scopeId === scopeId)
+  if (!procurement || procurement.status !== 'REQUESTED' || !procurement.payment || !assignment?.reviewer) {
+    throw new Error('Paid evidence is accepted only after a settled external procurement.')
+  }
+  const source = registry[assignment.reviewer.id]
+  if (!source || source.procurementProtocol !== 'PAID_EVIDENCE_V1' || delivery.reviewerId !== source.id || delivery.provenance?.kind !== 'X402_PAID_EVIDENCE_V1') {
+    throw new Error('Paid evidence provenance does not match the configured external evidence source.')
+  }
+  if (provenance.sourceId !== source.id || provenance.endpoint !== source.procurementEndpoint
+    || provenance.requestHash !== delivery.provenance.requestHash || provenance.responseHash !== delivery.provenance.responseHash
+    || provenance.payment.transaction !== procurement.payment.transaction || provenance.payment.asset !== procurement.payment.asset
+    || provenance.payment.amountAtomic !== procurement.payment.amountAtomic) {
+    throw new Error('Paid evidence provenance does not match the persisted settlement.')
+  }
+  if (Buffer.byteLength(responseBody, 'utf8') > 65_536) throw new Error('Paid evidence response exceeds the retained evidence limit.')
+  if (keccak256(stringToHex(responseBody)) !== provenance.responseHash) {
+    throw new Error('Paid evidence response hash does not match the retained response body.')
+  }
+  const dispatch = acceptReviewDelivery(job.plan, job.dispatch, scopeId, delivery)
+  const normalized = normalizeReviewJobDispatch(job.decision, dispatch, registry)
+  const status = jobStatus(normalized, job.procurements)
+  const procurements = job.procurements.map((item) => item.scopeId === scopeId
+    ? { ...item, evidence: { observedAt: provenance.observedAt, requestHash: provenance.requestHash, responseHash: provenance.responseHash, responseBody } }
+    : item)
+  const delivered = revise(job, now, { dispatch: normalized, procurements, status }, event('PAID_EVIDENCE_RECEIVED', 'Paid external evidence was recorded with request, response, and settlement hashes; it is not reviewer-signed.', now, scopeId))
+  return status === 'READY_FOR_ASSURANCE'
+    ? { ...delivered, events: [...delivered.events, event('JOB_READY_FOR_ASSURANCE', 'Every review scope is complete; provenance-qualified assurance can now be issued.', now)] }
     : delivered
 }
 

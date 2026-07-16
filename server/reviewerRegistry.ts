@@ -9,8 +9,12 @@ export type RegisteredReviewer = ReviewerProfile & {
   status: 'ACTIVE' | 'SUSPENDED'
   /** HTTPS x402 endpoint that accepts CrossExam blind-review procurement. */
   procurementEndpoint?: string
-  /** The only protocol allowed to produce a signed NETWORK_VERIFIED delivery. */
-  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1'
+  /** Signed callbacks are network-verifiable; paid evidence is intentionally weaker. */
+  procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1'
+  /** Controls a server-owned, deterministic normalizer for a paid response. */
+  responseAdapter?: 'OPAQUE_JSON_V1'
+  /** Static JSON body for ordinary HTTP evidence APIs that do not accept a review task. */
+  evidenceRequestBody?: Record<string, unknown>
 }
 
 export type ReviewerRegistry = Record<string, RegisteredReviewer>
@@ -90,6 +94,9 @@ export function normalizeNetworkVerifiedDispatch(
   const normalized = normalizeReviewJobDispatch(decision, dispatch, registry)
   if (normalized.assignments.some((assignment) => !assignment.reviewer || !assignment.delivery)) {
     throw new Error('Network-verified dispatch has an incomplete review scope.')
+  }
+  if (normalized.assignments.some((assignment) => registry[assignment.reviewer!.id]?.procurementProtocol === 'PAID_EVIDENCE_V1')) {
+    throw new Error('A paid evidence source cannot be represented as a network-verified reviewer.')
   }
   return normalized
 }
