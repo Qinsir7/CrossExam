@@ -93,7 +93,10 @@ export class ReviewJobClient {
       typeof window === 'undefined' ? undefined : window.location.origin,
     )
     this.usesPublicProxy = this.baseUrl.endsWith('/review-service')
-    this.fetchImpl = options.fetchImpl ?? fetch
+    // Never store the browser's native fetch as an unbound method. Calling a
+    // detached Window.fetch through `this.fetchImpl(...)` gives it the client
+    // instance as `this` and Chromium rejects it with "Illegal invocation".
+    this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
   }
 
   private endpoint(path: string) {

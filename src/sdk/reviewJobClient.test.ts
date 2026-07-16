@@ -17,6 +17,22 @@ describe('ReviewJobClient', () => {
     expect(fetchImpl).toHaveBeenCalledWith('https://www.cross-exam.xyz/review-service/v1/review-jobs', expect.objectContaining({ method: 'POST' }))
   })
 
+  it('calls the native fetch through globalThis instead of with the client instance as its receiver', async () => {
+    const originalFetch = globalThis.fetch
+    const receiverCheckedFetch = vi.fn(function (this: typeof globalThis, _input: RequestInfo | URL, _init?: RequestInit) {
+      if (this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(new Response(JSON.stringify({ id: 'rj_1', accessToken: 'rjv_owner' }), { status: 201 }))
+    }) as typeof fetch
+    globalThis.fetch = receiverCheckedFetch
+    try {
+      const client = new ReviewJobClient({ baseUrl: 'https://api.example' })
+      await expect(client.create({ id: 'DP-1', title: 'Review this', valueAtRiskUsd: 100, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.8 }] })).resolves.toMatchObject({ id: 'rj_1' })
+      expect(receiverCheckedFetch).toHaveBeenCalledTimes(1)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('sends a decision package to the real job endpoint and preserves the returned owner capability', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'rj_11111111-1111-4111-8111-111111111111', accessToken: 'rjv_capability-00000000000000000000000000000000' }), { status: 201 }))
     const client = new ReviewJobClient({ baseUrl: 'https://api.example/', fetchImpl })
