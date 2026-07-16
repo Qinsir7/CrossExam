@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { ReviewJobClient, resolveCrossExamApiUrl } from './reviewJobClient'
 
 describe('ReviewJobClient', () => {
-  it('falls back from the public web origin to the public API when no Vercel variable was built', () => {
-    expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://api.cross-exam.xyz')
-    expect(resolveCrossExamApiUrl('https://stale-preview.example/', 'https://www.cross-exam.xyz')).toBe('https://api.cross-exam.xyz')
+  it('uses the same-origin Vercel API proxy for public web deployments', () => {
+    expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/crossexam-api')
+    expect(resolveCrossExamApiUrl('https://stale-preview.example/', 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/crossexam-api')
+    expect(resolveCrossExamApiUrl(undefined, 'https://cross-exam-git-main-qinsir7.vercel.app')).toBe('https://cross-exam-git-main-qinsir7.vercel.app/crossexam-api')
     expect(resolveCrossExamApiUrl('https://configured.example/', 'http://localhost:5173')).toBe('https://configured.example')
     expect(resolveCrossExamApiUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:5173')
   })

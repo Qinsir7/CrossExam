@@ -63,10 +63,10 @@ export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: s
     try {
       const origin = new URL(browserOrigin)
       const host = origin.hostname.toLowerCase()
-      // The canonical public web domains always use the canonical API. This
-      // deliberately wins over a stale Vercel build variable so production
-      // cannot be bricked by an old preview/development endpoint.
-      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz') return 'https://api.cross-exam.xyz'
+      // The public web app reaches the API through Vercel's same-origin
+      // rewrite. This eliminates browser CORS/extension interference while
+      // Vercel forwards the request to the canonical API over HTTPS.
+      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz' || host.endsWith('.vercel.app')) return `${origin.origin}/crossexam-api`
     } catch {
       // A configured URL below can still support unusual local environments.
     }
