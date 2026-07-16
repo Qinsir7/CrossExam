@@ -16,6 +16,21 @@ const record = {
 }
 
 describe('CrossExamClient', () => {
+  it('preserves the native fetch receiver when no custom fetcher is supplied', async () => {
+    const originalFetch = globalThis.fetch
+    const receiverCheckedFetch = vi.fn(function (this: typeof globalThis, _input: RequestInfo | URL, _init?: RequestInit) {
+      if (this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(new Response(JSON.stringify(record), { status: 200 }))
+    }) as typeof fetch
+    globalThis.fetch = receiverCheckedFetch
+    try {
+      const client = new CrossExamClient({ baseUrl: 'https://cross.exam' })
+      await expect(client.getRecord({ recordId: record.recordId, token: 'darv_token' })).resolves.toMatchObject({ recordId: record.recordId })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('retrieves a protected record using its bearer token', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(record), { status: 200 }))
     const client = new CrossExamClient({ baseUrl: 'https://cross.exam/', fetcher })

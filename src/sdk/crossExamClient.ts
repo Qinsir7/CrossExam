@@ -74,7 +74,7 @@ export class CrossExamClient {
 
   constructor(options: { baseUrl: string; fetcher?: typeof fetch }) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '')
-    this.fetcher = options.fetcher ?? fetch
+    this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init))
   }
 
   async getRecord(access: RecordAccess): Promise<RemoteDecisionAssuranceRecord> {

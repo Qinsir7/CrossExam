@@ -120,7 +120,7 @@ export class X402ReviewProvider implements ExternalReviewProvider {
       policies: [(_version, requirements) => requirements.filter((requirement) => allowedRequirement(requirement, this.options))],
     })
     this.http = new x402HTTPClient(core)
-    this.fetchImpl = options.fetchImpl ?? fetch
+    this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
   }
 
   async requestReview(input: Parameters<ExternalReviewProvider['requestReview']>[0]): Promise<Awaited<ReturnType<ExternalReviewProvider['requestReview']>>>
