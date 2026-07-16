@@ -114,6 +114,7 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
     const procurementEndpoint = typeof candidate.procurementEndpoint === 'string' ? candidate.procurementEndpoint.trim() : undefined
     const procurementProtocol = candidate.procurementProtocol
     const responseAdapter = candidate.responseAdapter
+    const paymentRecipient = typeof candidate.paymentRecipient === 'string' ? candidate.paymentRecipient : undefined
     const evidenceRequestBody = candidate.evidenceRequestBody
     const status = candidate.status === undefined ? 'ACTIVE' : candidate.status
     const evidenceRoutes = candidate.evidenceRoutes
@@ -124,7 +125,9 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
       || (procurementEndpoint !== undefined && procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && procurementProtocol !== 'PAID_EVIDENCE_V1')
       || (procurementEndpoint === undefined && procurementProtocol !== undefined)
       || (procurementProtocol === 'CROSSEXAM_SIGNED_CALLBACK_V1' && responseAdapter !== undefined)
-      || (procurementProtocol === 'PAID_EVIDENCE_V1' && responseAdapter !== 'OPAQUE_JSON_V1')
+      || (procurementProtocol === 'PAID_EVIDENCE_V1' && responseAdapter !== 'OPAQUE_JSON_V1' && responseAdapter !== 'CERTIK_TOKEN_SCAN_V1')
+      || (procurementProtocol === 'PAID_EVIDENCE_V1' && (!paymentRecipient || !/^0x[a-fA-F0-9]{40}$/.test(paymentRecipient)))
+      || (procurementProtocol !== 'PAID_EVIDENCE_V1' && paymentRecipient !== undefined)
       || (evidenceRequestBody !== undefined && (!evidenceRequestBody || Array.isArray(evidenceRequestBody) || typeof evidenceRequestBody !== 'object'))
       || (status !== 'ACTIVE' && status !== 'SUSPENDED')
       || !Array.isArray(evidenceRoutes) || !evidenceRoutes.length || evidenceRoutes.some((route) => typeof route !== 'string' || !route.trim())
@@ -142,7 +145,8 @@ function reviewerRegistry(value: string | undefined): ReviewerRegistry {
       status,
       ...(procurementEndpoint ? { procurementEndpoint } : {}),
       ...(procurementEndpoint ? { procurementProtocol: procurementProtocol as 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1' } : {}),
-      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { responseAdapter: 'OPAQUE_JSON_V1' as const } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { responseAdapter: responseAdapter as 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1' } : {}),
+      ...(procurementProtocol === 'PAID_EVIDENCE_V1' ? { paymentRecipient: paymentRecipient as Address } : {}),
       ...(procurementProtocol === 'PAID_EVIDENCE_V1' && evidenceRequestBody ? { evidenceRequestBody: evidenceRequestBody as Record<string, unknown> } : {}),
       evidenceRoutes: evidenceRoutes as string[],
       capabilities: capabilities as string[],

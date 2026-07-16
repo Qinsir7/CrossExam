@@ -12,7 +12,9 @@ export type RegisteredReviewer = ReviewerProfile & {
   /** Signed callbacks are network-verifiable; paid evidence is intentionally weaker. */
   procurementProtocol?: 'CROSSEXAM_SIGNED_CALLBACK_V1' | 'PAID_EVIDENCE_V1'
   /** Controls a server-owned, deterministic normalizer for a paid response. */
-  responseAdapter?: 'OPAQUE_JSON_V1'
+  responseAdapter?: 'OPAQUE_JSON_V1' | 'CERTIK_TOKEN_SCAN_V1'
+  /** Immutable x402 merchant recipient expected from a paid-evidence source. */
+  paymentRecipient?: Address
   /** Static JSON body for ordinary HTTP evidence APIs that do not accept a review task. */
   evidenceRequestBody?: Record<string, unknown>
 }

@@ -7,6 +7,7 @@ import { keccak256, stringToHex, type Hex } from 'viem'
 import type { ExternalReviewProvider } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
 import { evidenceArtifactHash } from './evidenceIntegrity'
+import type { RegisteredReviewer } from './reviewerRegistry'
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
@@ -28,12 +29,18 @@ function allowedRequirement(requirement: PaymentRequirements, options: X402Revie
     && BigInt(requirement.amount) <= options.maxPerScopeAtomic
 }
 
-function selectAllowedRequirements(payment: PaymentRequired, options: X402ReviewProviderOptions) {
+function selectAllowedRequirements(payment: PaymentRequired, options: X402ReviewProviderOptions, reviewer: RegisteredReviewer) {
   const allowed = payment.accepts.filter((requirement) => allowedRequirement(requirement, options))
   if (!allowed.length) {
     throw new Error('External reviewer payment requirements violate the X Layer procurement spend policy.')
   }
-  return allowed
+  if (reviewer.procurementProtocol !== 'PAID_EVIDENCE_V1') return allowed
+  const recipient = reviewer.paymentRecipient?.toLowerCase()
+  const bound = recipient ? allowed.filter((requirement) => requirement.payTo.toLowerCase() === recipient) : []
+  if (!bound.length) {
+    throw new Error('Paid evidence source payment recipient does not match its server-owned registry binding.')
+  }
+  return bound
 }
 
 function callbackUrl(baseUrl: string, jobId: string, scopeId: string) {
@@ -51,6 +58,46 @@ function boundedResponse(text: string) {
     throw new Error('Paid evidence source must return a JSON response for the OPAQUE_JSON_V1 adapter.')
   }
   return text
+}
+
+type EvidenceRequest = { url: string; method: 'GET' | 'POST'; body?: string }
+
+function evidenceRequest(reviewer: RegisteredReviewer, input: Parameters<ExternalReviewProvider['requestReview']>[0]): EvidenceRequest {
+  if (reviewer.responseAdapter === 'OPAQUE_JSON_V1') {
+    return { url: reviewer.procurementEndpoint!, method: 'POST', body: JSON.stringify(reviewer.evidenceRequestBody ?? {}) }
+  }
+  if (reviewer.responseAdapter === 'CERTIK_TOKEN_SCAN_V1') {
+    const target = input.task.actionBinding?.target ?? ''
+    const matched = /^(?:token|contract):([a-z0-9_-]+):(0x[a-fA-F0-9]{40})$/.exec(target)
+    if (!matched) throw new Error('CertiK Token Scan requires actionBinding.target formatted as token:<chain>:0x<contract-address>.')
+    const url = new URL(reviewer.procurementEndpoint!)
+    url.searchParams.set('chain', matched[1])
+    url.searchParams.set('address', matched[2])
+    return { url: url.toString(), method: 'GET' }
+  }
+  throw new Error('External evidence source has no approved response adapter.')
+}
+
+function certikFindings(input: Parameters<ExternalReviewProvider['requestReview']>[0], reviewer: RegisteredReviewer, response: Record<string, unknown>, artifactId: string) {
+  const summary = response.summary && typeof response.summary === 'object' ? response.summary as Record<string, unknown> : {}
+  const score = typeof summary.score === 'number' ? summary.score : Number(summary.score)
+  const alertCount = typeof summary.alert_count === 'number' ? summary.alert_count : Number(summary.alert_count)
+  const alertLevel = typeof summary.highest_alert_level === 'string' ? summary.highest_alert_level.toUpperCase() : ''
+  const contradiction = alertLevel === 'CRITICAL' || alertLevel === 'MAJOR' || (Number.isFinite(score) && score < 50)
+  const support = !contradiction && Number.isFinite(score) && score >= 70 && Number.isFinite(alertCount) && alertCount === 0
+  const verdict = contradiction ? 'CONTRADICTS' as const : support ? 'SUPPORTS' as const : 'INSUFFICIENT_EVIDENCE' as const
+  const explanation = Number.isFinite(score)
+    ? `CertiK Token Scan reported score ${score}${Number.isFinite(alertCount) ? `, ${alertCount} alert(s)` : ''}${alertLevel ? `, highest alert ${alertLevel}` : ''}.`
+    : 'CertiK Token Scan returned no normalized score, so the source cannot resolve this claim.'
+  return input.task.claims.map((claim) => ({
+    claimId: claim.id,
+    reviewerId: reviewer.id,
+    verdict,
+    confidence: contradiction ? 0.9 : support ? 0.75 : 1,
+    materiality: claim.materiality,
+    evidence: explanation,
+    evidenceArtifactIds: [artifactId],
+  }))
 }
 
 /**
@@ -83,8 +130,8 @@ export class X402ReviewProvider implements ExternalReviewProvider {
       || (reviewer.procurementProtocol !== 'CROSSEXAM_SIGNED_CALLBACK_V1' && reviewer.procurementProtocol !== 'PAID_EVIDENCE_V1')) {
       throw new Error('Matched source has no approved external procurement endpoint.')
     }
-    const body = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1'
-      ? JSON.stringify(reviewer.evidenceRequestBody ?? {})
+    const externalRequest = reviewer.procurementProtocol === 'PAID_EVIDENCE_V1'
+      ? evidenceRequest(reviewer, input)
       : JSON.stringify({
         schemaVersion: '0.1',
         jobId: input.jobId,
@@ -92,18 +139,21 @@ export class X402ReviewProvider implements ExternalReviewProvider {
         task: input.task,
         callback: { url: callbackUrl(this.options.callbackBaseUrl, input.jobId, input.scopeId), attestation: 'EIP191 delivery required' },
       })
-    const headers = { 'content-type': 'application/json', 'idempotency-key': input.idempotencyKey }
-    const initial = await this.fetchImpl(reviewer.procurementEndpoint, { method: 'POST', headers, body, redirect: 'error' })
+    const request = typeof externalRequest === 'string'
+      ? { url: reviewer.procurementEndpoint, method: 'POST' as const, body: externalRequest }
+      : externalRequest
+    const headers = { ...(request.body ? { 'content-type': 'application/json' } : {}), 'idempotency-key': input.idempotencyKey }
+    const initial = await this.fetchImpl(request.url, { method: request.method, headers, ...(request.body ? { body: request.body } : {}), redirect: 'error' })
     if (initial.status !== 402) {
       throw new Error(`External reviewer must return x402 Payment Required before accepting work (received ${initial.status}).`)
     }
     const required = this.http.getPaymentRequiredResponse((name) => initial.headers.get(name))
-    const allowed = selectAllowedRequirements(required, this.options)
+    const allowed = selectAllowedRequirements(required, this.options, reviewer)
     const payment = await this.http.createPaymentPayload({ ...required, accepts: allowed })
-    const paid = await this.fetchImpl(reviewer.procurementEndpoint, {
-      method: 'POST',
+    const paid = await this.fetchImpl(request.url, {
+      method: request.method,
       headers: { ...headers, ...this.http.encodePaymentSignatureHeader(payment) },
-      body,
+      ...(request.body ? { body: request.body } : {}),
       redirect: 'error',
     })
     if (!paid.ok) throw new Error(`External reviewer rejected the paid procurement request (${paid.status}).`)
@@ -123,15 +173,14 @@ export class X402ReviewProvider implements ExternalReviewProvider {
         transaction: settlement.transaction,
     } as const
     if (reviewer.procurementProtocol === 'PAID_EVIDENCE_V1') {
-      if (reviewer.responseAdapter !== 'OPAQUE_JSON_V1') throw new Error('External evidence source has no approved response adapter.')
       const responseBody = boundedResponse(await paid.text())
       const observedAt = new Date().toISOString()
-      const requestHash = keccak256(stringToHex(body))
+      const requestHash = keccak256(stringToHex(JSON.stringify({ method: request.method, url: request.url, ...(request.body ? { body: request.body } : {}) })))
       const responseHash = keccak256(stringToHex(responseBody))
       const artifact = {
         id: `paid-response-${input.scopeId}`,
         kind: 'TOOL_OUTPUT' as const,
-        locator: reviewer.procurementEndpoint,
+        locator: request.url,
         observedAt,
         excerpt: responseBody,
       }
@@ -139,15 +188,17 @@ export class X402ReviewProvider implements ExternalReviewProvider {
         reviewerId: reviewer.id,
         deliveredAt: observedAt,
         artifacts: [{ ...artifact, contentHash: evidenceArtifactHash(artifact) }],
-        findings: input.task.claims.map((claim) => ({
-          claimId: claim.id,
-          reviewerId: reviewer.id,
-          verdict: 'INSUFFICIENT_EVIDENCE' as const,
-          confidence: 1,
-          materiality: claim.materiality,
-          evidence: `CrossExam retained the paid ${reviewer.displayName} response, but its OPAQUE_JSON_V1 adapter does not infer a provider verdict. The action remains unresolved until a source-specific deterministic adapter or signed reviewer delivery is available.`,
-          evidenceArtifactIds: [artifact.id],
-        })),
+        findings: reviewer.responseAdapter === 'CERTIK_TOKEN_SCAN_V1'
+          ? certikFindings(input, reviewer, JSON.parse(responseBody) as Record<string, unknown>, artifact.id)
+          : input.task.claims.map((claim) => ({
+            claimId: claim.id,
+            reviewerId: reviewer.id,
+            verdict: 'INSUFFICIENT_EVIDENCE' as const,
+            confidence: 1,
+            materiality: claim.materiality,
+            evidence: `CrossExam retained the paid ${reviewer.displayName} response, but its OPAQUE_JSON_V1 adapter does not infer a provider verdict. The action remains unresolved until a source-specific deterministic adapter or signed reviewer delivery is available.`,
+            evidenceArtifactIds: [artifact.id],
+          })),
         provenance: {
           kind: 'X402_PAID_EVIDENCE_V1' as const,
           sourceId: reviewer.id,

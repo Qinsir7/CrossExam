@@ -69,10 +69,20 @@ describe('loadX402ServerConfig', () => {
   })
 
   it('accepts an explicitly bounded ordinary JSON evidence source without upgrading it to a reviewer callback', () => {
-    const evidenceSource = '[{"id":"depth","displayName":"Depth","ownerId":"depth-owner","modelFamily":"external-api","evidenceRoutes":["order-book"],"capabilities":["execution liquidity"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://depth.example/api","procurementProtocol":"PAID_EVIDENCE_V1","responseAdapter":"OPAQUE_JSON_V1","evidenceRequestBody":{}}]'
+    const evidenceSource = '[{"id":"depth","displayName":"Depth","ownerId":"depth-owner","modelFamily":"external-api","evidenceRoutes":["order-book"],"capabilities":["execution liquidity"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://depth.example/api","procurementProtocol":"PAID_EVIDENCE_V1","responseAdapter":"OPAQUE_JSON_V1","paymentRecipient":"0x3333333333333333333333333333333333333333","evidenceRequestBody":{}}]'
     const source = loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: evidenceSource }).reviewerRegistry.depth
     expect(source.procurementProtocol).toBe('PAID_EVIDENCE_V1')
     expect(source.responseAdapter).toBe('OPAQUE_JSON_V1')
+  })
+
+  it('accepts the deterministic CertiK token-scan evidence adapter', () => {
+    const sourceJson = '[{"id":"certik","displayName":"CertiK","ownerId":"certik","modelFamily":"security-api","evidenceRoutes":["token-scan"],"capabilities":["contract token risk"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://skills-for-okx.certik.com/api/token-scan","procurementProtocol":"PAID_EVIDENCE_V1","responseAdapter":"CERTIK_TOKEN_SCAN_V1","paymentRecipient":"0x3333333333333333333333333333333333333333"}]'
+    expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: sourceJson }).reviewerRegistry.certik.responseAdapter).toBe('CERTIK_TOKEN_SCAN_V1')
+  })
+
+  it('refuses a paid evidence source without an immutable payment recipient binding', () => {
+    const sourceJson = '[{"id":"certik","displayName":"CertiK","ownerId":"certik","modelFamily":"security-api","evidenceRoutes":["token-scan"],"capabilities":["contract token risk"],"wallet":"0x2222222222222222222222222222222222222222","procurementEndpoint":"https://skills-for-okx.certik.com/api/token-scan","procurementProtocol":"PAID_EVIDENCE_V1","responseAdapter":"CERTIK_TOKEN_SCAN_V1"}]'
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_REVIEWER_REGISTRY: sourceJson })).toThrow('invalid or duplicate')
   })
 
   it('rejects duplicate reviewer wallet bindings in the server-owned registry', () => {

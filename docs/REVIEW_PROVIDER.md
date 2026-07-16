@@ -59,6 +59,7 @@ the source to implement the callback contract. Register it separately with
   "procurementEndpoint": "https://provider.example/api/depth-btc",
   "procurementProtocol": "PAID_EVIDENCE_V1",
   "responseAdapter": "OPAQUE_JSON_V1",
+  "paymentRecipient": "0x<known-provider-payment-recipient>",
   "evidenceRequestBody": {}
 }
 ```
@@ -69,6 +70,17 @@ adapter makes no semantic claim about that response; it emits
 `INSUFFICIENT_EVIDENCE` and therefore holds the action until a source-specific
 deterministic interpreter or a signed reviewer is available. Its final record
 is `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`.
+
+`paymentRecipient` is mandatory for paid evidence. The worker compares it with
+the `payTo` address in the received x402 challenge before it creates a payment
+signature, so an endpoint or DNS compromise cannot redirect a permitted spend.
+
+`CERTIK_TOKEN_SCAN_V1` is a source-specific deterministic adapter for CertiK's
+`/api/token-scan` response. It issues a `GET` from an action target formatted
+as `token:<chain>:0x<contract>` (or `contract:<chain>:0x<contract>`), retains
+the full bounded JSON response, and treats a Critical/Major alert or score
+below 50 as `CONTRADICTS`; a score of at least 70 with zero alerts is
+`SUPPORTS`. All other response shapes remain `INSUFFICIENT_EVIDENCE`.
 
 ## 4. Signed review callback
 

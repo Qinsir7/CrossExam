@@ -1,4 +1,4 @@
-import type { DecisionPackage } from '../domain/types'
+import type { ActionBinding, DecisionPackage } from '../domain/types'
 import type { ReviewPlan, ReviewScope } from '../domain/reviewPlan'
 
 export type BlindReviewTask = {
@@ -7,6 +7,8 @@ export type BlindReviewTask = {
   decisionId: string
   scope: Pick<ReviewScope, 'id' | 'title' | 'objective' | 'requiredCapability'>
   claims: DecisionPackage['claims']
+  /** Exact target binding is necessary for tool-based pre-trade evidence, but not the origin recommendation. */
+  actionBinding?: ActionBinding
   instructions: string[]
   deliveryRequirements: {
     addressEveryClaim: true
@@ -40,6 +42,7 @@ export function createBlindReviewTask(decision: DecisionPackage, plan: ReviewPla
       requiredCapability: scope.requiredCapability,
     },
     claims,
+    ...(decision.actionBinding ? { actionBinding: decision.actionBinding } : {}),
     instructions: [
       'Independently investigate each claim before forming a conclusion.',
       'Report contradiction when evidence materially challenges a claim; do not optimize for agreement.',
