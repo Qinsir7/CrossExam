@@ -161,6 +161,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.json({
         service: 'crossexam-asp',
         x402: config.syncFacilitatorOnStart ? 'enabled' : 'disabled',
+        settlementRecovery: 'xlayer-receipt-v1',
         network: 'eip155:196',
         recordStore: 'enabled',
         procurementWorker,
