@@ -29,6 +29,14 @@ const recoveredCustomerSettlementAt = new Date('2026-07-16T14:39:39.000Z').getTi
 
 function procurementFailureCategory(failure?: string) {
   if (!failure) return undefined
+  if (/no approved external procurement endpoint/i.test(failure)) return 'PROVIDER_NOT_IN_WORKER_REGISTRY'
+  if (/requires worker-only API credentials/i.test(failure)) return 'MARKET_CREDENTIALS_MISSING'
+  if (/unsuccessful API envelope/i.test(failure)) return 'MARKET_API_REJECTED'
+  if (/no usable pool liquidity/i.test(failure)) return 'MARKET_DATA_EMPTY'
+  if (/neither a settlement nor an included-quota receipt/i.test(failure)) return 'COST_RECEIPT_MISSING'
+  if (/lacks a successful X Layer payment settlement/i.test(failure)) return 'SETTLEMENT_RECEIPT_MISSING'
+  if (/rejected the paid procurement request \((\d+)\)/i.test(failure)) return `PAID_REPLAY_HTTP_${/\((\d+)\)/.exec(failure)?.[1] ?? '4XX'}`
+  if (/Payment Required before accepting work \(received (\d+)\)/i.test(failure)) return `CHALLENGE_HTTP_${/received (\d+)/i.exec(failure)?.[1] ?? 'ERROR'}`
   if (/received 500|\(500\)/i.test(failure)) return 'PROVIDER_HTTP_500'
   if (/received 4\d\d|\(4\d\d\)/i.test(failure)) return 'PROVIDER_HTTP_4XX'
   if (/payment|settlement|x layer|spend policy/i.test(failure)) return 'PAYMENT_OR_POLICY'
@@ -204,8 +212,10 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
             fundingStatus: recoveredPayment.fundingStatus,
             procurements: recoveredPayment.procurements.map((procurement) => ({
               scopeId: procurement.scopeId,
+              providerId: recoveredPayment.dispatch.assignments.find((assignment) => assignment.scopeId === procurement.scopeId)?.reviewer?.id,
               status: procurement.status,
               attempts: procurement.attempts,
+              ...(procurement.nextAttemptAt ? { nextAttemptAt: procurement.nextAttemptAt } : {}),
               ...(procurementFailureCategory(procurement.failure) ? { failureCategory: procurementFailureCategory(procurement.failure) } : {}),
             })),
           },
