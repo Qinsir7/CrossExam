@@ -308,17 +308,17 @@ function App() {
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span /> Onchain decision safety</div>
-        <h1>Stop unsafe actions<br /><em>before they get signed.</em></h1>
-        <p>CrossExam purchases independent evidence, challenges the premises behind a transaction, and returns a signed execution gate.</p>
+        <div className="eyebrow"><span /> Adversarial decision assurance</div>
+        <h1>Before an agent acts,<br /><em>make the decision survive.</em></h1>
+        <p>CrossExam buys independent counter-evidence, challenges material claims, and returns a signed verdict before an agent spends, trades, deploys, publishes, or delegates.</p>
         <div className="hero-actions">
-          <button className="hero-primary" onClick={() => setComposerOpen(true)}>Review an onchain action <span>→</span></button>
-          <a className="hero-secondary" href="#workspace">Explore the sample case</a>
+          <button className="hero-primary" onClick={() => setComposerOpen(true)}>Cross-examine a decision <span>→</span></button>
+          <a className="hero-secondary" href="#workspace">Explore the first live network</a>
         </div>
         <div className="proof-strip" aria-label="Production capabilities">
-          <span><b>x402</b> pay per review</span>
-          <span><b>Real evidence</b> OKX + GoPlus</span>
-          <span><b>Enforced output</b> signed gate</span>
+          <span><b>Action-agnostic</b> spend · trade · deploy</span>
+          <span><b>Evidence market</b> x402 procurement</span>
+          <span><b>Enforceable</b> signed verdict</span>
         </div>
       </section>
 
@@ -354,7 +354,7 @@ function App() {
         <section className={`exam-stage ${ran ? 'ran' : ''}`} aria-label="Cross-examination workspace">
           <div className="stage-topline">
             <div>
-              <span className="card-kicker">Evidence pipeline</span>
+              <span className="card-kicker">First production network · X Layer</span>
               <h2>{ran ? 'Sample verdict ready' : runState === 'queued' ? reviewJob ? reviewStatusLabel[reviewJob.status] : 'Independent review requested' : 'Challenge claims before execution'}</h2>
             </div>
             <span className="round-pill">Production</span>

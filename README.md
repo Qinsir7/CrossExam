@@ -1,14 +1,31 @@
 # CrossExam
 
-> Before an agent acts, make it survive a cross-examination.
+> The adversarial decision layer for autonomous agents.
 
-CrossExam is an adversarial decision-assurance service for AI agents. It procures independent counter-evidence from specialized agents and reports which claims survived, which were refuted, what remains unresolved, and what should reverse the decision.
+[Live product](https://www.cross-exam.xyz/) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md)
+
+CrossExam buys independent counter-evidence before a consequential agent action, then returns an evidence-backed verdict, explicit reversal conditions, and a signed guardrail that software can enforce.
 
 ## Why
 
-Autonomous agents are increasingly able to spend, trade, publish, deploy, and hire other agents. Most systems optimize for producing an answer or completing an action. Few create a real economic incentive to find evidence that the proposed action is wrong.
+Autonomous agents can spend, trade, publish, deploy, approve, and hire other agents. Most systems optimize for producing an answer or completing an action. Few create an independent economic incentive to find evidence that the proposed action is wrong.
 
-CrossExam is designed to make consequential agent decisions inspectable before execution.
+CrossExam separates proposing from challenging. The origin agent submits the action and the material claims that must be true. Independent evidence providers attack those claims without seeing one another's conclusions. CrossExam preserves contradictions and uncertainty instead of averaging them away, signs the resulting record, and gates the exact action that was reviewed.
+
+## How it works
+
+1. **Package the decision** — proposed action, value at risk, and material claims.
+2. **Buy the challenge** — an x402 authorization unlocks a bounded evidence budget.
+3. **Procure blind counter-evidence** — independent scopes are routed to distinct evidence providers.
+4. **Verify provenance** — requests, responses, artifacts, identities, and settlements are content-addressed.
+5. **Issue the verdict** — claims survive, are refuted, or remain unresolved; reversal conditions stay explicit.
+6. **Enforce the result** — a signed record is bound to the reviewed action and checked at the execution boundary.
+
+## First production network, not the product boundary
+
+The first live network focuses on high-value X Layer transactions because the consequences are irreversible, evidence can be independently measured, and x402 makes the review an actual economic service. It currently combines authenticated OKX Onchain OS liquidity evidence with independent GoPlus token-security evidence.
+
+That is the initial wedge, not the category. The protocol and domain model are action-agnostic: `SPEND`, `TRADE`, `DEPLOY`, `PUBLISH`, and `OTHER` actions share the same decision package, blind evidence procurement, signed assurance record, reversal conditions, and execution gate. The same primitive can protect treasury payments, vendor selection, model releases, production deployments, policy-sensitive publishing, and agent-to-agent delegation.
 
 ## Core principles
 
@@ -56,9 +73,13 @@ replicas. Zero-marginal-cost authenticated/public sources run without a buyer
 key, while paid downstream x402 sources remain spend-locked behind the
 dedicated procurement wallet and per-scope policy.
 
-## Status
+## Live implementation
 
 Live on [cross-exam.xyz](https://www.cross-exam.xyz/) with its API at [api.cross-exam.xyz](https://api.cross-exam.xyz/.well-known/crossexam.json): durable paid review jobs, real OKX Onchain OS liquidity evidence, independent GoPlus X Layer token-security evidence, provenance-qualified signed records, commercial ledgers, dynamic x402 quotes, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Paid downstream providers can be added without changing the customer flow when a chain-compatible API service is available.
+
+## North star
+
+CrossExam should become the neutral assurance market between agent intent and irreversible action: any agent can buy adversarial review, any qualified provider can earn by finding decision-changing evidence, and any wallet, runtime, or enterprise policy engine can enforce the signed result.
 
 ## License
 
