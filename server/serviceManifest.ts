@@ -26,7 +26,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
     capabilities: [
       {
         id: 'decision-assurance.aggregate', endpoint: endpoint('/api/v1/assurance/aggregate'), paid: true,
-        description: 'Aggregate a fully delivered independent review into a Decision Assurance Record.',
+        description: 'Fail closed on generic GET or POST decision inputs, or aggregate a fully delivered independent review into a signed Decision Assurance Record.',
       },
       {
         id: 'decision-assurance.network-aggregate', endpoint: endpoint('/api/v1/assurance/network-aggregate'), paid: true,

@@ -37,7 +37,7 @@ That is the initial wedge, not the category. The protocol and domain model are a
 
 ## x402 A2MCP endpoint
 
-CrossExam ships a paid, standardized A2MCP endpoint at `POST /api/v1/assurance/aggregate`. It accepts a decision package plus an independently delivered review dispatch, then applies CrossExam's contradiction-first aggregation and issues a content-derived Decision Assurance Record. It is protected using the official OKX x402 Express SDK on X Layer (`eip155:196`). A request without a valid payment payload receives a standard `402 Payment Required` challenge.
+CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assurance/aggregate`. Generic agent inputs receive a prompt, signed, fail-closed intake record; a complete decision package plus an independently delivered review dispatch receives contradiction-first aggregation and a content-derived Decision Assurance Record. It is protected using the official OKX x402 Express SDK on X Layer (`eip155:196`). A request without a valid payment payload receives a standard `402 Payment Required` challenge through the `PAYMENT-REQUIRED` header.
 
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 

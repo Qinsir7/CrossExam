@@ -6,6 +6,7 @@ import { ExactEvmScheme } from '@okxweb3/x402-evm/exact/server'
 import { aggregateAssurance } from './assuranceService'
 import { aggregateNetworkVerifiedAssurance, aggregateProcurementVerifiedAssurance } from './assuranceService'
 import type { AggregateAssuranceRequest } from './assuranceService'
+import { isAggregateAssuranceRequest, issueAssuranceIntake } from './assuranceIntake'
 import type { X402ServerConfig } from './config'
 import { FileAssuranceRecordStore, type AssuranceRecordStore } from './recordStore'
 import { createServiceManifest } from './serviceManifest'
@@ -25,19 +26,29 @@ import { fixedWindowRateLimit } from './rateLimit'
 import { reviewAccessRecoveryMessage } from '../src/domain/reviewAccess'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
+const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
-  const facilitator = new OKXFacilitatorClient({
+  // A2MCP calls must return promptly after replay. This client deliberately
+  // uses the official SDK's asynchronous settlement default.
+  const assuranceFacilitator = new OKXFacilitatorClient({
     apiKey: config.okxApiKey,
     secretKey: config.okxSecretKey,
     passphrase: config.okxPassphrase,
-    // A paid authorization is a spend gate. Do not treat an asynchronous
-    // facilitator acknowledgement as permission to procure external work.
+  })
+  // Full review authorization is a spend gate, so it keeps synchronous chain
+  // confirmation on a separate payment rail.
+  const fundingFacilitator = new OKXFacilitatorClient({
+    apiKey: config.okxApiKey,
+    secretKey: config.okxSecretKey,
+    passphrase: config.okxPassphrase,
     syncSettle: true,
   })
-  const resourceServer = new x402ResourceServer(facilitator)
+  const assuranceResourceServer = new x402ResourceServer(assuranceFacilitator)
+    .register('eip155:196', new ExactEvmScheme())
+  const fundingResourceServer = new x402ResourceServer(fundingFacilitator)
     .register('eip155:196', new ExactEvmScheme())
   const app = express()
   // Railway terminates public TLS before forwarding to this container. Trust
@@ -60,11 +71,11 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       payTo: config.payTo,
       expectedAmountAtomic: reviewAuthorizationAmountAtomic(job),
       jobStore,
-      getSettleStatus: (tx) => facilitator.getSettleStatus(tx),
+      getSettleStatus: (tx) => fundingFacilitator.getSettleStatus(tx),
     })
   }
 
-  resourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
+  fundingResourceServer.onAfterSettle(async ({ requirements, result, transportContext }) => {
     const requestContext = (transportContext as { request?: { path?: unknown; method?: unknown; routePattern?: unknown; adapter?: { getBody?: () => unknown } } } | undefined)?.request
     const isReviewFunding = requestContext?.method === 'POST'
       && (requestContext.path === '/api/v1/review-jobs/authorize' || requestContext.routePattern === reviewFundingRoute)
@@ -396,7 +407,18 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(422).json({ error: 'REVIEW_DELIVERY_REJECTED', message })
     }
   })
-  const paidRoutes = {
+  const assurancePaidRoutes = {
+    [assuranceGetRoute]: {
+      accepts: {
+        scheme: 'exact' as const,
+        network: 'eip155:196' as const,
+        payTo: config.payTo,
+        price: `$${config.priceUsd}`,
+        maxTimeoutSeconds: 300,
+      },
+      description: 'CrossExam fail-closed decision-assurance intake gate',
+      mimeType: 'application/json',
+    },
     [assuranceRoute]: {
       accepts: {
         scheme: 'exact' as const,
@@ -419,6 +441,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       description: 'CrossExam registry-bound reviewer verification and decision-assurance aggregation',
       mimeType: 'application/json',
     },
+  }
+  const fundingPaidRoutes = {
     [reviewFundingRoute]: {
       accepts: {
         scheme: 'exact' as const,
@@ -488,10 +512,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
 
   if (config.syncFacilitatorOnStart) {
-    app.use(paymentMiddleware(paidRoutes, resourceServer))
+    app.use(paymentMiddleware(assurancePaidRoutes, assuranceResourceServer))
+    app.use(paymentMiddleware(fundingPaidRoutes, fundingResourceServer))
   } else {
     // Local smoke mode must never silently expose paid business logic without
     // the facilitator's supported-kind handshake.
+    app.get('/api/v1/assurance/aggregate', (_request, response) => {
+      response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
+    })
     app.post('/api/v1/assurance/aggregate', (_request, response) => {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
@@ -503,10 +531,24 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     })
   }
 
+  app.get('/api/v1/assurance/aggregate', async (request, response) => {
+    try {
+      if (!config.serviceSigningKey) throw new Error('Paid assurance issuance requires a configured service signing key.')
+      const assurance = await attestDecisionAssuranceRecord(issueAssuranceIntake(request.query), config.serviceSigningKey)
+      const persistence = await recordStore.save(assurance)
+      const access = await recordStore.issueReadAccess(assurance.recordId, config.recordAccessTtlSeconds)
+      response.status(200).json({ ...assurance, persistence, readAccess: access })
+    } catch {
+      response.status(500).json({ error: 'ASSURANCE_INTAKE_FAILED', message: 'The fail-closed assurance result could not be issued.' })
+    }
+  })
+
   app.post('/api/v1/assurance/aggregate', async (request, response) => {
     let assurance
     try {
-      assurance = aggregateAssurance(request.body as AggregateAssuranceRequest)
+      assurance = isAggregateAssuranceRequest(request.body)
+        ? aggregateAssurance(request.body as AggregateAssuranceRequest)
+        : issueAssuranceIntake(request.body)
       if (!config.serviceSigningKey) throw new Error('Paid assurance issuance requires a configured service signing key.')
       assurance = await attestDecisionAssuranceRecord(assurance, config.serviceSigningKey)
     } catch (error) {
