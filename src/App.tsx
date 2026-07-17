@@ -300,11 +300,7 @@ function App() {
           <span className="brand-mark">×</span>
           <span>CrossExam</span>
         </a>
-        <div className="nav-links" aria-label="Primary navigation">
-          <a className="active" href="#workspace">Workspace</a>
-          <a href="#protocol">Protocol</a>
-          <a href="#network">Network</a>
-        </div>
+        <div className="network-status"><span className="live-dot" /> Live on X Layer</div>
         <div className="topbar-actions">
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
           <button className="new-decision-button" onClick={() => setComposerOpen(true)}>New decision <span>+</span></button>
@@ -312,19 +308,28 @@ function App() {
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span /> Adversarial decision assurance</div>
-        <h1>Before an agent acts,<br /><em>make it survive a cross-examination.</em></h1>
-        <p>CrossExam procures independent counter-evidence before a consequential decision becomes an irreversible action.</p>
+        <div className="eyebrow"><span /> Onchain decision safety</div>
+        <h1>Stop unsafe actions<br /><em>before they get signed.</em></h1>
+        <p>CrossExam purchases independent evidence, challenges the premises behind a transaction, and returns a signed execution gate.</p>
+        <div className="hero-actions">
+          <button className="hero-primary" onClick={() => setComposerOpen(true)}>Review an onchain action <span>→</span></button>
+          <a className="hero-secondary" href="#workspace">Explore the sample case</a>
+        </div>
+        <div className="proof-strip" aria-label="Production capabilities">
+          <span><b>x402</b> pay per review</span>
+          <span><b>Real evidence</b> OKX + GoPlus</span>
+          <span><b>Enforced output</b> signed gate</span>
+        </div>
       </section>
 
       <section className="workspace" id="workspace">
         <aside className="decision-card">
-          <div className="card-kicker">Decision package <span>{activeDecision.id}</span></div>
+          <div className="card-kicker">{isDemo ? 'Sample decision' : 'Live decision'} <span>{activeDecision.id}</span></div>
           <div className="decision-heading">
             <div className="decision-icon">↗</div>
             <div>
               <h2>{activeDecision.title}</h2>
-              <p>{isDemo ? 'Agent-originated onchain recommendation' : reviewJob ? reviewJob.fundingStatus === 'UNFUNDED' ? 'x402 procurement authorization required' : reviewStatusLabel[reviewJob.status] : 'Decision package not yet submitted to CrossExam'}</p>
+              <p>{isDemo ? 'Illustrative onchain risk case' : reviewJob ? reviewJob.fundingStatus === 'UNFUNDED' ? 'Payment required to procure evidence' : reviewStatusLabel[reviewJob.status] : 'Ready for a real review'}</p>
             </div>
           </div>
           <div className="risk-row">
@@ -332,12 +337,8 @@ function App() {
             <strong>${activeDecision.valueAtRiskUsd.toLocaleString()}</strong>
           </div>
           <div className="risk-row">
-            <span>{reviewJob ? 'Review job' : 'Action window'}</span>
-            <strong>{isDemo ? '18 min' : reviewJob ? reviewJob.id.slice(0, 14) : `${activeDecision.claims.length} claims`}</strong>
-          </div>
-          <div className="source-row">
-            <span className="source-avatar">A</span>
-            <div><span>Origin</span><strong>{isDemo ? 'Atlas Research' : 'Local Decision Package'}</strong></div>
+            <span>Material claims</span>
+            <strong>{activeDecision.claims.length}</strong>
           </div>
           <button className="ghost-button" onClick={() => setBriefOpen(!briefOpen)}>
             {briefOpen ? 'Hide decision brief' : 'Inspect decision brief'} <span>→</span>
@@ -353,16 +354,16 @@ function App() {
         <section className={`exam-stage ${ran ? 'ran' : ''}`} aria-label="Cross-examination workspace">
           <div className="stage-topline">
             <div>
-              <span className="card-kicker">Cross-examination</span>
-              <h2>{ran ? 'Evidence under pressure' : runState === 'queued' ? reviewJob ? reviewStatusLabel[reviewJob.status] : 'Independent review requested' : 'Ready to challenge the decision'}</h2>
+              <span className="card-kicker">Evidence pipeline</span>
+              <h2>{ran ? 'Sample verdict ready' : runState === 'queued' ? reviewJob ? reviewStatusLabel[reviewJob.status] : 'Independent review requested' : 'Challenge claims before execution'}</h2>
             </div>
-            <span className="round-pill">Round 01</span>
+            <span className="round-pill">Production</span>
           </div>
 
           {isDemo ? <div className="exam-grid">
-            <article className="exam-agent coral"><div className="agent-number">01</div><span className="agent-signal">Independent scope</span><h3>Liquidity<br />Scout</h3><p>Reconstructs executable depth and tests the price-impact premise.</p><div className="agent-footer"><span>Onchain</span><span>0.18 USDT</span></div></article>
-            <article className="exam-agent gold"><div className="agent-number">02</div><span className="agent-signal">Independent scope</span><h3>Contract<br />Examiner</h3><p>Challenges privileged paths, proxy changes, and transfer controls.</p><div className="agent-footer"><span>Static analysis</span><span>0.22 USDT</span></div></article>
-            <article className="exam-agent blue"><div className="agent-number">03</div><span className="agent-signal">Independent scope</span><h3>Evidence<br />Desk</h3><p>Validates primary sources, timing claims, and causal assumptions.</p><div className="agent-footer"><span>Open web</span><span>0.12 USDT</span></div></article>
+            <article className="exam-agent coral"><div className="agent-number">01</div><span className="agent-signal">Production evidence</span><h3>OKX<br />Liquidity</h3><p>Tests executable depth and market conditions for the exact asset.</p><div className="agent-footer"><span>Onchain OS</span><span>Authenticated</span></div></article>
+            <article className="exam-agent gold"><div className="agent-number">02</div><span className="agent-signal">Independent evidence</span><h3>GoPlus<br />Security</h3><p>Checks token controls, transfer restrictions, and contract risk.</p><div className="agent-footer"><span>X Layer</span><span>Public API</span></div></article>
+            <article className="exam-agent blue"><div className="agent-number">03</div><span className="agent-signal">Machine-enforced output</span><h3>Signed<br />Gate</h3><p>Binds the verdict to the reviewed transaction before execution.</p><div className="agent-footer"><span>EIP-191</span><span>Block / permit</span></div></article>
           </div> : reviewJob ? <div className="exam-grid">
             {reviewJob.plan.scopes.map((scope, index) => {
               const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
@@ -381,11 +382,11 @@ function App() {
 
           {runState === 'idle' ? (
             <button className="run-button" onClick={() => void queueReview()} disabled={creatingReviewJob}>
-              <span className="button-cross">×</span> {creatingReviewJob ? 'Creating real review job' : isDemo ? 'Run CrossExam' : 'Queue CrossExam'} <span className="button-arrow">→</span>
+              <span className="button-cross">×</span> {creatingReviewJob ? 'Creating real review job' : isDemo ? 'Explore sample verdict' : 'Queue CrossExam'} <span className="button-arrow">→</span>
             </button>
           ) : (
             <div className="completed-run">
-              <span className="live-dot" /> {ran ? 'Cross-examination complete · 3 independent scopes · 00:19' : reviewJob ? reviewStatusLabel[reviewJob.status] : 'Decision structured · external evidence procurement pending'}
+              <span className="live-dot" /> {ran ? 'Sample verdict loaded · production workflow available above' : reviewJob ? reviewStatusLabel[reviewJob.status] : 'Decision structured · external evidence procurement pending'}
               <button onClick={() => setRunState('idle')}>{ran ? 'Reset demo' : 'Edit package'}</button>
             </div>
           )}
@@ -398,7 +399,7 @@ function App() {
         <div className="results-intro">
           <div>
             <div className="eyebrow"><span /> Decision assurance record</div>
-            <h2>Consensus is not the point.<br /><em>Surviving evidence is.</em></h2>
+            <h2>A verdict an executor<br /><em>can actually enforce.</em></h2>
           </div>
           <div className="independence">
             <span>Effective independence</span>
@@ -467,38 +468,41 @@ function App() {
           <div>
             <span className="card-kicker">Review lifecycle · {reviewStatusLabel[reviewJob.status]}</span>
             <h2>{reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Evidence received. Assurance issued.' : 'CrossExam will not invent a verdict.'}</h2>
-            <p>Job {reviewJob.id} is persisted by CrossExam. {reviewJob.fundingStatus === 'UNFUNDED' ? 'It is intentionally spend-locked until its owner completes the paid x402 authorization route.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Every scope has a retained, content-addressed external response and the signed CrossExam record is now bound to the reviewed action.' : 'It advances only after a server-recorded external procurement and a provenance-qualified delivery.'} No reviewer or conclusion is synthesized in the browser.</p>
+            <p>{reviewJob.fundingStatus === 'UNFUNDED' ? 'Evidence procurement is spend-locked until payment settles.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'External responses are retained, content-addressed, and bound to the signed record.' : 'The worker is acquiring evidence from matched production sources.'}</p>
           </div>
-          <div className="queued-meta"><span>{activeDecision.claims.length} claims</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.quote.authorizationPriceUsdt} USDT authorization</span><span>{reviewJob.quote.estimatedGrossMarginUsdt} USDT estimated gross margin</span><span>{reviewJob.fundingStatus}</span></div>
+          <div className="queued-meta"><span>{reviewJob.quote.authorizationPriceUsdt} USDT review</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.fundingStatus}</span></div>
           {reviewJob.fundingStatus === 'UNFUNDED' && <button className="run-button" onClick={() => void authorizeReview()} disabled={authorizingReviewJob}>
             <span className="button-cross">×</span> {authorizingReviewJob ? 'Waiting for wallet approval' : `Authorize ${reviewJob.quote.authorizationPriceUsdt} USDT review`} <span className="button-arrow">→</span>
           </button>}
           {reviewJob.status === 'FAILED' && reviewJob.fundingStatus === 'AUTHORIZED' && <button className="run-button" onClick={() => void retryReview()} disabled={retryingReviewJob}>
             <span className="button-cross">×</span> {retryingReviewJob ? 'Rebinding evidence sources' : 'Retry without another payment'} <span className="button-arrow">→</span>
           </button>}
-          <div className="review-plan-list">
-            {reviewJob.plan.scopes.map((scope) => {
-              const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
-              const procurement = reviewJob.procurements.find((item) => item.scopeId === scope.id)
-              return <div key={scope.id}>
-                <span>{scope.title}</span>
-                <small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small>
-                {assignment?.delivery?.provenance && <details className="evidence-proof">
-                  <summary>Verified evidence provenance</summary>
-                  <p>{assignment.delivery.provenance.kind.replaceAll('_', ' ')} · {new Date(assignment.delivery.provenance.observedAt).toLocaleString()}</p>
-                  <code>request {assignment.delivery.provenance.requestHash}</code>
-                  <code>response {assignment.delivery.provenance.responseHash}</code>
-                  {assignment.delivery.findings.map((finding) => <p key={`${scope.id}-${finding.claimId}`}><b>{finding.verdict}</b> {finding.evidence}</p>)}
-                </details>}
-              </div>
-            })}
-          </div>
-          {procurementLedger && <div className="economics-ledger">
-            <div><span>Customer revenue</span><strong>{procurementLedger.commercial.customerSettlement ? `${(Number(procurementLedger.commercial.customerSettlement.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : 'Pending'}</strong></div>
-            <div><span>External settled cost</span><strong>{procurementLedger.settledByAsset.length === 0 ? '0.00 USDT0' : procurementLedger.settledByAsset.map((item) => `${(Number(item.amountAtomic) / 1_000_000).toFixed(2)} USDT0`).join(' + ')}</strong></div>
-            <div><span>Realized gross margin</span><strong>{procurementLedger.commercial.realizedGrossMargin ? `${(Number(procurementLedger.commercial.realizedGrossMargin.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : procurementLedger.commercial.grossMarginStatus.replaceAll('_', ' ')}</strong></div>
-            <div><span>Evidence cost basis</span><strong>{procurementLedger.scopes.map((scope) => scope.costBasis === 'INCLUDED_API_QUOTA' ? 'Included quota' : scope.costBasis === 'SETTLED_X402' ? 'x402 settled' : 'Pending').join(' · ')}</strong></div>
-          </div>}
+          <details className="audit-details">
+            <summary>View evidence provenance and economics</summary>
+            <div className="review-plan-list">
+              {reviewJob.plan.scopes.map((scope) => {
+                const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
+                const procurement = reviewJob.procurements.find((item) => item.scopeId === scope.id)
+                return <div key={scope.id}>
+                  <span>{scope.title}</span>
+                  <small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small>
+                  {assignment?.delivery?.provenance && <details className="evidence-proof">
+                    <summary>Verified provenance</summary>
+                    <p>{assignment.delivery.provenance.kind.replaceAll('_', ' ')} · {new Date(assignment.delivery.provenance.observedAt).toLocaleString()}</p>
+                    <code>request {assignment.delivery.provenance.requestHash}</code>
+                    <code>response {assignment.delivery.provenance.responseHash}</code>
+                    {assignment.delivery.findings.map((finding) => <p key={`${scope.id}-${finding.claimId}`}><b>{finding.verdict}</b> {finding.evidence}</p>)}
+                  </details>}
+                </div>
+              })}
+            </div>
+            {procurementLedger && <div className="economics-ledger">
+              <div><span>Customer revenue</span><strong>{procurementLedger.commercial.customerSettlement ? `${(Number(procurementLedger.commercial.customerSettlement.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : 'Pending'}</strong></div>
+              <div><span>External settled cost</span><strong>{procurementLedger.settledByAsset.length === 0 ? '0.00 USDT0' : procurementLedger.settledByAsset.map((item) => `${(Number(item.amountAtomic) / 1_000_000).toFixed(2)} USDT0`).join(' + ')}</strong></div>
+              <div><span>Realized gross margin</span><strong>{procurementLedger.commercial.realizedGrossMargin ? `${(Number(procurementLedger.commercial.realizedGrossMargin.amountAtomic) / 1_000_000).toFixed(2)} USDT0` : procurementLedger.commercial.grossMarginStatus.replaceAll('_', ' ')}</strong></div>
+              <div><span>Evidence cost basis</span><strong>{procurementLedger.scopes.map((scope) => scope.costBasis === 'INCLUDED_API_QUOTA' ? 'Included quota' : scope.costBasis === 'SETTLED_X402' ? 'x402 settled' : 'Pending').join(' · ')}</strong></div>
+            </div>}
+          </details>
         </section>
       )}
 
