@@ -1134,14 +1134,16 @@ Evidence (2026-07-18): `src/domain/transactionClaims.ts` derives explicit claims
 
 ### Day 3 — paid Transaction Preflight endpoint
 
-- [ ] Implement transaction orchestration façade over existing evidence/job/record code.
-- [ ] Add route-specific x402 price and middleware.
-- [ ] Add idempotency and persistence.
-- [ ] Return signed action-bound record.
-- [ ] Update manifest/discovery after tests pass.
-- [ ] Run local and preview unpaid 402 acceptance.
+- [x] Implement transaction orchestration façade over existing evidence/job/record code.
+- [x] Add route-specific x402 price and middleware.
+- [x] Add idempotency and persistence.
+- [x] Return signed action-bound record.
+- [x] Update manifest/discovery after tests pass.
+- [x] Run local and preview unpaid 402 acceptance.
 
 Acceptance: unpaid 402 is standard; a locally authorized test path yields a useful signed verdict; legacy aggregate remains green.
+
+Evidence (2026-07-18): `server/transactionPreflight.ts` reuses the bounded provider, evidence-delivery, record, attestation, and idempotency primitives without relabeling API results as reviewer signatures. The production endpoint returned standard x402 v2 challenge data for X Layer USD₮0 at `0.02`; a real customer authorization created persisted signed record `dar_f93fb424e39721fa5fc2e6d2` with a fail-closed `HOLD`, explicit source failures for an intentionally unrecognized bound token, and a time-limited record capability. This is a real negative-path result, not fabricated evidence. Production legacy aggregate continued to return standard 402. Local lint, 35 test files / 141 tests, and build passed before deployment.
 
 ### Day 4 — ASP Trust Check
 
