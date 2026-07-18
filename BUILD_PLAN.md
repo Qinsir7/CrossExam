@@ -1248,7 +1248,7 @@ This is now the first execution priority. Complete it before any ASP service-lis
 - [x] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
 - [x] Verify that no sample, fixture, cached verdict or precomputed provider response is presented as the live run.
 - [x] Run lint, all tests, production build, dependency audit, tracked-secret scan and `git diff --check`.
-- [ ] Deploy additively without changing the registered aggregate endpoint, price, GET compatibility or x402 challenge behavior.
+- [x] Deploy additively without changing the registered aggregate endpoint, price, GET compatibility or x402 challenge behavior.
 - [ ] Run unpaid production probes for health, readiness, manifest, aggregate, Transaction Preflight, Agent Trust Check, deep-review preparation and review authorization.
 - [ ] From a clean browser with no saved CrossExam session, prepare a fresh job, approve one explicitly confirmed real payment, wait for both real providers, retrieve the signed record, run the exact execution gate and inspect the protected ledger.
 - [ ] Refresh once while evidence is pending and once on the result page; confirm owner-capability recovery restores the same job without another charge.
@@ -1271,6 +1271,8 @@ Evidence (2026-07-18, production read-only): the additively deployed route endpo
 Evidence (2026-07-19, production browser): the owner generated the exact WOKB route from a connected X Layer wallet, started the standard 0.20 USDT0 review, and received a fresh `CONDITIONAL` result without broadcasting the route. The visible audit listed verified provenance for OKX Onchain OS Market and GoPlus X Layer Token Security; the ledger reported 0.20 USDT0 customer revenue, 0.00 USDT0 external settled cost, and 0.20 USDT0 realized gross margin, with both external sources explicitly marked as included quota. The material premise was `C-TOKEN-TRANSFER-SAFETY`: required deterministic GoPlus fields were incomplete, so the resulting `REMEDIATE` gate correctly remained non-executable without asserting maliciousness. A page refresh restored the same protected result. `docs/DEMO_EVIDENCE_NOTE.md` stores the safe, redacted evidence. The formerly silent local re-check control now shows a timestamped `REMEDIATE remains enforced` response and explicitly states that it did not sign or broadcast.
 
 Evidence (2026-07-19, local release check): `npm run lint`, the full Vitest suite (40 files / 174 tests), `npm run build`, `npm audit --omit=dev --audit-level=high` (0 vulnerabilities), the tracked-file secret scan, and `git diff --check` passed. The secret scan found only empty example variables, documentation references, and explicit deterministic test keys; no live credential was tracked. A local browser run confirmed the gate check feedback appears after one click and emitted no console errors.
+
+Evidence (2026-07-19, production additive release): GitHub commits `b87538f` and `9343bba` deployed without changing the aggregate route or configuration. The production web bundle contains the delivered-evidence, visible gate-recheck, and live-scope disclosure copy. `/health`, `/ready`, and the signed public manifest remained healthy. A production POST to Transaction Preflight with a valid idempotency key but an unsupported X Layer `SPEND` action returned `422 TRANSACTION_PREFLIGHT_UNSUPPORTED` before x402, proving the new no-charge boundary is active.
 
 Execution order inside Day 9.5:
 
