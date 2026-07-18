@@ -10,7 +10,7 @@ Produces a Decision Assurance Record from a Decision Package and a fully deliver
 
 ## Service discovery
 
-`GET /.well-known/crossexam.json` returns the public capability manifest. It declares the two x402-paid assurance endpoints, protected record retrieval, X Layer `eip155:196`, and the `exact` x402 scheme. Configure `CROSSEXAM_PUBLIC_URL` in production so endpoint URLs are absolute.
+`GET /.well-known/crossexam.json` returns the public capability manifest. It declares the paid assurance endpoints, protected record retrieval, X Layer `eip155:196`, and the `exact` x402 scheme. The Transaction Preflight capability explicitly states its current exact-X-Layer-token-trade boundary, so callers can avoid requesting unsupported paid work. Configure `CROSSEXAM_PUBLIC_URL` in production so endpoint URLs are absolute.
 
 `POST /api/v1/assurance/network-aggregate` accepts the same payload, but requires every delivered review to include an EIP-191 wallet attestation. Each reviewer ID must be bound to a different signing wallet in CrossExam's server-side registry. This endpoint returns `attributionStatus: "NETWORK_VERIFIED"` only after those signatures verify.
 

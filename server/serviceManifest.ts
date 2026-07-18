@@ -38,7 +38,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.transaction-preflight', endpoint: endpoint('/api/v1/preflight/transaction'), paid: true,
-        description: 'Obtain provenance-qualified liquidity and token-risk evidence for an exact EVM action, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision.',
+        description: 'For an exact X Layer token trade with an explicit token target, obtain provenance-qualified liquidity and token-risk evidence, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision. Unsupported action scopes are rejected before payment.',
       },
       {
         id: 'decision-assurance.transaction-quote', endpoint: endpoint('/api/v1/transactions/quote'), paid: false,
@@ -50,7 +50,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.cross-examination-prepare', endpoint: endpoint('/api/v1/cross-examinations/prepare'), paid: false,
-        description: 'Compile a simple or advanced consequential decision into bound claims, matched real evidence sources, limitations, and a no-charge quote before payment.',
+        description: 'Compile a simple or advanced consequential decision into bound claims, matched real evidence sources, limitations, and a no-charge quote before payment; unfulfillable scopes are explicitly unpurchasable.',
       },
       {
         id: 'decision-assurance.cross-examination', endpoint: endpoint('/api/v1/cross-examinations'), paid: false,
