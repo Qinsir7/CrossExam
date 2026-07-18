@@ -1160,13 +1160,15 @@ Evidence (2026-07-18): Official OKX.AI discovery is exposed through the authenti
 
 ### Day 5 — Deep Cross-Examination façade
 
-- [ ] Add simple intent intake and deterministic claim preparation.
-- [ ] Add free prepare/quote endpoint.
-- [ ] Connect paid deep-review endpoint to durable jobs, funding, procurement, result, recovery, and ledger.
-- [ ] Reduce launch price from the existing 2 USDT floor only after confirming external cost/margin constraints.
-- [ ] Make incomplete/general evidence return honest HOLD, never a fabricated conclusion.
+- [x] Add simple intent intake and deterministic claim preparation.
+- [x] Add free prepare/quote endpoint.
+- [x] Connect paid deep-review endpoint to durable jobs, funding, procurement, result, recovery, and ledger.
+- [x] Reduce launch price from the existing 2 USDT floor only after confirming external cost/margin constraints.
+- [x] Make incomplete/general evidence return honest HOLD, never a fabricated conclusion.
 
 Acceptance: the website can start a deep review without requiring the user to manually construct the internal dispatch schema.
+
+Evidence (2026-07-18): `server/crossExamination.ts` accepts either simple intent/action input or an action-bound advanced package, deterministically compiles transaction and generic material claims, matches only server-owned provider capabilities, and returns a free prepare/quote response. `POST /api/v1/cross-examinations` creates only fulfillable durable jobs and returns the existing x402 authorization capability; the existing authorization, procurement, recovery, ledger and result routes remain the sole economic lifecycle, so job creation cannot spend a wallet. The new `CROSSEXAM_DEEP_REVIEW_PRICE_USD` defaults to `0.20`; the current X Layer matched plan has a `0.005` USDT estimated external cost, which leaves a 97.5% estimated margin above the configured 40% minimum. Unmatched GENERAL work returns `canStart: false` and cannot be purchased. `src/App.tsx` now uses the simple façade, shows generated claims/sources/limitations/quote before authorization, and invalidates a quote when input changes. Focused façade and SDK tests pass; desktop and 375px local visual inspection showed the flow without horizontal overflow. This is local/additive only: production configuration and deployment remain deliberately unchanged.
 
 ### Day 6 — new homepage and composer
 
