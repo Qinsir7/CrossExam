@@ -15,6 +15,7 @@ describe('loadX402ServerConfig', () => {
 
     expect(config.port).toBe(4022)
     expect(config.priceUsd).toBe('0.02')
+    expect(config.transactionPreflightPriceUsd).toBe('0.02')
     expect(config.payTo).toBe(validEnvironment.CROSSEXAM_PAY_TO)
     expect(config.syncFacilitatorOnStart).toBe(true)
   })
@@ -39,6 +40,10 @@ describe('loadX402ServerConfig', () => {
 
   it('rejects a price outside the deliberately bounded production limit', () => {
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_PRICE_USD: '1001' })).toThrow('no greater than 1000')
+  })
+
+  it('keeps the transaction preflight price independently configurable', () => {
+    expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD: '0.07' }).transactionPreflightPriceUsd).toBe('0.07')
   })
 
   it('allows the facilitator sync only to be explicitly disabled for local non-payment smoke tests', () => {

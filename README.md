@@ -39,6 +39,8 @@ That is the initial wedge, not the category. The protocol and domain model are a
 
 CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assurance/aggregate`. Generic agent inputs receive a prompt, signed, fail-closed intake record; a complete decision package plus an independently delivered review dispatch receives contradiction-first aggregation and a content-derived Decision Assurance Record. It is protected using the official OKX x402 Express SDK on X Layer (`eip155:196`). A request without a valid payment payload receives a standard `402 Payment Required` challenge through the `PAYMENT-REQUIRED` header.
 
+`POST /api/v1/preflight/transaction` is the higher-level paid transaction firewall: it binds the exact EVM action, requests the configured real liquidity and token-risk sources, returns only provenance-qualified observations, and signs a fail-closed `PERMIT`, `HOLD`, or `BLOCK` record. It requires an `Idempotency-Key`; an unavailable source becomes an explicit `HOLD`, never a fabricated positive signal.
+
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.

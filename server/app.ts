@@ -24,13 +24,17 @@ import { buildProcurementLedger } from './procurementLedger'
 import { reconcileReviewJobFunding, verifyUsdt0Transfer, XLAYER_USDT0 } from './customerPayment'
 import { fixedWindowRateLimit } from './rateLimit'
 import { reviewAccessRecoveryMessage } from '../src/domain/reviewAccess'
+import { prepareTransactionPreflight } from './transactionPreflight'
+import { X402ReviewProvider } from './x402ReviewProvider'
+import type { ExternalReviewProvider } from './reviewJobWorker'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
+const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
   // uses the official SDK's asynchronous settlement default.
   const assuranceFacilitator = new OKXFacilitatorClient({
@@ -60,6 +64,16 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   const recordStore = dependencies.recordStore ?? sharedProductionStore ?? new FileAssuranceRecordStore(config.dataDirectory)
   const idempotencyStore = dependencies.idempotencyStore ?? sharedProductionStore ?? new FileAssuranceIdempotencyStore(config.dataDirectory)
   const jobStore = dependencies.jobStore ?? sharedProductionStore ?? new FileReviewJobStore(config.dataDirectory)
+  const preflightProvider = dependencies.preflightProvider ?? new X402ReviewProvider({
+    registry: config.reviewerRegistry,
+    ...(config.procurementSigningKey ? {
+      signingKey: config.procurementSigningKey,
+      maxPerScopeAtomic: config.procurementMaxPerScopeAtomic,
+      allowedAssets: config.procurementAllowedAssets,
+    } : {}),
+    callbackBaseUrl: config.publicUrl ?? 'https://preflight.invalid',
+    okxMarketCredentials: { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
+  })
 
   const reviewAuthorizationAmountAtomic = (job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) => BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
 
@@ -441,6 +455,17 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       description: 'CrossExam registry-bound reviewer verification and decision-assurance aggregation',
       mimeType: 'application/json',
     },
+    [transactionPreflightRoute]: {
+      accepts: {
+        scheme: 'exact' as const,
+        network: 'eip155:196' as const,
+        payTo: config.payTo,
+        price: `$${config.transactionPreflightPriceUsd}`,
+        maxTimeoutSeconds: 300,
+      },
+      description: 'CrossExam evidence-backed, action-bound transaction preflight',
+      mimeType: 'application/json',
+    },
   }
   const fundingPaidRoutes = {
     [reviewFundingRoute]: {
@@ -510,6 +535,18 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
     }
   })
+  app.post('/api/v1/preflight/transaction', async (request, response, next) => {
+    try {
+      if (!request.header('idempotency-key')) {
+        response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Transaction Preflight requires an Idempotency-Key so a paid action cannot be accidentally repeated.' })
+        return
+      }
+      if (!await serveIdempotentReplay(transactionPreflightRoute, request, response)) next()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
+    }
+  })
 
   if (config.syncFacilitatorOnStart) {
     app.use(paymentMiddleware(assurancePaidRoutes, assuranceResourceServer))
@@ -524,6 +561,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/assurance/network-aggregate', (_request, response) => {
+      response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
+    })
+    app.post('/api/v1/preflight/transaction', (_request, response) => {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/review-jobs/authorize', (_request, response) => {
@@ -586,6 +626,37 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(200).json({ ...assurance, persistence, readAccess: access })
     } catch {
       response.status(500).json({ error: 'RECORD_PERSISTENCE_FAILED', message: 'The assurance result was not persisted.' })
+    }
+  })
+  app.post('/api/v1/preflight/transaction', async (request, response) => {
+    try {
+      if (!config.serviceSigningKey) throw new Error('Paid transaction preflight requires a configured service signing key.')
+      const prepared = await prepareTransactionPreflight(request.body, { registry: config.reviewerRegistry, provider: preflightProvider })
+      const record = await attestDecisionAssuranceRecord(prepared.record, config.serviceSigningKey)
+      const persistence = await recordStore.save(record)
+      await persistIdempotency(response, record.recordId)
+      const readAccess = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
+      if (!record.serviceAttestation) throw new Error('Signed transaction preflight record is missing its service attestation.')
+      response.status(200).json({
+        action: prepared.action,
+        decision: prepared.decision,
+        claims: prepared.claims,
+        evidence: prepared.evidence,
+        verdict: prepared.verdict,
+        record: {
+          recordId: record.recordId,
+          issuedAt: record.issuedAt,
+          attributionStatus: record.attributionStatus,
+          serviceAttestation: record.serviceAttestation,
+          readAccess,
+        },
+        economics: prepared.economics,
+        persistence,
+        ...(prepared.procurementFailures.length ? { procurementFailures: prepared.procurementFailures } : {}),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Transaction preflight could not be issued.'
+      response.status(422).json({ error: 'TRANSACTION_PREFLIGHT_REJECTED', message })
     }
   })
   app.post('/api/v1/review-jobs/authorize', async (request, response) => {

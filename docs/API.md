@@ -14,6 +14,14 @@ Produces a Decision Assurance Record from a Decision Package and a fully deliver
 
 `POST /api/v1/assurance/network-aggregate` accepts the same payload, but requires every delivered review to include an EIP-191 wallet attestation. Each reviewer ID must be bound to a different signing wallet in CrossExam's server-side registry. This endpoint returns `attributionStatus: "NETWORK_VERIFIED"` only after those signatures verify.
 
+## Transaction Preflight
+
+`POST /api/v1/preflight/transaction` is the product-facing x402 service for an exact EVM action. It requires a 32–200 character `Idempotency-Key` before issuing a payment challenge. The current X Layer trade profile derives deterministic binding, approval, native-value, liquidity, and token-transfer claims; it obtains only configured OKX Onchain OS and GoPlus source output, preserves each source request/response hash, and returns a signed `PERMIT`, `HOLD`, or `BLOCK` record.
+
+Required JSON fields are `title`, `actionType`, `chainId`, `data`, and `valueAtRiskUsd`; `to` is required except for `DEPLOY`, while `valueWei`, `from`, `intent`, and `tokenRiskTarget` are optional. For a token trade, use `tokenRiskTarget: "token:xlayer:0x…"`; CrossExam never guesses a token from arbitrary router calldata.
+
+An unavailable, malformed, unmatched, or unnormalized external source is returned only as an honest procurement failure and forces `HOLD`; it is never represented as a reviewer signature, support, or a safe result. A fully delivered built-in source set yields `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`. The `economics.externalEvidenceCostUsdt` field reports actual settled downstream x402 spend only; included API quota/public source evidence has zero reported marginal x402 spend and is labeled by `costBasis`.
+
 ## x402 payment
 
 The endpoint is protected by the OKX x402 Express SDK.

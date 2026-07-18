@@ -33,6 +33,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Aggregate registry-bound reviewer wallet attestations into a NETWORK_VERIFIED record.',
       },
       {
+        id: 'decision-assurance.transaction-preflight', endpoint: endpoint('/api/v1/preflight/transaction'), paid: true,
+        description: 'Obtain provenance-qualified liquidity and token-risk evidence for an exact EVM action, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision.',
+      },
+      {
         id: 'decision-assurance.record-retrieval', endpoint: endpoint('/api/v1/assurance/records/{recordId}'), paid: false,
         description: 'Retrieve a persisted Decision Assurance Record with its time-limited bearer token.',
       },
