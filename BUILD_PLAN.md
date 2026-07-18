@@ -1110,13 +1110,15 @@ The order matters. Do not spend early days polishing secondary pages while the p
 
 ### Day 1 — freeze contracts and simplify product model
 
-- [ ] Define `AssuranceAction`, normalized evidence, and shared verdict types.
-- [ ] Write request/response contracts for Transaction Preflight, Agent Trust Check, Deep Cross-Examination, and Verify Record.
-- [ ] Map existing job/record types to the new façade without duplication.
-- [ ] Confirm the exact primary demo transaction shape and required evidence.
-- [ ] Add this plan to README navigation.
+- [x] Define `AssuranceAction`, normalized evidence, and shared verdict types.
+- [x] Write request/response contracts for Transaction Preflight, Agent Trust Check, Deep Cross-Examination, and Verify Record.
+- [x] Map existing job/record types to the new façade without duplication.
+- [x] Confirm the exact primary demo transaction shape and required evidence.
+- [x] Add this plan to README navigation.
 
 Acceptance: contracts compile, legacy contracts are unchanged, and the primary flow can be described as one request-to-verdict sequence.
+
+Evidence (2026-07-18): `src/domain/assuranceAction.ts` reuses `canonicalizeEvmTransaction` and `createEvmActionBinding`; `src/domain/assuranceContracts.ts` defines the additive endpoint contracts; `docs/PRODUCT_CONTRACTS.md` maps them to existing durable jobs, records, evidence and the execution gate; focused mapping tests pass. The live demo asset remains intentionally unset until production evidence acceptance, but its exact transaction shape and required sources are fixed.
 
 ### Day 2 — transaction claim compiler and policy
 
@@ -1347,4 +1349,3 @@ Do not request all of these immediately. Ask only when needed:
 Use this exact starting directive:
 
 > Open `/Users/zhangchi/Desktop/OKXAIGenesis/CrossExam/BUILD_PLAN.md` and follow section 0 before making changes. Continue from the first unchecked task in section 13. Preserve all existing production behavior and do not use mocks as live output. Work autonomously through local implementation and verification, but stop before any real payment, ASP identity/service update, production secret/configuration change, or external submission that requires my confirmation. Update BUILD_PLAN.md checkboxes only after each acceptance criterion passes, commit coherent batches, and report only meaningful blockers or completed milestones.
-

@@ -2,7 +2,7 @@
 
 > The adversarial decision layer for autonomous agents.
 
-[Live product](https://www.cross-exam.xyz/) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md)
+[Live product](https://www.cross-exam.xyz/) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md) · [Build plan](BUILD_PLAN.md)
 
 CrossExam buys independent counter-evidence before a consequential agent action, then returns an evidence-backed verdict, explicit reversal conditions, and a signed guardrail that software can enforce.
 
