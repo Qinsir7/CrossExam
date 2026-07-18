@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { prepareCrossExamination, startCrossExamination } from './crossExamination'
 import { withOkxMarketSource } from './reviewerRegistry'
+import { validateTransactionPreflightInput } from './transactionPreflight'
 
 const pricing = { authorizationPriceUsd: '0.20', minimumGrossMarginFraction: 0.4 }
 const token = '0x2222222222222222222222222222222222222222'
@@ -42,6 +43,29 @@ describe('Deep Cross-Examination façade', () => {
     expect(prepared.canStart).toBe(false)
     expect(prepared.limitations.join(' ')).toContain('No active independent provider')
     await expect(startCrossExamination(input, {}, pricing)).rejects.toThrow('cannot be purchased')
+  })
+
+  it('keeps non-trade transaction scenarios outside the live pretrade purchase path', async () => {
+    const input = {
+      simple: {
+        title: 'Approve a token spender',
+        intent: 'Approve the spender only if the approval is safe.',
+        valueAtRiskUsd: 5_000,
+        transaction: { actionType: 'SPEND' as const, chainId: 196, to: router, data: '0x', valueWei: '0' },
+      },
+    }
+    const prepared = await prepareCrossExamination(input, withOkxMarketSource({}), pricing)
+
+    expect(prepared.canStart).toBe(false)
+    expect(prepared.decision.reviewProfile).toBe('GENERAL')
+    expect(prepared.limitations.join(' ')).toContain('only exact X Layer token trades')
+    await expect(startCrossExamination(input, withOkxMarketSource({}), pricing)).rejects.toThrow('cannot be purchased')
+  })
+
+  it('rejects an unsupported direct preflight before a customer can be charged', async () => {
+    await expect(validateTransactionPreflightInput({
+      title: 'Approve a token spender', actionType: 'SPEND', chainId: 196, to: router, data: '0x', valueWei: '0', valueAtRiskUsd: 5_000,
+    })).rejects.toThrow('will not charge')
   })
 
   it('creates an unfunded durable pretrade job and returns the existing x402 funding capability', async () => {

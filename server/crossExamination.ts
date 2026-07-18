@@ -3,7 +3,7 @@ import { createTransactionAssuranceAction, toDecisionPackage, type AssuranceActi
 import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, EvidencePlanScope } from '../src/domain/assuranceContracts'
 import { compileTransactionClaims } from '../src/domain/transactionClaims'
 import { createReviewPlan } from '../src/domain/reviewPlan'
-import type { ActionType, DecisionClaim, DecisionPackage } from '../src/domain/types'
+import type { ActionType, DecisionClaim, DecisionPackage, ReviewProfile } from '../src/domain/types'
 import { stageReviewPlan } from '../src/network/reviewNetwork'
 import { createReviewJobWithAccess } from './reviewJob'
 import { quoteReview } from './reviewPricing'
@@ -85,11 +85,18 @@ async function decisionFromSimple(input: NonNullable<CrossExaminationPreparation
       ...(input.tokenRiskTarget ? { tokenRiskTarget: input.tokenRiskTarget } : {}),
     })
     const compiled = compileTransactionClaims(action)
+    const livePretradeProfile = action.binding.actionType === 'TRADE'
+      && action.evm?.chainId === 196
+      && Boolean(action.reviewEvidenceContext?.tokenRiskTarget)
+    const limitations = [...compiled.limitations]
+    if (!livePretradeProfile) {
+      limitations.push('Live deep Cross-Examination currently fulfills only exact X Layer token trades with an explicit token risk target. This action is structured but cannot be purchased until a matching independent evidence profile is registered.')
+    }
     return {
       action,
-      decision: toDecisionPackage(action, compiled.claims, 'PRETRADE_ONCHAIN'),
+      decision: toDecisionPackage(action, compiled.claims, livePretradeProfile ? 'PRETRADE_ONCHAIN' satisfies ReviewProfile : 'GENERAL'),
       claims: compiled.claims,
-      limitations: compiled.limitations,
+      limitations,
     }
   }
 

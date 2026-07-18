@@ -27,6 +27,27 @@ export type PreparedTransactionPreflight = {
   procurementFailures: SourceFailure[]
 }
 
+export const supportedTransactionPreflightBoundary = 'Transaction Preflight currently supports only exact X Layer token trades with an explicit token risk target. CrossExam will not charge for a scope its live evidence sources cannot fulfill.'
+
+/**
+ * Validates the paid preflight boundary before the x402 middleware is reached.
+ * The current production evidence profile is deliberately narrow: it can bind
+ * an exact X Layer trade to liquidity and token-security observations. A
+ * payment, approval, deployment, another chain, or an unidentified router
+ * asset needs a different registered evidence profile and must not be sold as
+ * this product today.
+ */
+export async function validateTransactionPreflightInput(input: unknown): Promise<AssuranceAction> {
+  if (!input || Array.isArray(input) || typeof input !== 'object') {
+    throw new Error(`${supportedTransactionPreflightBoundary} Provide a structured transaction request.`)
+  }
+  const action = await createTransactionAssuranceAction(input as TransactionPreflightRequest)
+  if (action.binding.actionType !== 'TRADE' || action.evm?.chainId !== 196 || !action.reviewEvidenceContext?.tokenRiskTarget) {
+    throw new Error(supportedTransactionPreflightBoundary)
+  }
+  return action
+}
+
 function object(value: unknown, label: string): Record<string, unknown> {
   if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(`${label} must be a JSON object.`)
   return value as Record<string, unknown>
@@ -173,7 +194,7 @@ export async function prepareTransactionPreflight(
   dependencies: { registry: ReviewerRegistry; provider: ExternalReviewProvider; now?: () => Date },
 ): Promise<PreparedTransactionPreflight> {
   const now = dependencies.now ?? (() => new Date())
-  const action = await createTransactionAssuranceAction(input)
+  const action = await validateTransactionPreflightInput(input)
   const compiled = compileTransactionClaims(action)
   const decision = toDecisionPackage(action, compiled.claims, 'PRETRADE_ONCHAIN')
   let job = createReviewJob(decision, dependencies.registry, now().toISOString())

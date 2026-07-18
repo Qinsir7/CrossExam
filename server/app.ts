@@ -24,7 +24,7 @@ import { buildProcurementLedger } from './procurementLedger'
 import { reconcileReviewJobFunding, verifyUsdt0Transfer, XLAYER_USDT0 } from './customerPayment'
 import { fixedWindowRateLimit } from './rateLimit'
 import { reviewAccessRecoveryMessage } from '../src/domain/reviewAccess'
-import { prepareTransactionPreflight } from './transactionPreflight'
+import { prepareTransactionPreflight, validateTransactionPreflightInput } from './transactionPreflight'
 import { X402ReviewProvider } from './x402ReviewProvider'
 import type { ExternalReviewProvider } from './reviewJobWorker'
 import { prepareAspTrustCheck } from './aspEndpointProbe'
@@ -648,10 +648,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Transaction Preflight requires an Idempotency-Key so a paid action cannot be accidentally repeated.' })
         return
       }
+      // Reject unsupported work before x402. The current production sources
+      // cover an exact X Layer token trade only; accepting payment for another
+      // action type would turn a known product limitation into a paid failure.
+      await validateTransactionPreflightInput(request.body)
       if (!await serveIdempotentReplay(transactionPreflightRoute, request, response)) next()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
-      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
+      response.status(422).json({ error: 'TRANSACTION_PREFLIGHT_UNSUPPORTED', message })
     }
   })
   app.post('/api/v1/preflight/asp', async (request, response, next) => {
