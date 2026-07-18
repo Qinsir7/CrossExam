@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, TransactionQuoteResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
-import { displayUsdt0 } from './sdk/browserX402'
+import { displayUsdt0, requestXLayerAccount } from './sdk/browserX402'
 import './App.css'
 
 const verdictLabel: Record<ClaimVerdict, string> = {
@@ -20,6 +20,10 @@ const canonicalDemoCandidate = {
   intent: 'Acquire Xwawa on X Layer only if the exact route has sufficient liquidity and the token-transfer premise survives independent review.',
   valueAtRiskUsd: '10000',
   tokenRiskTarget: 'token:xlayer:0x095c1a875b985be6e2c86b2cae0b66a3df702e6a',
+  inputTokenAddress: '0x779ded0c9e1022225f8e0630b35a9b54be713736' as const,
+  outputTokenAddress: '0x095c1a875b985be6e2c86b2cae0b66a3df702e6a' as const,
+  inputAmountAtomic: '10000000000',
+  slippagePercent: '0.5',
 }
 
 function loadReviewSession(): { job: ReviewJobView; accessToken: string } | null {
@@ -61,6 +65,8 @@ function App() {
   const [draftTokenRiskTarget, setDraftTokenRiskTarget] = useState('')
   const [preparedReview, setPreparedReview] = useState<CrossExaminationPreparationResponse | null>(null)
   const [preparedInput, setPreparedInput] = useState<CrossExaminationPreparationRequest | null>(null)
+  const [candidateRoute, setCandidateRoute] = useState<TransactionQuoteResponse | null>(null)
+  const [quotingCandidateRoute, setQuotingCandidateRoute] = useState(false)
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(restoredReviewSession?.job ?? null)
@@ -104,8 +110,39 @@ function App() {
     setDraftRecipient('')
     setDraftCalldata('')
     setDraftValueWei('0')
+    setCandidateRoute(null)
     setFormErrors([])
     invalidatePreparation()
+  }
+  const quoteCanonicalCandidate = async () => {
+    // Generating the route is intentionally a one-click candidate flow. The
+    // quote still cannot be paid for or executed until the user reviews it.
+    loadCanonicalCandidate()
+    setQuotingCandidateRoute(true)
+    setFormErrors([])
+    try {
+      const userWalletAddress = await requestXLayerAccount()
+      const quote = await new ReviewJobClient().quoteTransaction({
+        fromTokenAddress: canonicalDemoCandidate.inputTokenAddress,
+        toTokenAddress: canonicalDemoCandidate.outputTokenAddress,
+        amount: canonicalDemoCandidate.inputAmountAtomic,
+        slippagePercent: canonicalDemoCandidate.slippagePercent,
+        userWalletAddress,
+      })
+      setDraftScenario('Trade')
+      setDraftEvmTransaction(true)
+      setDraftActionType('TRADE')
+      setDraftChainId(String(quote.transaction.chainId))
+      setDraftRecipient(quote.transaction.to)
+      setDraftCalldata(quote.transaction.data)
+      setDraftValueWei(quote.transaction.valueWei)
+      setCandidateRoute(quote)
+      invalidatePreparation()
+    } catch (error) {
+      setFormErrors([error instanceof Error ? error.message : 'CrossExam could not obtain an exact X Layer route.'])
+    } finally {
+      setQuotingCandidateRoute(false)
+    }
   }
   useEffect(() => {
     if (reviewJob && reviewJobAccessToken) {
@@ -487,8 +524,12 @@ function App() {
           </div>
           <div className="candidate-prefill">
             <div><span>Canonical live candidate</span><p>Xwawa · 10,000 USD risk screen · X Layer</p></div>
-            <button type="button" onClick={loadCanonicalCandidate}>Load candidate</button>
-            <small>Loads a real target only. Add a verified router recipient and calldata before CrossExam can bind or sell a review.</small>
+            <div className="candidate-actions">
+              <button type="button" onClick={loadCanonicalCandidate}>Load candidate</button>
+              <button type="button" onClick={() => void quoteCanonicalCandidate()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Requesting live route' : 'Generate exact route'}</button>
+            </div>
+            <small>Loads a real target, then requests an official OKX DEX quote. It never approves tokens, signs a transaction, or broadcasts a swap.</small>
+            {candidateRoute && <p className="candidate-route" aria-live="polite">Exact route ready · {candidateRoute.route.protocols.join(' + ')} · {candidateRoute.route.priceImpactPercent ?? 'unknown'}% quoted price impact · review it before payment.</p>}
           </div>
           <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this X Layer token only if liquidity and contract risk survive review." rows={2} /></label>
           <div className="hero-composer-grid">

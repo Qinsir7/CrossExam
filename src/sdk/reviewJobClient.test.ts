@@ -54,6 +54,19 @@ describe('ReviewJobClient', () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://api.cross.exam/api/v1/cross-examinations', expect.objectContaining({ method: 'POST' }))
   })
 
+  it('requests a read-only exact X Layer transaction quote before any review payment', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ transaction: { chainId: 196 }, route: { protocols: ['DYORSwap'] } }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+    const input = {
+      fromTokenAddress: '0x779ded0c9e1022225f8e0630b35a9b54be713736' as const,
+      toTokenAddress: '0x095c1a875b985be6e2c86b2cae0b66a3df702e6a' as const,
+      amount: '10000000000', slippagePercent: '0.5', userWalletAddress: '0x1111111111111111111111111111111111111111' as const,
+    }
+
+    await expect(client.quoteTransaction(input)).resolves.toMatchObject({ transaction: { chainId: 196 } })
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/transactions/quote', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }))
+  })
+
   it('submits record verification with an explicitly pinned issuer', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ signatureValid: true, actionBindingValid: true, gate: { status: 'PERMIT', executable: true, reasons: [], requiredClaimIds: [] } }), { status: 200 }))
     const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })

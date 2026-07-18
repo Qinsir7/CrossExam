@@ -32,6 +32,7 @@ import { prepareCrossExamination, startCrossExamination } from './crossExaminati
 import type { CrossExaminationPreparationRequest } from '../src/domain/assuranceContracts'
 import { publicRecordProjection } from './publicRecord'
 import { verifyAssuranceRecord } from './assuranceVerification'
+import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -40,7 +41,7 @@ const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
 const aspTrustRoute = 'POST /api/v1/preflight/asp'
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; dexQuoteFetcher?: typeof fetch } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
   // uses the official SDK's asynchronous settlement default.
   const assuranceFacilitator = new OKXFacilitatorClient({
@@ -200,6 +201,21 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Assurance record verification input is invalid.'
       response.status(422).json({ error: 'ASSURANCE_VERIFICATION_REJECTED', message })
+    }
+  })
+  // This is a free, read-only transaction-construction aid. It never asks the
+  // wallet to sign, approve, or broadcast: the returned transaction is input
+  // to a subsequent paid CrossExam review, not an execution instruction.
+  app.post('/api/v1/transactions/quote', fixedWindowRateLimit({ limit: 15, windowMs: 60_000 }), async (request, response) => {
+    try {
+      response.json(await requestOkxDexQuote(
+        request.body as OkxDexQuoteRequest,
+        { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
+        dependencies.dexQuoteFetcher,
+      ))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'An exact X Layer swap route could not be prepared.'
+      response.status(422).json({ error: 'DEX_QUOTE_REJECTED', message })
     }
   })
   app.get('/api/v1/assurance/records/:recordId', async (request, response) => {

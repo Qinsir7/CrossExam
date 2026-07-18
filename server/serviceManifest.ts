@@ -41,6 +41,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Obtain provenance-qualified liquidity and token-risk evidence for an exact EVM action, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision.',
       },
       {
+        id: 'decision-assurance.transaction-quote', endpoint: endpoint('/api/v1/transactions/quote'), paid: false,
+        description: 'Construct a non-broadcast, exact X Layer swap transaction through an authenticated official OKX DEX quote before submitting it for assurance.',
+      },
+      {
         id: 'decision-assurance.asp-trust-check', endpoint: endpoint('/api/v1/preflight/asp'), paid: true,
         description: 'Passively inspect an ASP endpoint with SSRF-resistant HTTPS probing and return a signed BUY, CAUTION, or AVOID recommendation without purchasing the target service.',
       },

@@ -1258,6 +1258,8 @@ Evidence (2026-07-18, local UI): the result surface now renders a verdict-first 
 
 Evidence (2026-07-18, local composer): loading the provisional Xwawa candidate fills only the real asset, intended size, title and intent. It intentionally leaves the recipient and calldata empty; before it can call the free preparation route or show any payment path, the browser requires a verified X Layer recipient and non-placeholder trade calldata. A clean local browser check confirmed the candidate remains outside the paid flow until those exact fields are present. This is a safety and truth-boundary improvement, not completion of the one-click exact-transaction prefill task.
 
+Evidence (2026-07-18, local exact-route path): the candidate can now ask the server for a non-broadcast X Layer route through the authenticated official OKX DEX Swap API. The constrained route adapter accepts only X Layer, a positive exact-in amount, 0–5% exclusive slippage, distinct EVM assets, and a caller wallet address; it requires an identified routing protocol, rejects a failed/malformed envelope, and requests the upstream 25% price-impact protection. It returns only normalized recipient/calldata/value and bounded route facts—never a key, approval, signature, payment, broadcast, safety verdict, or precomputed provider result. Unit and SDK contract tests pass locally. This remains unchecked until it is additively deployed, a live quote is observed, and the generated transaction is reviewed through the full browser flow.
+
 Execution order inside Day 9.5:
 
 1. Reproduce and diagnose locally from production-shaped sanitized data.

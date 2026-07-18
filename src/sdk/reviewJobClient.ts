@@ -1,7 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, TransactionQuoteRequest, TransactionQuoteResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
@@ -145,6 +145,13 @@ export class ReviewJobClient {
     return this.request('/api/v1/cross-examinations/prepare', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
     }) as Promise<CrossExaminationPreparationResponse>
+  }
+
+  /** Construct an exact X Layer swap transaction from an authenticated OKX DEX quote. No wallet approval, signature, or broadcast occurs. */
+  async quoteTransaction(input: TransactionQuoteRequest): Promise<TransactionQuoteResponse> {
+    return this.request('/api/v1/transactions/quote', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }) as Promise<TransactionQuoteResponse>
   }
 
   /** Start a fulfillable durable review; authorization remains an explicit x402 step. */

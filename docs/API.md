@@ -47,6 +47,22 @@ does not represent a comprehensive smart-contract audit; any contradiction,
 unresolved material premise, stale record, substituted binding, or unmet
 verification threshold continues to fail closed in the execution gate.
 
+### Exact X Layer route construction
+
+`POST /api/v1/transactions/quote` is free and read-only. It accepts an X Layer
+input token, output token, exact input amount in token units, conservative
+slippage (more than `0` and at most `5` percent), and the caller's public wallet
+address. CrossExam authenticates a request to the official OKX DEX Swap API,
+then returns only the normalized X Layer router `to`, calldata, native `value`,
+route protocols, quoted price impact, minimum receive amount when present, and
+timestamp.
+
+It never requests token approval, a message signature, an x402 payment, or a
+transaction broadcast. The returned transaction is a candidate for a separate
+CrossExam preflight; it remains subject to exact action binding and a fresh
+evidence review before any executor should act. The quote has its own 25%
+upstream price-impact ceiling and is not evidence or a CrossExam verdict.
+
 ## Agent Trust Check
 
 `POST /api/v1/preflight/asp` is a paid, endpoint-first ASP purchase check. It requires `endpoint`, `valueAtRiskUsd`, and an `Idempotency-Key`. The current passive profile permits **only GET** against a credential-free HTTPS URL on port 443. It resolves the host before probing, rejects private/link-local/loopback/multicast destinations, pins the validated public IP for TLS, rejects redirects, applies an 8-second timeout and a 64 KiB response limit.

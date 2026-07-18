@@ -25,6 +25,20 @@ function injectedProvider() {
   return window.ethereum
 }
 
+/** Connects a browser wallet to X Layer without signing a message or sending a transaction. */
+export async function requestXLayerAccount(): Promise<Address> {
+  const provider = injectedProvider()
+  const accounts = await provider.request({ method: 'eth_requestAccounts' })
+  const address = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] as Address : undefined
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) throw new Error('The connected wallet did not return an EVM account.')
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${XLAYER_CHAIN_ID.toString(16)}` }] })
+  } catch {
+    throw new Error('Switch the connected wallet to X Layer (chain ID 196) before requesting an exact route.')
+  }
+  return address
+}
+
 /**
  * Executes exactly one browser-wallet x402 request. The caller receives the
  * challenge details and must explicitly approve before an EIP-712 payment

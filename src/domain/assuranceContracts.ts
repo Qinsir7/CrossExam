@@ -7,9 +7,38 @@ export const assuranceProductEndpoints = {
   verify: '/api/v1/assurance/verify',
   transactionPreflight: '/api/v1/preflight/transaction',
   aspTrustCheck: '/api/v1/preflight/asp',
+  transactionQuote: '/api/v1/transactions/quote',
   prepareCrossExamination: '/api/v1/cross-examinations/prepare',
   crossExaminations: '/api/v1/cross-examinations',
 } as const
+
+/** Free read-only OKX DEX route construction. It returns a candidate exact
+ * transaction but never requests approval, a signature, or a broadcast. */
+export type TransactionQuoteRequest = {
+  fromTokenAddress: `0x${string}`
+  toTokenAddress: `0x${string}`
+  amount: string
+  slippagePercent: string
+  userWalletAddress: `0x${string}`
+}
+
+export type TransactionQuoteResponse = {
+  transaction: {
+    chainId: 196
+    to: `0x${string}`
+    data: `0x${string}`
+    valueWei: string
+  }
+  route: {
+    fromTokenAmount: string
+    toTokenAmount: string
+    minimumReceiveAmount?: string
+    priceImpactPercent?: string
+    slippagePercent?: string
+    protocols: string[]
+    observedAt: string
+  }
+}
 
 export type AssuranceRecordReference = {
   recordId: string
