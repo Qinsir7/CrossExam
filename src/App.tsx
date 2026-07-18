@@ -15,6 +15,12 @@ const verdictLabel: Record<ClaimVerdict, string> = {
 }
 
 const reviewSessionKey = 'crossexam.review-session.v1'
+const canonicalDemoCandidate = {
+  title: 'Review a 10,000 USD Xwawa acquisition',
+  intent: 'Acquire Xwawa on X Layer only if the exact route has sufficient liquidity and the token-transfer premise survives independent review.',
+  valueAtRiskUsd: '10000',
+  tokenRiskTarget: 'token:xlayer:0x095c1a875b985be6e2c86b2cae0b66a3df702e6a',
+}
 
 function loadReviewSession(): { job: ReviewJobView; accessToken: string } | null {
   try {
@@ -82,6 +88,23 @@ function App() {
     if (scenario === 'Pay' || scenario === 'Approve') { setDraftEvmTransaction(true); setDraftActionType('SPEND') }
     if (scenario === 'Deploy') { setDraftEvmTransaction(true); setDraftActionType('DEPLOY') }
     if (scenario === 'Hire agent') { setDraftEvmTransaction(false); setDraftActionType('OTHER') }
+    invalidatePreparation()
+  }
+  const loadCanonicalCandidate = () => {
+    setDraftScenario('Trade')
+    setDraftEvmTransaction(true)
+    setDraftActionType('TRADE')
+    setDraftTitle(canonicalDemoCandidate.title)
+    setDraftIntent(canonicalDemoCandidate.intent)
+    setDraftRisk(canonicalDemoCandidate.valueAtRiskUsd)
+    setDraftChainId('196')
+    setDraftTokenRiskTarget(canonicalDemoCandidate.tokenRiskTarget)
+    // The candidate provides a real asset and review size, but it deliberately
+    // never invents a router, recipient, calldata, or executable swap.
+    setDraftRecipient('')
+    setDraftCalldata('')
+    setDraftValueWei('0')
+    setFormErrors([])
     invalidatePreparation()
   }
   useEffect(() => {
@@ -433,6 +456,11 @@ function App() {
         <form className="hero-composer" id="check-action" onSubmit={submitDecision}>
           <div className="scenario-tabs" aria-label="Action scenario">
             {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" aria-pressed={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
+          </div>
+          <div className="candidate-prefill">
+            <div><span>Canonical live candidate</span><p>Xwawa · 10,000 USD risk screen · X Layer</p></div>
+            <button type="button" onClick={loadCanonicalCandidate}>Load candidate</button>
+            <small>Loads a real target only. Add a verified router recipient and calldata before CrossExam can bind or sell a review.</small>
           </div>
           <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this X Layer token only if liquidity and contract risk survive review." rows={2} /></label>
           <div className="hero-composer-grid">
