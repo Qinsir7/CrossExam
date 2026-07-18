@@ -1,6 +1,8 @@
 # CrossExam ASP service-update card
 
-Status: **draft only — no ASP identity or service update has been submitted.**
+Status: **strategic hold — draft only; no ASP identity or service update has been submitted.**
+
+The 2026-07-18 independent audit found the current ASP still `not listed` / `Listing under review`. Do not submit this delta while that review is pending. First complete the winner-grade clean-browser demo gate in `BUILD_PLAN.md` Day 9.5, then re-check the platform status. This card is retained only for a later explicit owner decision after approval or a concrete rejection.
 
 Prepared against the read-only state of CrossExam ASP `#6065` on 2026-07-18:
 

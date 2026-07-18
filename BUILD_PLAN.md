@@ -4,6 +4,8 @@
 >
 > Last planned: 2026-07-18 (Asia/Shanghai)
 >
+> Last independently audited: 2026-07-18 (Asia/Shanghai), after the first real paid deep-review acceptance run.
+>
 > Competition deadline: 2026-07-27 23:59 UTC
 >
 > This document is intentionally explicit. A future implementation agent must follow it in order, update the checkboxes as work lands, and never replace production truth with mock behavior.
@@ -1217,15 +1219,60 @@ Evidence (2026-07-18): `CrossExamClient` now exposes `prepareAction`, `startDeep
 - [x] Confirm customer income, evidence, record, recovery, gate, and gross margin.
 - [x] Fix only demonstrated failures; avoid unnecessary refactors.
 
-Acceptance: the canonical demo works from a clean browser and fresh job without manual intervention.
+Acceptance: the production API/economic chain works from a fresh job without manual database or worker intervention. Clean-browser and winner-grade demo acceptance are intentionally separated into Day 9.5 below.
 
 Evidence (2026-07-18): The live API returned healthy `/health` and `/ready` checks with x402 enabled and a recent procurement-worker event; the deployed web app returned 200 with the production canonical URL. Unpaid black-box checks returned standard 402 challenges for the legacy aggregate route, Transaction Preflight, Agent Trust Check, and review authorization before any paid business action. With the user's explicit confirmation, a fresh `PRETRADE_ONCHAIN` review was prepared against the active OKX Onchain OS liquidity and GoPlus X Layer token-security sources, then started and authorized through the standard x402 flow for 0.20 USD₮0 (below the approved 0.25 USD₮0 ceiling). The worker recorded two authenticated, provenance-bound evidence deliveries and reached `READY_FOR_ASSURANCE`; the service issued and persisted a `PROCUREMENT_VERIFIED` signed record. The free verifier, pinned to the live manifest's record-attestation signer, returned `signatureValid: true` and `actionBindingValid: true`; its execution gate returned non-executable `REMEDIATE` with the record's three explicit reversal conditions. The protected ledger recorded the settled customer authorization, included-quota cost bases for both external sources, no outstanding scopes, and same-asset realized margin. Existing focused tests cover recovery capability rotation and retrying a settled failed job without another customer charge. The only acceptance-script defect was an incorrect local manifest-field path; the live manifest and product verifier were correct, so no production code change was warranted.
+
+Audit correction (2026-07-18): this run proves the production payment, procurement, persistence, attestation, verification, gate and economics chain, but it was completed through API/wallet tooling rather than entirely through a clean browser. Its honest result was `CONDITIONAL`/`REMEDIATE` with no strongest contradiction selected. That is operationally correct and fail-closed, but it is not yet the decisive, visually compelling canonical competition demo. Do not cite Day 9 alone as proof that the final browser demo is complete.
+
+### Day 9.5 — winner-grade real demo and clean-browser acceptance
+
+This is now the first execution priority. Complete it before any ASP service-list mutation, final recording, X post, or competition submission.
+
+- [ ] Diagnose why the first paid deep review left all three generated claims unresolved.
+- [ ] Trace each real provider fact from adapter output through stored delivery, aggregation, record result, UI and execution gate.
+- [ ] Fix only demonstrated evidence-to-claim or deterministic-policy gaps; never hardcode a target, provider response, contradiction or verdict.
+- [ ] Make exact action-binding verification a deterministic first-party fact when the server-created canonical action and reviewed action match; do not pretend this fact came from an external reviewer.
+- [ ] Ensure liquidity facts can resolve or contradict the execution-liquidity claim under explicit documented thresholds.
+- [ ] Ensure token-security facts can resolve or contradict the transfer-safety claim under explicit documented risk rules.
+- [ ] Preserve `UNRESOLVED` and fail closed whenever provider output is missing, stale, inapplicable, ambiguous or outside the adapter's supported schema.
+- [ ] Add focused regression tests for positive, contradictory, inapplicable, malformed and provider-outage evidence paths.
+- [ ] Select a stable real X Layer demo target using read-only provider checks; record why its live evidence is likely to produce a meaningful `BLOCK` or `HOLD` without fabricating risk.
+- [ ] Add a clearly labelled one-click transaction prefill for that real target while keeping every result, payment and progress state live.
+- [ ] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
+- [ ] Verify that no sample, fixture, cached verdict or precomputed provider response is presented as the live run.
+- [ ] Run lint, all tests, production build, dependency audit, tracked-secret scan and `git diff --check`.
+- [ ] Deploy additively without changing the registered aggregate endpoint, price, GET compatibility or x402 challenge behavior.
+- [ ] Run unpaid production probes for health, readiness, manifest, aggregate, Transaction Preflight, Agent Trust Check, deep-review preparation and review authorization.
+- [ ] From a clean browser with no saved CrossExam session, prepare a fresh job, approve one explicitly confirmed real payment, wait for both real providers, retrieve the signed record, run the exact execution gate and inspect the protected ledger.
+- [ ] Refresh once while evidence is pending and once on the result page; confirm owner-capability recovery restores the same job without another charge.
+- [ ] Confirm the final live result contains either a provider-supported strongest contradiction or an explicitly material unresolved premise, an actionable reversal condition, a valid service signature, an exact action binding and a non-executable `BLOCK`/`HOLD` gate.
+- [ ] Complete visual acceptance at 320, 375, 390, 768, 1024 and 1440 CSS pixels with no overflow, hidden primary action, inaccessible dialog or exposed secret/private wallet detail.
+- [ ] Save a sanitized demo evidence note containing timestamps, statuses, source names, verdict, gate result, revenue, cost basis and margin; never commit access tokens, authorization headers, private record links, payer addresses or raw settlement credentials.
+
+Acceptance: a first-time visitor can start the canonical scenario without internal schema knowledge; one fresh browser run produces a real paid, multi-source, signed and action-bound `BLOCK` or `HOLD`; the exact transaction remains unbroadcast and the execution gate visibly refuses it for a reason derived from the live record. The run must require no terminal, database edit, worker command, manual callback or fabricated progress/result.
+
+Execution order inside Day 9.5:
+
+1. Reproduce and diagnose locally from production-shaped sanitized data.
+2. Correct evidence semantics and tests before changing UI copy.
+3. Select the real target only after supported evidence fields and policy thresholds are understood.
+4. Implement the prefill and verdict hierarchy.
+5. Pass all local engineering and visual checks.
+6. Deploy additively and pass unpaid production probes.
+7. Stop for explicit approval immediately before the single real x402 payment.
+8. Complete the clean-browser run and document sanitized evidence.
+9. Only then mark the corresponding Definition of Done boxes complete.
 
 ### Day 10 — listing, demo, submission, and buffer
 
 - [x] Prepare exact ASP service update card.
-- [ ] Obtain user confirmation and submit service updates if strategically safe.
-- [ ] Confirm listing status and endpoint audit.
+- [ ] Monitor the current ASP review read-only; while it is `Listing under review`, do not mutate identity fields or services.
+- [ ] If approved, confirm the live legacy service and endpoint before considering additive service entries.
+- [ ] If rejected, compare the new review reason with current production evidence and update only the same ASP `#6065` after an exact diff card and explicit user confirmation.
+- [ ] Obtain user confirmation and submit additive service updates only if strategically safer than preserving the approved/current listing.
+- [ ] Confirm final listing status and endpoint audit.
+- [ ] Prepare the final 70–85 second recording script, cursor path, safe browser state and redaction checklist from the accepted Day 9.5 run.
 - [ ] Record final 70–85 second video.
 - [ ] Publish X post with `#OKXAI`.
 - [ ] Complete submission form before deadline.
@@ -1234,6 +1281,8 @@ Evidence (2026-07-18): The live API returned healthy `/health` and `/ready` chec
 Acceptance: approved/live ASP, valid submission, public demo, production URL, and reproducible paid flow.
 
 Evidence (2026-07-18): `docs/ASP_SERVICE_UPDATE_CARD.md` captures the live ASP `#6065` state and exact, two-part English draft copy. It explicitly preserves the still-reviewed legacy `Decision Assurance API`, proposes only three direct buyer-facing API services with production endpoints, and defers the deliberately multi-step deep-review flow rather than misleading the marketplace with an endpoint that does not itself issue a 402 challenge. No listing mutation, activation, or re-submission has been made.
+
+Strategic hold (2026-07-18): the current identity is online but remains `not listed` / `Listing under review`, and the marketplace currently exposes only the legacy `Decision Assurance API`. Do not add the prepared services while that review is pending. The update card is retained as a post-approval/rejection option, not as the next action.
 
 ## 14. Priorities if time slips
 
@@ -1277,6 +1326,8 @@ If time slips, cut P2 entirely. Do not weaken the primary live transaction story
 | Marketplace discovery API unavailable | Agent metadata cannot be verified | Ship endpoint-first trust check and label unavailable dimensions; do not scrape private APIs |
 | LLM hallucination | False claims/verdicts | LLM only structures candidate claims; evidence/policy controls verdict |
 | Demo result is nondeterministic | Recording failure | Choose a stable real target, prefill input, verify providers/worker/wallet immediately before recording |
+| Real evidence is delivered but every claim remains unresolved | Product appears to buy data without changing a decision | Trace normalized facts into explicit deterministic claim rules; preserve unresolved output when unsupported; require a real contradiction or material unresolved premise for the canonical demo |
+| API acceptance is mistaken for browser acceptance | Payment works but the public product fails on camera | Require one clean-browser fresh-job paid run, pending-state refresh, result refresh, verifier, gate and ledger before recording |
 | Price exceeds willingness to test | Low revenue/orders | 0.02 entry services, 0.20 deep review, free verification |
 | Frontend exposes internals | Weak product experience | Verdict-first hierarchy; audit details collapsed |
 | Secret leakage | Loss of funds/credentials | server-only keys, ignore checks, redacted logs, no screenshots of secrets |
@@ -1300,12 +1351,12 @@ The final product is complete for submission only when all of the following are 
 
 ### Product
 
-- [x] A first-time visitor understands the product in three seconds.
-- [x] The primary CTA starts a real action review without requiring internal schema knowledge.
+- [ ] A first-time visitor understands the product in three seconds.
+- [ ] The primary CTA starts the canonical real action review without requiring internal schema knowledge.
 - [x] The canonical transaction demo uses real payment and evidence.
 - [x] The final verdict is signed and action-bound.
-- [x] The exact guarded transaction is blocked or permitted by the returned record.
-- [x] The UI explains the strongest contradiction and reversal condition.
+- [ ] A fresh clean-browser run visibly blocks or holds the exact guarded transaction without broadcasting it.
+- [ ] The canonical live result and UI explain the strongest contradiction or material unresolved premise and its reversal condition.
 
 ### Economics
 
@@ -1367,3 +1418,5 @@ Do not request all of these immediately. Ask only when needed:
 Use this exact starting directive:
 
 > Open `/Users/zhangchi/Desktop/OKXAIGenesis/CrossExam/BUILD_PLAN.md` and follow section 0 before making changes. Continue from the first unchecked task in section 13. Preserve all existing production behavior and do not use mocks as live output. Work autonomously through local implementation and verification, but stop before any real payment, ASP identity/service update, production secret/configuration change, or external submission that requires my confirmation. Update BUILD_PLAN.md checkboxes only after each acceptance criterion passes, commit coherent batches, and report only meaningful blockers or completed milestones.
+
+Current starting point (2026-07-18): the first unchecked task is Day 9.5 evidence-resolution diagnosis. Do not begin with the Day 10 ASP update card. The ASP is still under review, and the next product milestone is a decisive real clean-browser demo—not additional marketplace breadth.
