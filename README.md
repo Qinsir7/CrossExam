@@ -41,6 +41,8 @@ CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assuran
 
 `POST /api/v1/preflight/transaction` is the higher-level paid transaction firewall: it binds the exact EVM action, requests the configured real liquidity and token-risk sources, returns only provenance-qualified observations, and signs a fail-closed `PERMIT`, `HOLD`, or `BLOCK` record. It requires an `Idempotency-Key`; an unavailable source becomes an explicit `HOLD`, never a fabricated positive signal.
 
+`POST /api/v1/preflight/asp` is the paid endpoint-first Agent Trust Check. Its passive mode performs an SSRF-resistant GET probe, validates the observed unpaid X Layer payment challenge, compares explicit commercial expectations, and signs `BUY`, `CAUTION`, or `AVOID` without purchasing the target ASP.
+
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.

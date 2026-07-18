@@ -22,6 +22,12 @@ Required JSON fields are `title`, `actionType`, `chainId`, `data`, and `valueAtR
 
 An unavailable, malformed, unmatched, or unnormalized external source is returned only as an honest procurement failure and forces `HOLD`; it is never represented as a reviewer signature, support, or a safe result. A fully delivered built-in source set yields `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`. The `economics.externalEvidenceCostUsdt` field reports actual settled downstream x402 spend only; included API quota/public source evidence has zero reported marginal x402 spend and is labeled by `costBasis`.
 
+## Agent Trust Check
+
+`POST /api/v1/preflight/asp` is a paid, endpoint-first ASP purchase check. It requires `endpoint`, `valueAtRiskUsd`, and an `Idempotency-Key`. The current passive profile permits **only GET** against a credential-free HTTPS URL on port 443. It resolves the host before probing, rejects private/link-local/loopback/multicast destinations, pins the validated public IP for TLS, rejects redirects, applies an 8-second timeout and a 64 KiB response limit.
+
+The endpoint inspects an unpaid response for a bounded X Layer exact payment challenge, then compares challenged amount and recipient with optional `expectedPriceAtomic` and `expectedRecipient`. It returns a signed `BUY`, `CAUTION`, or `AVOID` recommendation together with request/response hashes and explicit limitations. `BUY` means only that the observed endpoint/payment contract is coherent; it does not claim marketplace identity, ownership, reputation, or paid behavior. `PAID_CALL` intentionally returns a fail-closed error until a separate recipient-bound procurement policy is enabled.
+
 ## x402 payment
 
 The endpoint is protected by the OKX x402 Express SDK.

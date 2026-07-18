@@ -46,6 +46,10 @@ describe('loadX402ServerConfig', () => {
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD: '0.07' }).transactionPreflightPriceUsd).toBe('0.07')
   })
 
+  it('keeps the ASP trust price independently configurable', () => {
+    expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_ASP_TRUST_PRICE_USD: '0.03' }).aspTrustPriceUsd).toBe('0.03')
+  })
+
   it('allows the facilitator sync only to be explicitly disabled for local non-payment smoke tests', () => {
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_SYNC: 'false' }).syncFacilitatorOnStart).toBe(false)
   })

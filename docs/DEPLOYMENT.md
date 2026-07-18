@@ -34,6 +34,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_PAY_TO`: a real X Layer receiving wallet.
 - `CROSSEXAM_SERVICE_SIGNING_KEY`: a dedicated 32-byte EVM private key for issuing assurance records. It is mandatory when the paid x402 service is enabled; publish only its derived public address in service discovery.
 - `CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD`: the fixed buyer price for `POST /api/v1/preflight/transaction` (default `0.02`). It is deliberately separate from the legacy aggregate price. Add it to Railway only in the same authorized deployment as the new route.
+- `CROSSEXAM_ASP_TRUST_PRICE_USD`: the fixed buyer price for `POST /api/v1/preflight/asp` (default `0.02`). The passive probe performs no target payment; do not enable a paid target-service call through this setting.
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
 - `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD`: full-review price floor. CrossExam automatically quotes higher-cost jobs upward to preserve the configured margin.

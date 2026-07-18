@@ -27,12 +27,14 @@ import { reviewAccessRecoveryMessage } from '../src/domain/reviewAccess'
 import { prepareTransactionPreflight } from './transactionPreflight'
 import { X402ReviewProvider } from './x402ReviewProvider'
 import type { ExternalReviewProvider } from './reviewJobWorker'
+import { prepareAspTrustCheck } from './aspEndpointProbe'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
 const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
+const aspTrustRoute = 'POST /api/v1/preflight/asp'
 
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
@@ -466,6 +468,17 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       description: 'CrossExam evidence-backed, action-bound transaction preflight',
       mimeType: 'application/json',
     },
+    [aspTrustRoute]: {
+      accepts: {
+        scheme: 'exact' as const,
+        network: 'eip155:196' as const,
+        payTo: config.payTo,
+        price: `$${config.aspTrustPriceUsd}`,
+        maxTimeoutSeconds: 300,
+      },
+      description: 'CrossExam SSRF-resistant passive ASP endpoint and payment-contract trust check',
+      mimeType: 'application/json',
+    },
   }
   const fundingPaidRoutes = {
     [reviewFundingRoute]: {
@@ -547,6 +560,18 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
     }
   })
+  app.post('/api/v1/preflight/asp', async (request, response, next) => {
+    try {
+      if (!request.header('idempotency-key')) {
+        response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Agent Trust Check requires an Idempotency-Key so a paid probe cannot be accidentally repeated.' })
+        return
+      }
+      if (!await serveIdempotentReplay(aspTrustRoute, request, response)) next()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
+    }
+  })
 
   if (config.syncFacilitatorOnStart) {
     app.use(paymentMiddleware(assurancePaidRoutes, assuranceResourceServer))
@@ -564,6 +589,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/preflight/transaction', (_request, response) => {
+      response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
+    })
+    app.post('/api/v1/preflight/asp', (_request, response) => {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/review-jobs/authorize', (_request, response) => {
@@ -657,6 +685,28 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Transaction preflight could not be issued.'
       response.status(422).json({ error: 'TRANSACTION_PREFLIGHT_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/preflight/asp', async (request, response) => {
+    try {
+      if (!config.serviceSigningKey) throw new Error('Paid ASP trust checks require a configured service signing key.')
+      const prepared = await prepareAspTrustCheck(request.body)
+      const record = await attestDecisionAssuranceRecord(prepared.record, config.serviceSigningKey)
+      const persistence = await recordStore.save(record)
+      await persistIdempotency(response, record.recordId)
+      const readAccess = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
+      if (!record.serviceAttestation) throw new Error('Signed ASP trust record is missing its service attestation.')
+      response.status(200).json({
+        action: prepared.action,
+        observations: prepared.observations,
+        verdict: prepared.verdict,
+        recommendation: prepared.recommendation,
+        record: { recordId: record.recordId, issuedAt: record.issuedAt, attributionStatus: record.attributionStatus, serviceAttestation: record.serviceAttestation, readAccess },
+        persistence,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ASP trust check could not be issued.'
+      response.status(422).json({ error: 'ASP_TRUST_CHECK_REJECTED', message })
     }
   })
   app.post('/api/v1/review-jobs/authorize', async (request, response) => {
