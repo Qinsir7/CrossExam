@@ -245,8 +245,36 @@ function App() {
     }
   }
 
+  function validateDraftBeforePreparation(): string[] {
+    const errors: string[] = []
+    if (!draftTitle.trim()) errors.push('Add a short title for the action under review.')
+    if (!draftIntent.trim()) errors.push('Describe what the agent is about to do so CrossExam can compile material claims.')
+    if (!Number.isFinite(Number(draftRisk)) || Number(draftRisk) <= 0) errors.push('Value at risk must be a positive USD amount.')
+    if (!draftEvmTransaction) return errors
+
+    if (!Number.isInteger(Number(draftChainId)) || Number(draftChainId) !== 196) errors.push('The live pretrade evidence profile currently supports X Layer (chain ID 196) only.')
+    if (!/^\d+$/.test(draftValueWei)) errors.push('Native value must be expressed as a whole number of wei.')
+
+    const isDeployment = draftActionType === 'DEPLOY'
+    if (!isDeployment && !/^0x[a-fA-F0-9]{40}$/.test(draftRecipient.trim())) errors.push('Add the verified router or recipient address that will receive the exact transaction.')
+
+    if (!/^0x(?:[a-fA-F0-9]{2})*$/.test(draftCalldata.trim())) {
+      errors.push('Calldata must be an even-length 0x-prefixed hex string.')
+    } else if (isDeployment && draftCalldata.trim() === '0x') {
+      errors.push('A deployment review requires non-empty init code.')
+    } else if (draftActionType === 'TRADE' && draftCalldata.trim().length < 10) {
+      errors.push('A trade review requires the exact router calldata; CrossExam will not sell a review for an empty or placeholder swap.')
+    }
+    return errors
+  }
+
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const validationErrors = validateDraftBeforePreparation()
+    if (validationErrors.length > 0) {
+      setFormErrors(validationErrors)
+      return
+    }
     try {
       const input = simpleInput()
       const prepared = await new ReviewJobClient().prepareCrossExamination(input)

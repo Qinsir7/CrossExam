@@ -1256,6 +1256,8 @@ Evidence (2026-07-18, local): the first paid result had all three claims unresol
 
 Evidence (2026-07-18, local UI): the result surface now renders a verdict-first snapshot before claim and audit details. It exposes the action recommendation, protected value, strongest refuted or unresolved premise, and deterministic execution-gate status/reason without asking the user to click an execution control. The secondary action only re-runs the pure gate evaluation; it does not broadcast or sign a transaction. A local browser check at 320, 375, 390, 768, 1024, and 1440 CSS pixels found no horizontal overflow. Final production visual acceptance remains unchecked until the fresh paid browser run is complete.
 
+Evidence (2026-07-18, local composer): loading the provisional Xwawa candidate fills only the real asset, intended size, title and intent. It intentionally leaves the recipient and calldata empty; before it can call the free preparation route or show any payment path, the browser requires a verified X Layer recipient and non-placeholder trade calldata. A clean local browser check confirmed the candidate remains outside the paid flow until those exact fields are present. This is a safety and truth-boundary improvement, not completion of the one-click exact-transaction prefill task.
+
 Execution order inside Day 9.5:
 
 1. Reproduce and diagnose locally from production-shaped sanitized data.
