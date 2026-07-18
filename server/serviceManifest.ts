@@ -53,6 +53,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Retrieve a persisted Decision Assurance Record with its time-limited bearer token.',
       },
       {
+        id: 'decision-assurance.public-record', endpoint: endpoint('/api/v1/public/records/{shareToken}'), paid: false,
+        description: 'Retrieve the deliberately sanitized public projection of a record only through its revocable opaque share capability.',
+      },
+      {
         id: 'decision-assurance.outcome-ingestion', endpoint: endpoint('/api/v1/outcomes'), paid: false,
         description: 'Registered outcome authorities submit EIP-191-signed, evidence-bound ex-post claim resolutions.',
       },

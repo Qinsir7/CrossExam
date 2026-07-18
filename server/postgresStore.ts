@@ -58,6 +58,11 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
         expires_at TIMESTAMPTZ NOT NULL
       );
       CREATE INDEX IF NOT EXISTS crossexam_record_access_grants_expiry_idx ON crossexam_record_access_grants (expires_at);
+      CREATE TABLE IF NOT EXISTS crossexam_public_record_shares (
+        token_hash TEXT PRIMARY KEY,
+        record_id TEXT NOT NULL REFERENCES crossexam_records(record_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
       CREATE TABLE IF NOT EXISTS crossexam_outcomes (
         record_id TEXT NOT NULL REFERENCES crossexam_records(record_id),
         claim_id TEXT NOT NULL,
@@ -149,6 +154,29 @@ export class PostgresAssuranceStore implements AssuranceRecordStore, AssuranceId
       [recordId, now.toISOString(), tokenHash(token)],
     )
     return result.rows[0]?.valid === true
+  }
+
+  async createPublicShare(recordId: string) {
+    assertRecordId(recordId)
+    await this.ready()
+    const exists = await this.pool.query('SELECT 1 FROM crossexam_records WHERE record_id = $1', [recordId])
+    if (!exists.rowCount) throw new Error('Cannot share a record that does not exist.')
+    const token = `darshare_${randomBytes(24).toString('base64url')}`
+    await this.pool.query('INSERT INTO crossexam_public_record_shares (token_hash, record_id) VALUES ($1, $2)', [tokenHash(token), recordId])
+    return { token }
+  }
+
+  async findPublicShare(token: string) {
+    if (!/^darshare_[A-Za-z0-9_-]{24,}$/.test(token)) return null
+    await this.ready()
+    const result = await this.pool.query<{ record_id: string }>('SELECT record_id FROM crossexam_public_record_shares WHERE token_hash = $1', [tokenHash(token)])
+    return result.rows[0]?.record_id ?? null
+  }
+
+  async revokePublicShare(token: string) {
+    if (!/^darshare_[A-Za-z0-9_-]{24,}$/.test(token)) throw new Error('Invalid public share token.')
+    await this.ready()
+    await this.pool.query('DELETE FROM crossexam_public_record_shares WHERE token_hash = $1', [tokenHash(token)])
   }
 
   async saveOutcome(outcome: SignedClaimOutcomeAdjudication): Promise<RecordSaveResult> {

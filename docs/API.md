@@ -133,6 +133,12 @@ After a successful paid aggregation, the record is atomically persisted before t
 
 The response also includes a time-limited `readAccess` bearer token. Retrieve a persisted record with `GET /api/v1/assurance/records/{recordId}` and `Authorization: Bearer {token}`. The server stores only a SHA-256 token hash and returns `404` for absent, invalid, expired, or unauthorized requests to avoid disclosing record existence.
 
+## Safe public sharing
+
+Records are private by default. An owner with the current record bearer capability may call `POST /api/v1/assurance/records/{recordId}/share` to create a revocable opaque `darshare_…` link, and may revoke it with `DELETE /api/v1/assurance/records/{recordId}/share/{shareToken}` using the same capability. `GET /api/v1/public/records/{shareToken}` returns only a sanitized projection: record ID, time, attribution, verdict, action title, value reviewed, strongest contradiction, source names/times, and service-attestation metadata.
+
+Public shares never return raw action parameters or bindings, raw evidence, reviewer callbacks, payment information, wallet addresses, bearer capabilities, or private decision notes. The share token is a random capability rather than an enumerable record URL.
+
 ## Durable review jobs
 
 ## Deep Cross-Examination

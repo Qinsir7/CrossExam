@@ -13,6 +13,9 @@ export interface AssuranceRecordStore {
   find(recordId: string): Promise<DecisionAssuranceRecord | null>
   issueReadAccess(recordId: string, ttlSeconds: number, now?: Date): Promise<{ token: string; expiresAt: string }>
   canRead(recordId: string, token: string, now?: Date): Promise<boolean>
+  createPublicShare(recordId: string): Promise<{ token: string }>
+  findPublicShare(token: string): Promise<string | null>
+  revokePublicShare(token: string): Promise<void>
   saveOutcome(outcome: SignedClaimOutcomeAdjudication): Promise<RecordSaveResult>
   listOutcomes(): Promise<SignedClaimOutcomeAdjudication[]>
   saveExecution(receipt: SignedExecutionReceipt): Promise<RecordSaveResult>
@@ -37,12 +40,14 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
   private readonly grantsDirectory: string
   private readonly outcomesDirectory: string
   private readonly executionsDirectory: string
+  private readonly sharesDirectory: string
 
   constructor(dataDirectory: string) {
     this.recordsDirectory = join(dataDirectory, 'records')
     this.grantsDirectory = join(dataDirectory, 'grants')
     this.outcomesDirectory = join(dataDirectory, 'outcomes')
     this.executionsDirectory = join(dataDirectory, 'executions')
+    this.sharesDirectory = join(dataDirectory, 'shares')
   }
 
   async checkHealth() {
@@ -51,6 +56,7 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
       mkdir(this.grantsDirectory, { recursive: true }),
       mkdir(this.outcomesDirectory, { recursive: true }),
       mkdir(this.executionsDirectory, { recursive: true }),
+      mkdir(this.sharesDirectory, { recursive: true }),
     ])
   }
 
@@ -116,6 +122,31 @@ export class FileAssuranceRecordStore implements AssuranceRecordStore {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false
       throw error
     }
+  }
+
+  async createPublicShare(recordId: string) {
+    assertRecordId(recordId)
+    if (!await this.find(recordId)) throw new Error('Cannot share a record that does not exist.')
+    await mkdir(this.sharesDirectory, { recursive: true })
+    const token = `darshare_${randomBytes(24).toString('base64url')}`
+    await writeFile(join(this.sharesDirectory, `${tokenHash(token)}.json`), `${JSON.stringify({ recordId })}\n`, { encoding: 'utf8', flag: 'wx' })
+    return { token }
+  }
+
+  async findPublicShare(token: string) {
+    if (!/^darshare_[A-Za-z0-9_-]{24,}$/.test(token)) return null
+    try {
+      const grant = JSON.parse(await readFile(join(this.sharesDirectory, `${tokenHash(token)}.json`), 'utf8')) as { recordId?: unknown }
+      return typeof grant.recordId === 'string' && /^dar_[a-f0-9]{24}$/.test(grant.recordId) ? grant.recordId : null
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+      throw error
+    }
+  }
+
+  async revokePublicShare(token: string) {
+    if (!/^darshare_[A-Za-z0-9_-]{24,}$/.test(token)) throw new Error('Invalid public share token.')
+    await rm(join(this.sharesDirectory, `${tokenHash(token)}.json`), { force: true })
   }
 
   /**

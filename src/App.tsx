@@ -66,6 +66,7 @@ function App() {
   const [authorizingReviewJob, setAuthorizingReviewJob] = useState(false)
   const [retryingReviewJob, setRetryingReviewJob] = useState(false)
   const [recoveringReviewJob, setRecoveringReviewJob] = useState(false)
+  const [sharingReviewRecord, setSharingReviewRecord] = useState(false)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -298,6 +299,31 @@ function App() {
     }
   }
 
+  function downloadPrivateRecord() {
+    if (!reviewJobResult) return
+    const href = URL.createObjectURL(new Blob([JSON.stringify(reviewJobResult, null, 2)], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = href
+    anchor.download = `${reviewJobResult.recordId}.json`
+    anchor.click()
+    URL.revokeObjectURL(href)
+  }
+
+  async function shareReviewRecord() {
+    if (!reviewJobResult) return
+    setSharingReviewRecord(true)
+    setReviewJobError(null)
+    try {
+      const share = await new ReviewJobClient().createPublicShare(reviewJobResult.recordId, reviewJobResult.readAccess.token)
+      await navigator.clipboard?.writeText(share.url)
+      setReviewJobError('A sanitized public share link was copied. It excludes raw evidence, action parameters, payment data, and your private record capability.')
+    } catch (error) {
+      setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not create a public share link.')
+    } finally {
+      setSharingReviewRecord(false)
+    }
+  }
+
   const reviewStatusLabel: Record<ReviewJobView['status'], string> = {
     AWAITING_MATCH: 'Awaiting independent reviewer match',
     AWAITING_DELIVERIES: 'Independent review procurement in progress',
@@ -306,6 +332,25 @@ function App() {
     CANCELLED: 'Review job cancelled',
     EXPIRED: 'Unfunded review quote expired',
   }
+
+  const reviewStages = useMemo(() => {
+    if (!reviewJob) return []
+    const scopeComplete = (scopeId: string) => {
+      const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scopeId)
+      const procurement = reviewJob.procurements.find((item) => item.scopeId === scopeId)
+      return Boolean(assignment?.delivery || procurement?.evidence)
+    }
+    const paymentConfirmed = reviewJob.fundingStatus === 'AUTHORIZED'
+    const ready = reviewJob.status === 'READY_FOR_ASSURANCE'
+    return [
+      { label: 'Payment confirmed', complete: paymentConfirmed, pending: !paymentConfirmed, detail: paymentConfirmed ? 'Customer settlement is recorded.' : 'External evidence remains spend-locked.' },
+      { label: 'Action bound', complete: true, pending: false, detail: 'The review is bound to its canonical action hash.' },
+      { label: 'Liquidity evidence received', complete: scopeComplete('execution-liquidity'), pending: paymentConfirmed && !scopeComplete('execution-liquidity'), detail: 'OKX Onchain OS source output is retained only when received.' },
+      { label: 'Contract risk evidence received', complete: scopeComplete('contract-token-risk'), pending: paymentConfirmed && !scopeComplete('contract-token-risk'), detail: 'GoPlus source output is retained only when received.' },
+      { label: 'Contradiction analysis complete', complete: ready, pending: paymentConfirmed && !ready, detail: 'All required evidence must be present before analysis completes.' },
+      { label: 'Signed verdict issued', complete: Boolean(reviewJobResult), pending: ready && !reviewJobResult, detail: 'A service signature is issued only after the durable result exists.' },
+    ]
+  }, [reviewJob, reviewJobResult])
 
   return (
     <main className="app-shell">
@@ -502,6 +547,7 @@ function App() {
               )}
             </div>
             {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
+            {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}
           </aside>
         </div>
       </section>
@@ -521,6 +567,11 @@ function App() {
           {reviewJob.status === 'FAILED' && reviewJob.fundingStatus === 'AUTHORIZED' && <button className="run-button" onClick={() => void retryReview()} disabled={retryingReviewJob}>
             <span className="button-cross">×</span> {retryingReviewJob ? 'Rebinding evidence sources' : 'Retry without another payment'} <span className="button-arrow">→</span>
           </button>}
+          <ol className="review-stage-list" aria-label="Live review progress">
+            {reviewStages.map((stage) => <li className={stage.complete ? 'complete' : stage.pending ? 'pending' : 'waiting'} key={stage.label}>
+              <span aria-hidden="true">{stage.complete ? '✓' : stage.pending ? '·' : '—'}</span><div><strong>{stage.label}</strong><small>{stage.detail}</small></div>
+            </li>)}
+          </ol>
           <details className="audit-details">
             <summary>View evidence provenance and economics</summary>
             <div className="review-plan-list">

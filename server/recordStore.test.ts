@@ -68,6 +68,18 @@ describe('FileAssuranceRecordStore', () => {
     await expect(recordStore.canRead(record.recordId, grant.token, new Date('2026-07-15T00:01:00.000Z'))).resolves.toBe(false)
   })
 
+  it('creates an opaque revocable public-share capability without making record IDs enumerable', async () => {
+    const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z')
+    const recordStore = await store()
+    await recordStore.save(record)
+    const share = await recordStore.createPublicShare(record.recordId)
+
+    expect(share.token).toMatch(/^darshare_/)
+    await expect(recordStore.findPublicShare(share.token)).resolves.toBe(record.recordId)
+    await recordStore.revokePublicShare(share.token)
+    await expect(recordStore.findPublicShare(share.token)).resolves.toBeNull()
+  })
+
   it('allows an authority to retry an identical outcome but refuses a silent revision', async () => {
     const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z')
     const recordStore = await store()

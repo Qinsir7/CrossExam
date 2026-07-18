@@ -175,6 +175,12 @@ export class ReviewJobClient {
     return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/result`, { headers: { authorization: `Bearer ${accessToken}` } }) as Promise<ReviewJobResult>
   }
 
+  async createPublicShare(recordId: string, readAccessToken: string): Promise<{ token: string; url: string }> {
+    return this.request(`/api/v1/assurance/records/${encodeURIComponent(recordId)}/share`, {
+      method: 'POST', headers: { authorization: `Bearer ${readAccessToken}` },
+    }) as Promise<{ token: string; url: string }>
+  }
+
   async retry(jobId: string, accessToken: string): Promise<ReviewJobView> {
     return this.request(`/api/v1/review-jobs/${encodeURIComponent(jobId)}/retry`, {
       method: 'POST',

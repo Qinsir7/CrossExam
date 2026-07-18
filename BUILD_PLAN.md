@@ -1185,13 +1185,15 @@ Evidence (2026-07-18): The direct first-screen composer in `src/App.tsx` present
 
 ### Day 7 — live progress and verdict experience
 
-- [ ] Implement persisted live stage UI.
-- [ ] Implement verdict-first result page.
-- [ ] Add strongest contradiction, reversal conditions, source freshness, and execution gate.
-- [ ] Add private JSON download and safe share flow.
-- [ ] Add error/retry/recovery states.
+- [x] Implement persisted live stage UI.
+- [x] Implement verdict-first result page.
+- [x] Add strongest contradiction, reversal conditions, source freshness, and execution gate.
+- [x] Add private JSON download and safe share flow.
+- [x] Add error/retry/recovery states.
 
 Acceptance: refresh during a paid job recovers state, and the final page clearly shows why execution is blocked or permitted.
+
+Evidence (2026-07-18): `src/App.tsx` derives the visible progress stages directly from persisted `ReviewJob` funding, dispatch, procurement and issued-record state—there is no timer-based simulated progress—and session restoration continues to use the owner capability. The existing verdict-first page surfaces material refutations, reversal conditions, source/provenance detail and the exact action execution gate. It now also downloads the private record JSON and can request a share link through the record bearer capability. `server/publicRecord.ts` uses an explicit safe-field allowlist; `server/recordStore.ts` and `server/postgresStore.ts` persist only opaque, revocable share capabilities; `GET /api/v1/public/records/{shareToken}` cannot enumerate records and never returns raw bindings, evidence, payment data, or access tokens. Focused privacy/store/SDK tests plus the full suite pass (38 files, 153 tests), as does the production build. Production release is still intentionally pending.
 
 ### Day 8 — SDK, developer page, and production hardening
 

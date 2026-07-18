@@ -30,6 +30,7 @@ import type { ExternalReviewProvider } from './reviewJobWorker'
 import { prepareAspTrustCheck } from './aspEndpointProbe'
 import { prepareCrossExamination, startCrossExamination } from './crossExamination'
 import type { CrossExaminationPreparationRequest } from '../src/domain/assuranceContracts'
+import { publicRecordProjection } from './publicRecord'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -208,6 +209,46 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.json(record)
     } catch {
       response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+    }
+  })
+  app.post('/api/v1/assurance/records/:recordId/share', async (request, response) => {
+    const token = request.header('authorization')?.replace(/^Bearer /, '') ?? ''
+    try {
+      if (!await recordStore.canRead(request.params.recordId, token)) {
+        response.status(404).json({ error: 'RECORD_NOT_FOUND' })
+        return
+      }
+      const share = await recordStore.createPublicShare(request.params.recordId)
+      response.status(201).json({ token: share.token, url: `${config.publicUrl?.replace(/\/$/, '') ?? ''}/share/${share.token}` })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Public share link could not be created.'
+      response.status(422).json({ error: 'PUBLIC_SHARE_REJECTED', message })
+    }
+  })
+  app.delete('/api/v1/assurance/records/:recordId/share/:shareToken', async (request, response) => {
+    const token = request.header('authorization')?.replace(/^Bearer /, '') ?? ''
+    try {
+      if (!await recordStore.canRead(request.params.recordId, token) || await recordStore.findPublicShare(request.params.shareToken) !== request.params.recordId) {
+        response.status(404).json({ error: 'PUBLIC_SHARE_NOT_FOUND' })
+        return
+      }
+      await recordStore.revokePublicShare(request.params.shareToken)
+      response.status(204).end()
+    } catch {
+      response.status(404).json({ error: 'PUBLIC_SHARE_NOT_FOUND' })
+    }
+  })
+  app.get('/api/v1/public/records/:shareToken', async (request, response) => {
+    try {
+      const recordId = await recordStore.findPublicShare(request.params.shareToken)
+      const record = recordId ? await recordStore.find(recordId) : null
+      if (!record) {
+        response.status(404).json({ error: 'PUBLIC_RECORD_NOT_FOUND' })
+        return
+      }
+      response.json(publicRecordProjection(record))
+    } catch {
+      response.status(404).json({ error: 'PUBLIC_RECORD_NOT_FOUND' })
     }
   })
   app.post('/api/v1/outcomes', async (request, response) => {

@@ -83,6 +83,15 @@ describe('ReviewJobClient', () => {
     })
   })
 
+  it('creates a share link only with the private record capability', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ token: 'darshare_test', url: 'https://www.cross-exam.xyz/share/darshare_test' }), { status: 201 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+    await expect(client.createPublicShare('dar_1234567890abcdef12345678', 'darv_private')).resolves.toMatchObject({ token: 'darshare_test' })
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/assurance/records/dar_1234567890abcdef12345678/share', {
+      method: 'POST', headers: { authorization: 'Bearer darv_private' },
+    })
+  })
+
   it('delegates paid authorization to a caller-owned x402-capable fetcher', async () => {
     const paymentFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ id: 'rj_1', fundingStatus: 'AUTHORIZED' }), { status: 200 }))
     const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam' })
