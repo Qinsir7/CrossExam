@@ -1223,7 +1223,7 @@ Evidence (2026-07-18): The live API returned healthy `/health` and `/ready` chec
 
 ### Day 10 — listing, demo, submission, and buffer
 
-- [ ] Prepare exact ASP service update card.
+- [x] Prepare exact ASP service update card.
 - [ ] Obtain user confirmation and submit service updates if strategically safe.
 - [ ] Confirm listing status and endpoint audit.
 - [ ] Record final 70–85 second video.
@@ -1232,6 +1232,8 @@ Evidence (2026-07-18): The live API returned healthy `/health` and `/ready` chec
 - [ ] Preserve several hours for review feedback or rollback.
 
 Acceptance: approved/live ASP, valid submission, public demo, production URL, and reproducible paid flow.
+
+Evidence (2026-07-18): `docs/ASP_SERVICE_UPDATE_CARD.md` captures the live ASP `#6065` state and exact, two-part English draft copy. It explicitly preserves the still-reviewed legacy `Decision Assurance API`, proposes only three direct buyer-facing API services with production endpoints, and defers the deliberately multi-step deep-review flow rather than misleading the marketplace with an endpoint that does not itself issue a 402 challenge. No listing mutation, activation, or re-submission has been made.
 
 ## 14. Priorities if time slips
 
