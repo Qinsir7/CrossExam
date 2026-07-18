@@ -1210,14 +1210,16 @@ Evidence (2026-07-18): `CrossExamClient` now exposes `prepareAction`, `startDeep
 
 ### Day 9 — production economics and end-to-end acceptance
 
-- [ ] Deploy additive backend safely.
-- [ ] Deploy frontend preview, then production after acceptance.
-- [ ] Run unpaid black-box acceptance for every endpoint.
-- [ ] With explicit user confirmation, run the minimum real paid tests.
-- [ ] Confirm customer income, evidence, record, recovery, gate, and gross margin.
-- [ ] Fix only demonstrated failures; avoid unnecessary refactors.
+- [x] Deploy additive backend safely.
+- [x] Deploy frontend preview, then production after acceptance.
+- [x] Run unpaid black-box acceptance for every endpoint.
+- [x] With explicit user confirmation, run the minimum real paid tests.
+- [x] Confirm customer income, evidence, record, recovery, gate, and gross margin.
+- [x] Fix only demonstrated failures; avoid unnecessary refactors.
 
 Acceptance: the canonical demo works from a clean browser and fresh job without manual intervention.
+
+Evidence (2026-07-18): The live API returned healthy `/health` and `/ready` checks with x402 enabled and a recent procurement-worker event; the deployed web app returned 200 with the production canonical URL. Unpaid black-box checks returned standard 402 challenges for the legacy aggregate route, Transaction Preflight, Agent Trust Check, and review authorization before any paid business action. With the user's explicit confirmation, a fresh `PRETRADE_ONCHAIN` review was prepared against the active OKX Onchain OS liquidity and GoPlus X Layer token-security sources, then started and authorized through the standard x402 flow for 0.20 USD₮0 (below the approved 0.25 USD₮0 ceiling). The worker recorded two authenticated, provenance-bound evidence deliveries and reached `READY_FOR_ASSURANCE`; the service issued and persisted a `PROCUREMENT_VERIFIED` signed record. The free verifier, pinned to the live manifest's record-attestation signer, returned `signatureValid: true` and `actionBindingValid: true`; its execution gate returned non-executable `REMEDIATE` with the record's three explicit reversal conditions. The protected ledger recorded the settled customer authorization, included-quota cost bases for both external sources, no outstanding scopes, and same-asset realized margin. Existing focused tests cover recovery capability rotation and retrying a settled failed job without another customer charge. The only acceptance-script defect was an incorrect local manifest-field path; the live manifest and product verifier were correct, so no production code change was warranted.
 
 ### Day 10 — listing, demo, submission, and buffer
 
@@ -1296,19 +1298,19 @@ The final product is complete for submission only when all of the following are 
 
 ### Product
 
-- [ ] A first-time visitor understands the product in three seconds.
-- [ ] The primary CTA starts a real action review without requiring internal schema knowledge.
-- [ ] The canonical transaction demo uses real payment and evidence.
-- [ ] The final verdict is signed and action-bound.
-- [ ] The exact guarded transaction is blocked or permitted by the returned record.
-- [ ] The UI explains the strongest contradiction and reversal condition.
+- [x] A first-time visitor understands the product in three seconds.
+- [x] The primary CTA starts a real action review without requiring internal schema knowledge.
+- [x] The canonical transaction demo uses real payment and evidence.
+- [x] The final verdict is signed and action-bound.
+- [x] The exact guarded transaction is blocked or permitted by the returned record.
+- [x] The UI explains the strongest contradiction and reversal condition.
 
 ### Economics
 
-- [ ] At least one customer x402 settlement is recorded for the final service.
-- [ ] External evidence cost basis is honest.
-- [ ] Revenue and realized margin are visible in the protected ledger.
-- [ ] Retry/recovery does not double-charge.
+- [x] At least one customer x402 settlement is recorded for the final service.
+- [x] External evidence cost basis is honest.
+- [x] Revenue and realized margin are visible in the protected ledger.
+- [x] Retry/recovery does not double-charge.
 
 ### Engineering
 
