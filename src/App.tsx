@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { evaluatePreAction } from './domain/preActionGate'
-import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
+import type { DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, TransactionQuoteResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
@@ -55,9 +55,6 @@ function App() {
   const [draftTitle, setDraftTitle] = useState('')
   const [draftIntent, setDraftIntent] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
-  const [draftActionType, setDraftActionType] = useState<ActionType>('TRADE')
-  const [draftEvmTransaction, setDraftEvmTransaction] = useState(true)
-  const [draftScenario, setDraftScenario] = useState<'Trade' | 'Pay' | 'Approve' | 'Hire agent' | 'Deploy'>('Trade')
   const [draftChainId, setDraftChainId] = useState('196')
   const [draftRecipient, setDraftRecipient] = useState('')
   const [draftCalldata, setDraftCalldata] = useState('0x')
@@ -88,18 +85,7 @@ function App() {
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
   const invalidatePreparation = () => { setPreparedReview(null); setPreparedInput(null) }
-  const chooseScenario = (scenario: typeof draftScenario) => {
-    setDraftScenario(scenario)
-    if (scenario === 'Trade') { setDraftEvmTransaction(true); setDraftActionType('TRADE') }
-    if (scenario === 'Pay' || scenario === 'Approve') { setDraftEvmTransaction(true); setDraftActionType('SPEND') }
-    if (scenario === 'Deploy') { setDraftEvmTransaction(true); setDraftActionType('DEPLOY') }
-    if (scenario === 'Hire agent') { setDraftEvmTransaction(false); setDraftActionType('OTHER') }
-    invalidatePreparation()
-  }
   const loadCanonicalCandidate = () => {
-    setDraftScenario('Trade')
-    setDraftEvmTransaction(true)
-    setDraftActionType('TRADE')
     setDraftTitle(canonicalDemoCandidate.title)
     setDraftIntent(canonicalDemoCandidate.intent)
     setDraftRisk(canonicalDemoCandidate.valueAtRiskUsd)
@@ -115,29 +101,43 @@ function App() {
     invalidatePreparation()
   }
   const quoteCanonicalCandidate = async () => {
-    // Generating the route is intentionally a one-click candidate flow. The
-    // quote still cannot be paid for or executed until the user reviews it.
+    // This is the primary one-click path: build an exact route, then prepare
+    // the claims and fixed-price review. It never signs, pays, or broadcasts.
     loadCanonicalCandidate()
     setQuotingCandidateRoute(true)
     setFormErrors([])
     try {
       const userWalletAddress = await requestXLayerAccount()
-      const quote = await new ReviewJobClient().quoteTransaction({
+      const client = new ReviewJobClient()
+      const quote = await client.quoteTransaction({
         fromTokenAddress: canonicalDemoCandidate.inputTokenAddress,
         toTokenAddress: canonicalDemoCandidate.outputTokenAddress,
         amount: canonicalDemoCandidate.inputAmountAtomic,
         slippagePercent: canonicalDemoCandidate.slippagePercent,
         userWalletAddress,
       })
-      setDraftScenario('Trade')
-      setDraftEvmTransaction(true)
-      setDraftActionType('TRADE')
       setDraftChainId(String(quote.transaction.chainId))
       setDraftRecipient(quote.transaction.to)
       setDraftCalldata(quote.transaction.data)
       setDraftValueWei(quote.transaction.valueWei)
       setCandidateRoute(quote)
-      invalidatePreparation()
+      const input: CrossExaminationPreparationRequest = {
+        simple: {
+          title: canonicalDemoCandidate.title,
+          intent: canonicalDemoCandidate.intent,
+          valueAtRiskUsd: Number(canonicalDemoCandidate.valueAtRiskUsd),
+          tokenRiskTarget: canonicalDemoCandidate.tokenRiskTarget,
+          transaction: {
+            actionType: 'TRADE',
+            chainId: quote.transaction.chainId,
+            to: quote.transaction.to,
+            data: quote.transaction.data,
+            valueWei: quote.transaction.valueWei,
+          },
+        },
+      }
+      const prepared = await client.prepareCrossExamination(input)
+      applyPreparedReview(input, prepared)
     } catch (error) {
       setFormErrors([error instanceof Error ? error.message : 'CrossExam could not obtain an exact X Layer route.'])
     } finally {
@@ -186,8 +186,9 @@ function App() {
     void client.getResult(reviewJob.id, reviewJobAccessToken)
       .then((record) => {
         setReviewJobResult(record)
-        setSelectedClaim(record.result.claims[0] ?? null)
+        setSelectedClaim(null)
         setReviewJobError(null)
+        window.setTimeout(() => document.getElementById('decision-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
       })
       .catch((error) => setReviewJobError(error instanceof Error ? error.message : 'Unable to issue the completed assurance record.'))
   }, [reviewJob, reviewJobAccessToken, reviewJobResult])
@@ -268,16 +269,14 @@ function App() {
         title: draftTitle,
         intent: draftIntent,
         valueAtRiskUsd: Number(draftRisk),
-        ...(draftEvmTransaction ? {
-          ...(draftTokenRiskTarget.trim() ? { tokenRiskTarget: draftTokenRiskTarget.trim() } : {}),
-          transaction: {
-            actionType: draftActionType,
-            chainId: Number(draftChainId),
-            to: draftRecipient || undefined,
-            data: draftCalldata,
-            valueWei: draftValueWei,
-          },
-        } : {}),
+        ...(draftTokenRiskTarget.trim() ? { tokenRiskTarget: draftTokenRiskTarget.trim() } : {}),
+        transaction: {
+          actionType: 'TRADE',
+          chainId: Number(draftChainId),
+          to: draftRecipient || undefined,
+          data: draftCalldata,
+          valueWei: draftValueWei,
+        },
       },
     }
   }
@@ -287,19 +286,13 @@ function App() {
     if (!draftTitle.trim()) errors.push('Add a short title for the action under review.')
     if (!draftIntent.trim()) errors.push('Describe what the agent is about to do so CrossExam can compile material claims.')
     if (!Number.isFinite(Number(draftRisk)) || Number(draftRisk) <= 0) errors.push('Value at risk must be a positive USD amount.')
-    if (!draftEvmTransaction) return errors
-
     if (!Number.isInteger(Number(draftChainId)) || Number(draftChainId) !== 196) errors.push('The live pretrade evidence profile currently supports X Layer (chain ID 196) only.')
     if (!/^\d+$/.test(draftValueWei)) errors.push('Native value must be expressed as a whole number of wei.')
-
-    const isDeployment = draftActionType === 'DEPLOY'
-    if (!isDeployment && !/^0x[a-fA-F0-9]{40}$/.test(draftRecipient.trim())) errors.push('Add the verified router or recipient address that will receive the exact transaction.')
+    if (!/^0x[a-fA-F0-9]{40}$/.test(draftRecipient.trim())) errors.push('Add the verified router address that will receive the exact transaction.')
 
     if (!/^0x(?:[a-fA-F0-9]{2})*$/.test(draftCalldata.trim())) {
       errors.push('Calldata must be an even-length 0x-prefixed hex string.')
-    } else if (isDeployment && draftCalldata.trim() === '0x') {
-      errors.push('A deployment review requires non-empty init code.')
-    } else if (draftActionType === 'TRADE' && draftCalldata.trim().length < 10) {
+    } else if (draftCalldata.trim().length < 10) {
       errors.push('A trade review requires the exact router calldata; CrossExam will not sell a review for an empty or placeholder swap.')
     }
     return errors
@@ -315,18 +308,22 @@ function App() {
     try {
       const input = simpleInput()
       const prepared = await new ReviewJobClient().prepareCrossExamination(input)
-      setActiveDecision(prepared.decision)
-      setPreparedInput(input)
-      setPreparedReview(prepared)
-      setRunState('idle')
-      setReviewJob(null)
-      setReviewJobResult(null)
-      setReviewJobAccessToken(null)
-      setReviewJobError(null)
-      setFormErrors([])
+      applyPreparedReview(input, prepared)
     } catch (error) {
       setFormErrors([error instanceof Error ? error.message : 'Unable to prepare this action for Cross-Examination.'])
     }
+  }
+
+  function applyPreparedReview(input: CrossExaminationPreparationRequest, prepared: CrossExaminationPreparationResponse) {
+    setActiveDecision(prepared.decision)
+    setPreparedInput(input)
+    setPreparedReview(prepared)
+    setRunState('idle')
+    setReviewJob(null)
+    setReviewJobResult(null)
+    setReviewJobAccessToken(null)
+    setReviewJobError(null)
+    setFormErrors([])
   }
 
   async function startPreparedReview() {
@@ -341,6 +338,7 @@ function App() {
       setReviewJob(job)
       setReviewJobAccessToken(started.accessToken)
       setRunState('queued')
+      window.setTimeout(() => document.getElementById('live-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
     } catch (error) {
       setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not start the durable review.')
     } finally {
@@ -405,6 +403,7 @@ function App() {
       setReviewJobResult(null)
       setGateCheckedAt(null)
       setRunState('queued')
+      window.setTimeout(() => document.getElementById('live-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
     } catch (error) {
       setReviewJobError(error instanceof Error ? error.message : 'Paid review access could not be recovered.')
     } finally {
@@ -513,70 +512,68 @@ function App() {
           <span className="brand-mark">×</span>
           <span>CrossExam</span>
         </a>
-        <div className="network-status"><span className="live-dot" /> Live on X Layer</div>
         <div className="topbar-actions">
-          <a className="developer-link" href="#developers">For developers</a>
+          <a className="developer-link" href="#developers">API</a>
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
-          <a className="new-decision-button" href="#check-action" onClick={invalidatePreparation}>Check an action <span>+</span></a>
+          <a className="new-decision-button" href="#check-action">Review a trade <span>→</span></a>
         </div>
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span /> Adversarial decision assurance</div>
-        <h1>Before an agent acts,<br /><em>make the decision survive.</em></h1>
-        <p>CrossExam buys independent counter-evidence, challenges material claims, and returns a signed verdict before an agent spends, trades, deploys, publishes, or delegates.</p>
+        <div className="eyebrow"><span /> Pre-execution assurance</div>
+        <h1>Stop a bad trade<br /><em>before it reaches the wallet.</em></h1>
+        <p className="hero-copy">CrossExam checks the exact X Layer route against live liquidity and token-risk evidence, then returns a signed gate your agent can enforce.</p>
+        <div className="live-scope"><span className="live-dot" /> Live now · X Layer token trades</div>
         <form className="hero-composer" id="check-action" onSubmit={submitDecision}>
-          <div className="scenario-tabs" aria-label="Action scenario">
-            {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" aria-pressed={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
-          </div>
-          <p className="live-scope-notice"><b>Live evidence today:</b> exact X Layer token trades. Other scenarios can be structured, but stay unpurchasable until their own independent evidence profiles are live.</p>
           <div className="candidate-prefill">
-            <div><span>Canonical live candidate</span><p>WOKB · 10,000 USD exact-route review · X Layer</p></div>
-            <div className="candidate-actions">
-              <button type="button" onClick={loadCanonicalCandidate}>Load candidate</button>
-              <button type="button" onClick={() => void quoteCanonicalCandidate()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Requesting live route' : 'Generate exact route'}</button>
-            </div>
-            <small>Loads a real target, then requests an official OKX DEX quote. It never approves tokens, signs a transaction, or broadcasts a swap.</small>
-            {candidateRoute && <p className="candidate-route" aria-live="polite">Exact route ready · {candidateRoute.route.protocols.join(' + ')} · {candidateRoute.route.priceImpactPercent ?? 'unknown'}% quoted price impact · review it before payment.</p>}
+            <div className="candidate-copy"><span>Try the live product</span><h2>Review a $10,000 WOKB trade</h2><p>Build an exact OKX route, extract its material claims, and see the fixed review price.</p></div>
+            <button className="hero-primary candidate-primary" type="button" onClick={() => void quoteCanonicalCandidate()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Building exact route…' : 'Prepare live review'} <span>→</span></button>
+            <small>Connects your wallet for the route address only. No payment, approval, signature, or trade is sent.</small>
+            {candidateRoute && <p className="candidate-route" aria-live="polite">Route ready · {candidateRoute.route.protocols.join(' + ')} · {candidateRoute.route.priceImpactPercent ?? 'unknown'}% quoted price impact.</p>}
           </div>
-          <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this X Layer token only if liquidity and contract risk survive review." rows={2} /></label>
-          <div className="hero-composer-grid">
-            <label>Action title<input value={draftTitle} onChange={(event) => { setDraftTitle(event.target.value); invalidatePreparation() }} placeholder="Buy a reviewed X Layer token" /></label>
-            <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => { setDraftRisk(event.target.value); invalidatePreparation() }} placeholder="5000" /></label>
-          </div>
-          {draftEvmTransaction && <details className="hero-advanced">
-            <summary>Exact X Layer transaction details</summary>
-            <p>Required for the live pretrade evidence profile. CrossExam binds these fields before payment.</p>
-            <div className="hero-composer-grid">
-              <label>Recipient<input value={draftRecipient} onChange={(event) => { setDraftRecipient(event.target.value); invalidatePreparation() }} placeholder="0x…" /></label>
-              <label>Token target<input value={draftTokenRiskTarget} onChange={(event) => { setDraftTokenRiskTarget(event.target.value); invalidatePreparation() }} placeholder="token:xlayer:0x…" /></label>
-            </div>
-            <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => { setDraftCalldata(event.target.value); invalidatePreparation() }} placeholder="0x…" rows={2} /></label>
-            <div className="hero-composer-grid compact">
-              <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => { setDraftChainId(event.target.value); invalidatePreparation() }} /></label>
-              <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => { setDraftValueWei(event.target.value); invalidatePreparation() }} /></label>
-            </div>
-          </details>}
           {formErrors.length > 0 && <div className="hero-form-errors" role="alert">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
           {preparedReview && <div className={`hero-prepared ${preparedReview.canStart ? 'ready' : 'limited'}`} aria-live="polite">
-            <span><b>{preparedReview.generatedClaims.length}</b> claims prepared</span><span><b>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length}</b> real sources matched</span><span><b>{preparedReview.quote.priceUsdt} USDT</b> review quote</span>
+            <div className="prepared-heading"><span>Ready for review</span><strong>{preparedReview.quote.priceUsdt} USDT</strong></div>
+            <div className="prepared-facts"><span><b>{preparedReview.generatedClaims.length}</b> material claims</span><span><b>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length}</b> live sources</span><span><b>0</b> transactions sent</span></div>
             {preparedReview.limitations.map((limitation) => <p key={limitation}>{limitation}</p>)}
-            {preparedReview.canStart && <button className="hero-primary" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}>{creatingReviewJob ? 'Starting durable review' : `Continue to ${preparedReview.quote.priceUsdt} USDT authorization`} <span>→</span></button>}
+            {preparedReview.canStart && <button className="hero-primary" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}>{creatingReviewJob ? 'Starting review…' : `Continue · ${preparedReview.quote.priceUsdt} USDT`} <span>→</span></button>}
           </div>}
-          <button className="hero-primary" type="submit">{preparedReview ? 'Refresh claims and quote' : 'Cross-examine'} <span>→</span></button>
+          <details className="custom-review">
+            <summary>Review your own X Layer trade</summary>
+            <div className="custom-review-body">
+              <label>What should this trade accomplish?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this token only if liquidity and transfer safety survive review." rows={2} /></label>
+              <div className="hero-composer-grid">
+                <label>Review title<input value={draftTitle} onChange={(event) => { setDraftTitle(event.target.value); invalidatePreparation() }} placeholder="Review an X Layer token trade" /></label>
+                <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => { setDraftRisk(event.target.value); invalidatePreparation() }} placeholder="5000" /></label>
+              </div>
+              <details className="hero-advanced">
+                <summary>Exact transaction fields</summary>
+                <p>CrossExam binds these fields before payment. Only exact X Layer token trades are accepted today.</p>
+                <div className="hero-composer-grid">
+                  <label>Router address<input value={draftRecipient} onChange={(event) => { setDraftRecipient(event.target.value); invalidatePreparation() }} placeholder="0x…" /></label>
+                  <label>Token target<input value={draftTokenRiskTarget} onChange={(event) => { setDraftTokenRiskTarget(event.target.value); invalidatePreparation() }} placeholder="token:xlayer:0x…" /></label>
+                </div>
+                <label>Calldata<textarea value={draftCalldata} onChange={(event) => { setDraftCalldata(event.target.value); invalidatePreparation() }} placeholder="0x…" rows={2} /></label>
+                <div className="hero-composer-grid compact">
+                  <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => { setDraftChainId(event.target.value); invalidatePreparation() }} /></label>
+                  <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => { setDraftValueWei(event.target.value); invalidatePreparation() }} /></label>
+                </div>
+              </details>
+              <button className="custom-submit" type="submit">Prepare claims and price <span>→</span></button>
+            </div>
+          </details>
         </form>
         <div className="hero-actions">
-          <a className="hero-secondary" href="#workspace">See the live evidence path</a>
-          <button className="mobile-recovery" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery…' : 'Recover paid review'}</button>
+          <button className="mobile-recovery" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery…' : 'Recover a paid review'}</button>
         </div>
-        <div className="proof-strip" aria-label="Production capabilities">
-          <span><b>Action-agnostic</b> spend · trade · deploy</span>
-          <span><b>Evidence market</b> x402 procurement</span>
-          <span><b>Enforceable</b> signed verdict</span>
+        <div className="proof-strip" aria-label="How CrossExam works">
+          <span><b>1 · Bind</b> the exact transaction</span>
+          <span><b>2 · Challenge</b> with live evidence</span>
+          <span><b>3 · Enforce</b> the signed gate</span>
         </div>
       </section>
 
-      <section className="workspace" id="workspace">
+      {reviewJob && <section className="workspace legacy-workspace" id="workspace">
         <aside className="decision-card">
           <div className="card-kicker">{isDemo ? 'Sample decision' : 'Live decision'} <span>{activeDecision.id}</span></div>
           <div className="decision-heading">
@@ -645,13 +642,15 @@ function App() {
             </div>
           )}
         </section>
-      </section>
+      </section>}
 
       {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam needs attention.</strong><span>{reviewJobError}</span></section>}
 
-      <section className="developer-section" id="developers">
-        <div><span className="eyebrow"><span /> Developer integration</span><h2>One decision before<br /><em>one irreversible call.</em></h2><p>Request an action-bound verdict, pin CrossExam’s service signer, then let the execution boundary refuse a changed, stale, unresolved, or blocked action.</p><a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open API discovery →</a></div>
-        <pre aria-label="CrossExam integration example"><code>{`const gate = await crossExam.preflightVerified(
+      <details className="developer-section" id="developers">
+        <summary><span>Building an agent?</span> View the integration <b>→</b></summary>
+        <div className="developer-content">
+          <div><span className="eyebrow"><span /> Developer integration</span><h2>One gate before<br /><em>one irreversible call.</em></h2><p>Request an action-bound verdict, pin CrossExam’s signer, and refuse changed, stale, unresolved, or blocked actions.</p><a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open API discovery →</a></div>
+          <pre aria-label="CrossExam integration example"><code>{`const gate = await crossExam.preflightVerified(
   access, exactIntent, trustedCrossExamSigner,
 )
 
@@ -660,18 +659,15 @@ if (!gate.executable) {
 }
 
 await wallet.sendTransaction(tx)`}</code></pre>
-      </section>
+        </div>
+      </details>
 
-      <section className={`results ${ran || reviewJobResult ? 'visible' : ''}`} aria-live="polite">
+      <section className={`results ${reviewJobResult ? 'visible' : ''}`} id="decision-result" aria-live="polite">
         <div className="results-intro">
           <div>
-            <div className="eyebrow"><span /> Decision assurance record</div>
-            <h2>A verdict an executor<br /><em>can actually enforce.</em></h2>
-          </div>
-          <div className="independence">
-            <span>Effective independence</span>
-            <strong>{result.effectiveIndependence.toFixed(1)} <small>/ 3.0</small></strong>
-            <p>Distinct owners, tools, and evidence routes.</p>
+            <div className="eyebrow"><span /> Signed decision</div>
+            <h2>{displayedGate.executable ? 'This trade may proceed.' : 'Do not execute this trade.'}</h2>
+            <p>Bound to the exact reviewed transaction. No trade was broadcast.</p>
           </div>
         </div>
 
@@ -718,44 +714,47 @@ await wallet.sendTransaction(tx)`}</code></pre>
                 {result.reversalConditions.map((condition) => <p key={condition.claimId}><b>{condition.claimId}</b>{condition.requirement}</p>)}
               </div>
             )}
-            <div className="execution-guard">
-              <div className="guard-heading"><span>Execution guard</span><small>{reviewJobResult?.attributionStatus ?? 'NETWORK VERIFIED'}</small></div>
-              <p>Bound to {resultBinding?.actionType.toLowerCase()} · {resultBinding?.target}</p>
-              <div className={`gate-outcome ${displayedGate.executable ? 'permit' : 'blocked'}`}>
-                <strong>{displayedGate.status}</strong>
-                <span>{displayedGate.reasons[0]}</span>
-                {displayedGate.requiredClaimIds.length > 0 && <small>Remediate {displayedGate.requiredClaimIds.join(' · ')}</small>}
+            <details className="record-tools">
+              <summary>Record proof and developer tools</summary>
+              <div className="execution-guard">
+                <div className="guard-heading"><span>Execution guard</span><small>{reviewJobResult?.attributionStatus ?? 'NETWORK VERIFIED'}</small></div>
+                <p>Bound to {resultBinding?.actionType.toLowerCase()} · {resultBinding?.target}</p>
+                <div className={`gate-outcome ${displayedGate.executable ? 'permit' : 'blocked'}`}>
+                  <strong>{displayedGate.status}</strong>
+                  <span>{displayedGate.reasons[0]}</span>
+                  {displayedGate.requiredClaimIds.length > 0 && <small>Remediate {displayedGate.requiredClaimIds.join(' · ')}</small>}
+                </div>
+                <button className="guard-button" onClick={rerunExactGateCheck}>Re-run exact gate check <span>→</span></button>
+                {gateCheckedAt && <output className="gate-check-feedback" aria-live="polite">Checked locally at {new Date(gateCheckedAt).toLocaleTimeString()} · {displayedGate.status} remains enforced. No signature or transaction was sent.</output>}
               </div>
-              <button className="guard-button" onClick={rerunExactGateCheck}>Re-run exact gate check <span>→</span></button>
-              {gateCheckedAt && <output className="gate-check-feedback" aria-live="polite">Checked locally at {new Date(gateCheckedAt).toLocaleTimeString()} · {displayedGate.status} remains enforced. No signature or transaction was sent.</output>}
-            </div>
-            {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
-            {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}
-            {reviewJobResult?.decision.actionBinding && <div className="record-verification">
-              <label>Trusted CrossExam signer<input value={verificationSigner} onChange={(event) => { setVerificationSigner(event.target.value); setRecordVerification(null) }} placeholder="0x… pin from your deployment config" autoComplete="off" spellCheck="false" /></label>
-              <p>Paste the issuer you independently pinned from deployment configuration or a verified manifest. Do not take it from this record.</p>
-              <a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open issuer manifest →</a>
-              <button onClick={() => void verifyReviewRecord()} disabled={verifyingReviewRecord || !/^0x[a-fA-F0-9]{40}$/.test(verificationSigner.trim())}>{verifyingReviewRecord ? 'Verifying signed record…' : 'Verify signed record'}</button>
-              {recordVerification && <output className={recordVerification.signatureValid && recordVerification.actionBindingValid && recordVerification.gate.executable ? 'verified' : 'rejected'} aria-live="polite"><strong>{recordVerification.signatureValid ? 'Issuer signature valid' : 'Issuer signature rejected'}</strong><span>{recordVerification.actionBindingValid ? 'Exact action binding matches.' : 'Exact action binding does not match.'} {recordVerification.gate.reasons[0] ?? recordVerification.gate.status}</span></output>}
-            </div>}
+              {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
+              {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}
+              {reviewJobResult?.decision.actionBinding && <div className="record-verification">
+                <label>Trusted CrossExam signer<input value={verificationSigner} onChange={(event) => { setVerificationSigner(event.target.value); setRecordVerification(null) }} placeholder="0x… pin from your deployment config" autoComplete="off" spellCheck="false" /></label>
+                <p>Paste the issuer you independently pinned from deployment configuration or a verified manifest. Do not take it from this record.</p>
+                <a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open issuer manifest →</a>
+                <button onClick={() => void verifyReviewRecord()} disabled={verifyingReviewRecord || !/^0x[a-fA-F0-9]{40}$/.test(verificationSigner.trim())}>{verifyingReviewRecord ? 'Verifying signed record…' : 'Verify signed record'}</button>
+                {recordVerification && <output className={recordVerification.signatureValid && recordVerification.actionBindingValid && recordVerification.gate.executable ? 'verified' : 'rejected'} aria-live="polite"><strong>{recordVerification.signatureValid ? 'Issuer signature valid' : 'Issuer signature rejected'}</strong><span>{recordVerification.actionBindingValid ? 'Exact action binding matches.' : 'Exact action binding does not match.'} {recordVerification.gate.reasons[0] ?? recordVerification.gate.status}</span></output>}
+              </div>}
+            </details>
           </aside>
         </div>
       </section>
 
       {runState === 'queued' && reviewJob && (
-        <section className="queued-panel" aria-live="polite">
-          <span className="queued-icon">{reviewJob.status === 'READY_FOR_ASSURANCE' ? '✓' : '×'}</span>
+        <section className="queued-panel" id="live-review" aria-live="polite">
+          <span className="queued-icon">{reviewJob.status === 'READY_FOR_ASSURANCE' ? '✓' : '·'}</span>
           <div>
-            <span className="card-kicker">Review lifecycle · {reviewStatusLabel[reviewJob.status]}</span>
-            <h2>{reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Evidence received. Assurance issued.' : 'CrossExam will not invent a verdict.'}</h2>
-            <p>{reviewJob.fundingStatus === 'UNFUNDED' ? 'Evidence procurement is spend-locked until payment settles.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'External responses are retained, content-addressed, and bound to the signed record.' : 'The worker is acquiring evidence from matched production sources.'}</p>
+            <span className="card-kicker">{reviewStatusLabel[reviewJob.status]}</span>
+            <h2>{reviewJob.fundingStatus === 'UNFUNDED' ? 'Your live review is ready.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'Signed decision ready.' : 'Checking the trade against live evidence.'}</h2>
+            <p>{reviewJob.fundingStatus === 'UNFUNDED' ? 'Authorize the fixed price to release evidence procurement. The trade remains unsigned and unbroadcast.' : reviewJob.status === 'READY_FOR_ASSURANCE' ? 'The evidence and exact transaction are bound to the signed result.' : 'CrossExam is checking liquidity and token-transfer safety. This state survives refresh.'}</p>
           </div>
           <div className="queued-meta"><span>{reviewJob.quote.authorizationPriceUsdt} USDT review</span><span>{reviewJob.plan.estimatedTotalUsdt} USDT evidence cap</span><span>{reviewJob.fundingStatus}</span></div>
           {reviewJob.fundingStatus === 'UNFUNDED' && <button className="run-button" onClick={() => void authorizeReview()} disabled={authorizingReviewJob}>
-            <span className="button-cross">×</span> {authorizingReviewJob ? 'Waiting for wallet approval' : `Authorize ${reviewJob.quote.authorizationPriceUsdt} USDT review`} <span className="button-arrow">→</span>
+            {authorizingReviewJob ? 'Waiting for wallet approval…' : `Authorize ${reviewJob.quote.authorizationPriceUsdt} USDT review`} <span className="button-arrow">→</span>
           </button>}
           {reviewJob.status === 'FAILED' && reviewJob.fundingStatus === 'AUTHORIZED' && <button className="run-button" onClick={() => void retryReview()} disabled={retryingReviewJob}>
-            <span className="button-cross">×</span> {retryingReviewJob ? 'Rebinding evidence sources' : 'Retry without another payment'} <span className="button-arrow">→</span>
+            {retryingReviewJob ? 'Rebinding evidence sources…' : 'Retry without another payment'} <span className="button-arrow">→</span>
           </button>}
           <ol className="review-stage-list" aria-label="Live review progress">
             {reviewStages.map((stage) => <li className={stage.complete ? 'complete' : stage.pending ? 'pending' : 'waiting'} key={stage.label}>
@@ -806,8 +805,8 @@ await wallet.sendTransaction(tx)`}</code></pre>
       )}
 
       <footer id="protocol">
-        <span>CrossExam / Decision assurance protocol</span>
-        <span>Evidence over consensus</span>
+        <span>CrossExam / Pre-execution assurance</span>
+        <span>Exact action · live evidence · signed gate</span>
       </footer>
     </main>
   )
