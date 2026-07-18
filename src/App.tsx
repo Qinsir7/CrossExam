@@ -196,6 +196,12 @@ function App() {
     })
   }, [reviewJobResult])
 
+  const displayedGate = gateDecision ?? realGate ?? demoGate
+  const decisiveClaim = result.claims.find((claim) => claim.verdict === 'REFUTED')
+    ?? result.claims.find((claim) => claim.verdict === 'UNRESOLVED')
+  const resultDecision = reviewJobResult?.decision ?? demoDecision
+  const resultBinding = resultDecision.actionBinding
+
   function simpleInput(): CrossExaminationPreparationRequest {
     return {
       simple: {
@@ -564,6 +570,13 @@ await wallet.sendTransaction(tx)`}</code></pre>
           </div>
         </div>
 
+        <section className={`verdict-snapshot ${result.action.toLowerCase()}`} aria-label="Verdict and execution summary">
+          <div className="snapshot-verdict"><span>Verdict</span><strong>{result.action}</strong></div>
+          <div><span>Protected value</span><strong>${resultDecision.valueAtRiskUsd.toLocaleString()}</strong><small>Exact action remains unbroadcast</small></div>
+          <div className="snapshot-reason"><span>{decisiveClaim?.verdict === 'REFUTED' ? 'Strongest contradiction' : 'Material premise'}</span><strong>{decisiveClaim?.id ?? 'No decisive premise'}</strong><p>{decisiveClaim?.evidence ?? 'No record finding is available.'}</p></div>
+          <div className={`snapshot-gate ${displayedGate.executable ? 'permit' : 'blocked'}`}><span>Execution gate</span><strong>{displayedGate.status}</strong><p>{displayedGate.reasons[0]}</p></div>
+        </section>
+
         <div className="result-layout">
           <div className="claim-list">
             <div className="claim-list-heading"><span>Claims challenged</span><span>{result.claims.length} examined</span></div>
@@ -602,16 +615,13 @@ await wallet.sendTransaction(tx)`}</code></pre>
             )}
             <div className="execution-guard">
               <div className="guard-heading"><span>Execution guard</span><small>{reviewJobResult?.attributionStatus ?? 'NETWORK VERIFIED'}</small></div>
-              <p>Bound to {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.actionType.toLowerCase()} · {(reviewJobResult?.decision.actionBinding ?? demoDecision.actionBinding)?.target}</p>
-              {gateDecision ? (
-                <div className={`gate-outcome ${gateDecision.executable ? 'permit' : 'blocked'}`}>
-                  <strong>{gateDecision.status}</strong>
-                  <span>{gateDecision.reasons[0]}</span>
-                  {gateDecision.requiredClaimIds.length > 0 && <small>Remediate {gateDecision.requiredClaimIds.join(' · ')}</small>}
-                </div>
-              ) : (
-                <button className="guard-button" onClick={() => setGateDecision(realGate ?? demoGate)}>Attempt guarded execution <span>→</span></button>
-              )}
+              <p>Bound to {resultBinding?.actionType.toLowerCase()} · {resultBinding?.target}</p>
+              <div className={`gate-outcome ${displayedGate.executable ? 'permit' : 'blocked'}`}>
+                <strong>{displayedGate.status}</strong>
+                <span>{displayedGate.reasons[0]}</span>
+                {displayedGate.requiredClaimIds.length > 0 && <small>Remediate {displayedGate.requiredClaimIds.join(' · ')}</small>}
+              </div>
+              <button className="guard-button" onClick={() => setGateDecision(realGate ?? demoGate)}>Re-run exact gate check <span>→</span></button>
             </div>
             {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
             {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}

@@ -1239,7 +1239,7 @@ This is now the first execution priority. Complete it before any ASP service-lis
 - [x] Add focused regression tests for positive, contradictory, inapplicable, malformed and provider-outage evidence paths.
 - [ ] Select a stable real X Layer demo target using read-only provider checks; record why its live evidence is likely to produce a meaningful `BLOCK` or `HOLD` without fabricating risk.
 - [ ] Add a clearly labelled one-click transaction prefill for that real target while keeping every result, payment and progress state live.
-- [ ] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
+- [x] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
 - [ ] Verify that no sample, fixture, cached verdict or precomputed provider response is presented as the live run.
 - [ ] Run lint, all tests, production build, dependency audit, tracked-secret scan and `git diff --check`.
 - [ ] Deploy additively without changing the registered aggregate endpoint, price, GET compatibility or x402 challenge behavior.
@@ -1253,6 +1253,8 @@ This is now the first execution priority. Complete it before any ASP service-lis
 Acceptance: a first-time visitor can start the canonical scenario without internal schema knowledge; one fresh browser run produces a real paid, multi-source, signed and action-bound `BLOCK` or `HOLD`; the exact transaction remains unbroadcast and the execution gate visibly refuses it for a reason derived from the live record. The run must require no terminal, database edit, worker command, manual callback or fabricated progress/result.
 
 Evidence (2026-07-18, local): the first paid result had all three claims unresolved because the generic PRETRADE plan supplied every claim to both external adapters and those adapters correctly refused to upgrade non-applicable or incomplete facts. Canonical scopes now send only liquidity to OKX Market and only transfer safety to GoPlus; `C-ACTION-BINDING` is a labeled first-party deterministic finding, never an external opinion. The source adapters and direct preflight normalizer share explicit policy: liquidity contradicts below 10× reviewed value and supports at/above 100×; GoPlus contradicts documented critical flags or ≥50% tax and supports only complete, clean, non-proxy field coverage. Missing, malformed, ambiguous, proxy, stale/unavailable, or unsupported data remains unresolved/fail-closed. Tests cover support, contradiction, missing/inapplicable, malformed response, provider outage, storage normalization, aggregation and gate behavior. `docs/API.md` documents the exact boundary; no target, provider answer, verdict, payment, or production configuration was fabricated or changed.
+
+Evidence (2026-07-18, local UI): the result surface now renders a verdict-first snapshot before claim and audit details. It exposes the action recommendation, protected value, strongest refuted or unresolved premise, and deterministic execution-gate status/reason without asking the user to click an execution control. The secondary action only re-runs the pure gate evaluation; it does not broadcast or sign a transaction. A local browser check at 320, 375, 390, 768, 1024, and 1440 CSS pixels found no horizontal overflow. Final production visual acceptance remains unchecked until the fresh paid browser run is complete.
 
 Execution order inside Day 9.5:
 
