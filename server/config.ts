@@ -8,6 +8,7 @@ export type X402ServerConfig = {
   priceUsd: string
   transactionPreflightPriceUsd: string
   aspTrustPriceUsd: string
+  deepReviewPriceUsd: string
   reviewAuthorizationPriceUsd: string
   reviewMinimumGrossMarginFraction: number
   okxApiKey: string
@@ -309,6 +310,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     priceUsd: positiveDollarPrice(env.CROSSEXAM_X402_PRICE_USD ?? '0.02'),
     transactionPreflightPriceUsd: positiveDollarPrice(env.CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD ?? '0.02', 'CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD'),
     aspTrustPriceUsd: positiveDollarPrice(env.CROSSEXAM_ASP_TRUST_PRICE_USD ?? '0.02', 'CROSSEXAM_ASP_TRUST_PRICE_USD'),
+    deepReviewPriceUsd: positiveDollarPrice(env.CROSSEXAM_DEEP_REVIEW_PRICE_USD ?? '0.20', 'CROSSEXAM_DEEP_REVIEW_PRICE_USD'),
     reviewAuthorizationPriceUsd: positiveDollarPrice(env.CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD ?? '2.00', 'CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD'),
     reviewMinimumGrossMarginFraction: marginFraction(env.CROSSEXAM_REVIEW_MIN_GROSS_MARGIN),
     okxApiKey: required(env, 'OKX_API_KEY'),

@@ -90,7 +90,7 @@ export type SimpleCrossExaminationInput = {
   title: string
   intent: string
   valueAtRiskUsd: number
-  transaction?: TransactionAssuranceActionInput
+  transaction?: Omit<TransactionAssuranceActionInput, 'title' | 'valueAtRiskUsd' | 'intent'>
   tokenRiskTarget?: string
 }
 
@@ -110,6 +110,8 @@ export type CrossExaminationPreparationResponse = {
     minimumGrossMarginFraction: number
   }
   limitations: string[]
+  /** False means CrossExam has no complete real-provider plan and will not accept payment. */
+  canStart: boolean
 }
 
 export type CrossExaminationRequest = CrossExaminationPreparationRequest & {
@@ -124,6 +126,12 @@ export type CrossExaminationResponse = {
   decision: DecisionPackage
   evidencePlan: EvidencePlanScope[]
   quote: CrossExaminationPreparationResponse['quote']
+  authorization: {
+    endpoint: '/api/v1/review-jobs/authorize'
+    method: 'POST'
+    required: true
+    request: { jobId: string; accessToken: string }
+  }
 }
 
 /** Free verification endpoint; it never trusts an issuer supplied by the record being verified. */

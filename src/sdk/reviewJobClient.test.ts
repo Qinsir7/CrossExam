@@ -42,6 +42,18 @@ describe('ReviewJobClient', () => {
     expect(result.accessToken).toMatch(/^rjv_/)
   })
 
+  it('prepares and starts the simple Cross-Examination façade without internal dispatch input', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ canStart: true }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+    const input = { simple: { title: 'Review a trade', intent: 'Trade only if evidence survives.', valueAtRiskUsd: 5000 } }
+
+    await client.prepareCrossExamination(input)
+    await client.startCrossExamination(input)
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, 'https://api.cross.exam/api/v1/cross-examinations/prepare', expect.objectContaining({ method: 'POST' }))
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://api.cross.exam/api/v1/cross-examinations', expect.objectContaining({ method: 'POST' }))
+  })
+
   it('surfaces a server rejection instead of inventing a queued job', async () => {
     const client = new ReviewJobClient({ fetchImpl: async () => new Response(JSON.stringify({ message: 'No independent reviewer is active.' }), { status: 422 }) })
     await expect(client.create({ id: 'DP-1', title: 'Review this', valueAtRiskUsd: 100, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.8 }] })).rejects.toThrow('No independent reviewer')

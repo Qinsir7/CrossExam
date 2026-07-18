@@ -135,6 +135,36 @@ The response also includes a time-limited `readAccess` bearer token. Retrieve a 
 
 ## Durable review jobs
 
+## Deep Cross-Examination
+
+`POST /api/v1/cross-examinations/prepare` is free. It accepts either a simple
+input (`title`, `intent`, `valueAtRiskUsd`, and optional exact transaction) or
+an advanced `DecisionPackage`. It deterministically returns the bound action,
+generated material claims, server-matched source plan, fixed quote, and any
+limitations. It never calls a provider, creates a durable job, or charges a
+wallet.
+
+For the live X Layer path, provide a `transaction` with `actionType`,
+`chainId`, `to`, `data`, and optional `valueWei`, plus
+`tokenRiskTarget: "token:xlayer:0x…"`. That produces the `PRETRADE_ONCHAIN`
+profile bound to the exact EVM payload and the only currently active real
+sources: OKX Onchain OS liquidity and GoPlus X Layer token security.
+
+`POST /api/v1/cross-examinations` accepts the same input and starts a durable
+job only when every required scope has an active server-registered provider.
+It returns an owner capability and the request body for the existing
+x402-protected `POST /api/v1/review-jobs/authorize` endpoint. This separation
+lets a browser show the exact claims, sources, limitations, and quote before it
+asks a wallet to pay. Job creation is free and cannot spend CrossExam's buyer
+wallet; the returned authorization is the sole customer payment step.
+
+Generic `GENERAL` requests without a complete real-provider plan are returned
+with `canStart: false` and an explicit limitation. CrossExam does not take
+payment for those requests, does not substitute synthetic research, and cannot
+return a fabricated favorable conclusion. Existing durable-job completion
+therefore remains fail-closed: missing evidence results in `HOLD`, not
+`PERMIT`.
+
 `POST /api/v1/review-jobs` creates a durable, capability-protected procurement job from a valid Decision Package. The service derives the canonical three-scope plan and matches only active reviewers from the server-owned registry. It returns an `rjv_…` access token exactly once; use it as `Authorization: Bearer {token}` for `GET` or `DELETE /api/v1/review-jobs/{jobId}`. The store retains only its SHA-256 hash. New jobs are deliberately `UNFUNDED`: creation alone cannot cause CrossExam's buyer wallet to spend.
 
 Set `reviewProfile: "PRETRADE_ONCHAIN"` on a Decision Package to use the

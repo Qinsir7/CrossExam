@@ -1,6 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse } from '../domain/assuranceContracts'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
@@ -137,6 +138,20 @@ export class ReviewJobClient {
 
   async create(decision: DecisionPackage): Promise<CreatedReviewJob> {
     return this.request('/api/v1/review-jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(decision) }) as Promise<CreatedReviewJob>
+  }
+
+  /** Compile a review without creating a job, charging x402, or spending a provider budget. */
+  async prepareCrossExamination(input: CrossExaminationPreparationRequest): Promise<CrossExaminationPreparationResponse> {
+    return this.request('/api/v1/cross-examinations/prepare', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }) as Promise<CrossExaminationPreparationResponse>
+  }
+
+  /** Start a fulfillable durable review; authorization remains an explicit x402 step. */
+  async startCrossExamination(input: CrossExaminationPreparationRequest): Promise<CrossExaminationResponse> {
+    return this.request('/api/v1/cross-examinations', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }) as Promise<CrossExaminationResponse>
   }
 
   async recoverWithBrowserWallet(transaction: string): Promise<CreatedReviewJob> {

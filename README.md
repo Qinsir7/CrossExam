@@ -43,6 +43,8 @@ CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assuran
 
 `POST /api/v1/preflight/asp` is the paid endpoint-first Agent Trust Check. Its passive mode performs an SSRF-resistant GET probe, validates the observed unpaid X Layer payment challenge, compares explicit commercial expectations, and signs `BUY`, `CAUTION`, or `AVOID` without purchasing the target ASP.
 
+`POST /api/v1/cross-examinations/prepare` gives an agent or operator a free, deterministic deep-review preview: action binding, generated claims, active evidence sources, limitations, and a quote. `POST /api/v1/cross-examinations` turns a fulfillable preview into a durable job and returns the x402 authorization hand-off; no provider can be paid until that bounded authorization settles. Unsupported general requests remain explicitly unpurchasable rather than being dressed up as independent research.
+
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.

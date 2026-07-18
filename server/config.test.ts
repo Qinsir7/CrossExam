@@ -16,6 +16,7 @@ describe('loadX402ServerConfig', () => {
     expect(config.port).toBe(4022)
     expect(config.priceUsd).toBe('0.02')
     expect(config.transactionPreflightPriceUsd).toBe('0.02')
+    expect(config.deepReviewPriceUsd).toBe('0.20')
     expect(config.payTo).toBe(validEnvironment.CROSSEXAM_PAY_TO)
     expect(config.syncFacilitatorOnStart).toBe(true)
   })

@@ -41,6 +41,14 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Passively inspect an ASP endpoint with SSRF-resistant HTTPS probing and return a signed BUY, CAUTION, or AVOID recommendation without purchasing the target service.',
       },
       {
+        id: 'decision-assurance.cross-examination-prepare', endpoint: endpoint('/api/v1/cross-examinations/prepare'), paid: false,
+        description: 'Compile a simple or advanced consequential decision into bound claims, matched real evidence sources, limitations, and a no-charge quote before payment.',
+      },
+      {
+        id: 'decision-assurance.cross-examination', endpoint: endpoint('/api/v1/cross-examinations'), paid: false,
+        description: 'Start a fulfillable durable, multi-source Cross-Examination and receive the x402 authorization capability for evidence procurement, recovery, ledger, and signed result.',
+      },
+      {
         id: 'decision-assurance.record-retrieval', endpoint: endpoint('/api/v1/assurance/records/{recordId}'), paid: false,
         description: 'Retrieve a persisted Decision Assurance Record with its time-limited bearer token.',
       },

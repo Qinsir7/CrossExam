@@ -28,6 +28,8 @@ import { prepareTransactionPreflight } from './transactionPreflight'
 import { X402ReviewProvider } from './x402ReviewProvider'
 import type { ExternalReviewProvider } from './reviewJobWorker'
 import { prepareAspTrustCheck } from './aspEndpointProbe'
+import { prepareCrossExamination, startCrossExamination } from './crossExamination'
+import type { CrossExaminationPreparationRequest } from '../src/domain/assuranceContracts'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -254,6 +256,32 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load reviewer reliability.'
       response.status(422).json({ error: 'RELIABILITY_PROFILE_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/cross-examinations/prepare', fixedWindowRateLimit({ limit: 30, windowMs: 60_000 }), async (request, response) => {
+    try {
+      const prepared = await prepareCrossExamination(request.body as CrossExaminationPreparationRequest, config.reviewerRegistry, {
+        authorizationPriceUsd: config.deepReviewPriceUsd,
+        minimumGrossMarginFraction: config.reviewMinimumGrossMarginFraction,
+      })
+      response.status(200).json(prepared)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cross-Examination input could not be prepared.'
+      response.status(422).json({ error: 'CROSS_EXAMINATION_PREPARATION_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/cross-examinations', fixedWindowRateLimit({ limit: 20, windowMs: 60_000 }), async (request, response) => {
+    try {
+      const started = await startCrossExamination(request.body as CrossExaminationPreparationRequest, config.reviewerRegistry, {
+        authorizationPriceUsd: config.deepReviewPriceUsd,
+        minimumGrossMarginFraction: config.reviewMinimumGrossMarginFraction,
+      })
+      await jobStore.createJob(started.job)
+      const { job: _job, ...body } = started
+      response.status(201).json(body)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cross-Examination could not start.'
+      response.status(422).json({ error: 'CROSS_EXAMINATION_REJECTED', message })
     }
   })
   app.post('/api/v1/review-jobs', fixedWindowRateLimit({ limit: 20, windowMs: 60_000 }), async (request, response) => {
