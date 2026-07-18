@@ -36,11 +36,11 @@ not an external reviewer opinion.
   execution quality.
 - GoPlus X Layer token evidence contradicts the transfer-safety claim on a
   reported honeypot, disabled buy/sell, blacklist control, closed source,
-  creator-linked honeypot, or tax at or above **50%**. It supports the claim
+  or tax at or above **50%**. It supports the claim
   only if every required deterministic field is present, source is open, the
   token is not a proxy, all relevant flags are false, and buy/sell/transfer
-  taxes are present and below that threshold. Missing, malformed, proxy, or
-  otherwise unsupported response shapes remain unresolved.
+  taxes are present and below that threshold. Missing, malformed, proxy,
+  creator-linkage, or otherwise unsupported response shapes remain unresolved.
 
 These policies are intentionally narrow and conservative. A `SUPPORTS` result
 does not represent a comprehensive smart-contract audit; any contradiction,

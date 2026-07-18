@@ -99,7 +99,6 @@ export function assessTokenRiskEvidence(facts: TokenRiskFacts): SourceAssessment
     facts.cannotSellAll ? 'full selling disabled' : '',
     facts.blacklist ? 'blacklist controls' : '',
     facts.sourceOpen === false ? 'contract source is not open' : '',
-    facts.creatorHoneypot ? 'creator linked to another honeypot' : '',
   ].filter(Boolean)
   const taxes = [facts.buyTax, facts.sellTax, facts.transferTax]
   const validTaxes = taxes.every((value) => value !== undefined && Number.isFinite(value) && value >= 0 && value <= 1)
@@ -125,6 +124,13 @@ export function assessTokenRiskEvidence(facts: TokenRiskFacts): SourceAssessment
       verdict: 'INSUFFICIENT_EVIDENCE',
       confidence: 1,
       explanation: "GoPlus reports an upgradeable proxy contract. CrossExam's current deterministic token adapter does not resolve proxy implementation risk.",
+    }
+  }
+  if (facts.creatorHoneypot) {
+    return {
+      verdict: 'INSUFFICIENT_EVIDENCE',
+      confidence: 1,
+      explanation: 'GoPlus reports a creator-linked honeypot signal. CrossExam does not treat this ecosystem-level signal as a deterministic transfer restriction, so the claim remains unresolved pending stronger token-specific evidence.',
     }
   }
   return {

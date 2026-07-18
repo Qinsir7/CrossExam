@@ -104,6 +104,19 @@ describe('transaction evidence mapping and policy', () => {
     expect(evaluateTransactionPreflight(action, compiled.claims, evidence, 'PROCUREMENT_VERIFIED')).toMatchObject({ verdict: 'BLOCK', canExecute: false, strongestContradiction: { claimId: 'C-TOKEN-TRANSFER-SAFETY' } })
   })
 
+  it('does not mislabel a creator-linked signal as a deterministic transfer restriction', async () => {
+    const action = await trade()
+    const compiled = compileTransactionClaims(action)
+    const evidence = mapTransactionEvidence(action, compiled.claims, [{
+      id: 'E-TOKEN-CREATOR-SIGNAL', scopeId: 'contract-token-risk', sourceId: 'goplus-xlayer-token-risk', sourceOwner: 'goplus', kind: 'PUBLIC_API',
+      observedAt: '2026-07-18T00:00:00.000Z', requestHash: '0x1111', responseHash: '0x2222', locator: 'https://example.test/token-risk', addressedClaimIds: ['C-TOKEN-TRANSFER-SAFETY'],
+      facts: [{ key: 'tokenRisk.creatorHoneypot', value: true }],
+    }])
+
+    expect(evidence).toEqual(expect.arrayContaining([expect.objectContaining({ claimId: 'C-TOKEN-TRANSFER-SAFETY', verdict: 'INSUFFICIENT_EVIDENCE' })]))
+    expect(evaluateTransactionPreflight(action, compiled.claims, evidence, 'PROCUREMENT_VERIFIED')).toMatchObject({ verdict: 'HOLD', canExecute: false })
+  })
+
   it('blocks an unlimited approval before an executor can send it', async () => {
     const max = 'f'.repeat(64)
     const action = await createTransactionAssuranceAction({
