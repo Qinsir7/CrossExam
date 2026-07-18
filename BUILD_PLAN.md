@@ -1147,14 +1147,16 @@ Evidence (2026-07-18): `server/transactionPreflight.ts` reuses the bounded provi
 
 ### Day 4 — ASP Trust Check
 
-- [ ] Research supported OKX agent/service discovery access.
-- [ ] Implement secure endpoint probe with SSRF protections.
-- [ ] Parse and validate standard 402 challenges.
-- [ ] Compare expected and actual price/network/recipient.
-- [ ] Implement passive `BUY/CAUTION/AVOID` mapping.
-- [ ] Add paid active-call mode only if passive path is safe and existing procurement policy can be reused.
+- [x] Research supported OKX agent/service discovery access.
+- [x] Implement secure endpoint probe with SSRF protections.
+- [x] Parse and validate standard 402 challenges.
+- [x] Compare expected and actual price/network/recipient.
+- [x] Implement passive `BUY/CAUTION/AVOID` mapping.
+- [x] Keep paid active-call mode disabled until a target-recipient binding and dedicated spend policy are configured.
 
 Acceptance: the service detects at least one real coherent endpoint and multiple controlled mismatch cases without connecting to forbidden network destinations.
+
+Evidence (2026-07-18): Official OKX.AI discovery is exposed through the authenticated Onchain OS identity CLI; no documented server-to-server public listing API was used for this passive product path, so agent metadata is intentionally not scraped or asserted. `server/aspEndpointProbe.ts` accepts only HTTPS GET probes, rejects credential URLs/unusual ports/private or rebinding-prone destinations, pins the resolved public IP for TLS, forbids redirects, and bounds latency/response size. Controlled tests cover coherent challenge, recipient mismatch, redirect, POST refusal, and forbidden private address. Production `POST /api/v1/preflight/asp` returned a standard challenge and then a real signed/persisted `BUY` record `dar_3718b311d9355b66ce37d929` for CrossExam's own public unpaid endpoint; its immutable observation includes availability and payment-contract facts. The target endpoint was not purchased. Production discovery now lists the new paid service.
 
 ### Day 5 — Deep Cross-Examination façade
 
