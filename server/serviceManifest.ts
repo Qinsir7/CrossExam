@@ -38,7 +38,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.transaction-preflight', endpoint: endpoint('/api/v1/preflight/transaction'), paid: true,
-        description: 'For an exact X Layer token trade with an explicit token target, obtain provenance-qualified liquidity and token-risk evidence, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision. Unsupported action scopes are rejected before payment.',
+        description: 'For an exact X Layer token trade with an explicit token:xlayer target, obtain provenance-qualified liquidity and token-risk evidence, then receive a signed fail-closed PERMIT, HOLD, or BLOCK decision. Unsupported action scopes are rejected before payment.',
       },
       {
         id: 'decision-assurance.transaction-quote', endpoint: endpoint('/api/v1/transactions/quote'), paid: false,

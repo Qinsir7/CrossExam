@@ -87,7 +87,7 @@ async function decisionFromSimple(input: NonNullable<CrossExaminationPreparation
     const compiled = compileTransactionClaims(action)
     const livePretradeProfile = action.binding.actionType === 'TRADE'
       && action.evm?.chainId === 196
-      && Boolean(action.reviewEvidenceContext?.tokenRiskTarget)
+      && action.reviewEvidenceContext?.tokenRiskTarget?.startsWith('token:xlayer:')
     const limitations = [...compiled.limitations]
     if (!livePretradeProfile) {
       limitations.push('Live deep Cross-Examination currently fulfills only exact X Layer token trades with an explicit token risk target. This action is structured but cannot be purchased until a matching independent evidence profile is registered.')

@@ -68,6 +68,25 @@ describe('Deep Cross-Examination façade', () => {
     })).rejects.toThrow('will not charge')
   })
 
+  it('does not bind a non-X-Layer token label to X Layer evidence', async () => {
+    const input = {
+      simple: {
+        title: 'Buy a token',
+        intent: 'Buy only if the token is safe.',
+        valueAtRiskUsd: 5_000,
+        tokenRiskTarget: `token:eth:${token}`,
+        transaction: { actionType: 'TRADE' as const, chainId: 196, to: router, data: '0x', valueWei: '0' },
+      },
+    }
+    const prepared = await prepareCrossExamination(input, withOkxMarketSource({}), pricing)
+
+    expect(prepared.canStart).toBe(false)
+    expect(prepared.decision.reviewProfile).toBe('GENERAL')
+    await expect(validateTransactionPreflightInput({
+      title: 'Buy a token', actionType: 'TRADE', chainId: 196, to: router, data: '0x', valueWei: '0', valueAtRiskUsd: 5_000, tokenRiskTarget: `token:eth:${token}`,
+    })).rejects.toThrow('token:xlayer')
+  })
+
   it('creates an unfunded durable pretrade job and returns the existing x402 funding capability', async () => {
     const started = await startCrossExamination({
       simple: {

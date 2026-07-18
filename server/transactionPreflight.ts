@@ -27,7 +27,7 @@ export type PreparedTransactionPreflight = {
   procurementFailures: SourceFailure[]
 }
 
-export const supportedTransactionPreflightBoundary = 'Transaction Preflight currently supports only exact X Layer token trades with an explicit token risk target. CrossExam will not charge for a scope its live evidence sources cannot fulfill.'
+export const supportedTransactionPreflightBoundary = 'Transaction Preflight currently supports only exact X Layer token trades with an explicit token:xlayer risk target. CrossExam will not charge for a scope its live evidence sources cannot fulfill.'
 
 /**
  * Validates the paid preflight boundary before the x402 middleware is reached.
@@ -42,7 +42,9 @@ export async function validateTransactionPreflightInput(input: unknown): Promise
     throw new Error(`${supportedTransactionPreflightBoundary} Provide a structured transaction request.`)
   }
   const action = await createTransactionAssuranceAction(input as TransactionPreflightRequest)
-  if (action.binding.actionType !== 'TRADE' || action.evm?.chainId !== 196 || !action.reviewEvidenceContext?.tokenRiskTarget) {
+  if (action.binding.actionType !== 'TRADE'
+    || action.evm?.chainId !== 196
+    || !action.reviewEvidenceContext?.tokenRiskTarget?.startsWith('token:xlayer:')) {
     throw new Error(supportedTransactionPreflightBoundary)
   }
   return action
