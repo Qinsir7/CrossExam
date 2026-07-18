@@ -54,6 +54,18 @@ describe('ReviewJobClient', () => {
     expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://api.cross.exam/api/v1/cross-examinations', expect.objectContaining({ method: 'POST' }))
   })
 
+  it('submits record verification with an explicitly pinned issuer', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ signatureValid: true, actionBindingValid: true, gate: { status: 'PERMIT', executable: true, reasons: [], requiredClaimIds: [] } }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+    const input = {
+      record: { recordId: 'dar_123' }, expectedServiceSigner: '0x1111111111111111111111111111111111111111' as const,
+      intent: { decisionId: 'DP-1', valueAtRiskUsd: 1, actionType: 'OTHER' as const, target: 'test', parametersHash: '0xabc' },
+    }
+
+    await expect(client.verifyAssuranceRecord(input)).resolves.toMatchObject({ signatureValid: true, actionBindingValid: true })
+    expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/assurance/verify', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }))
+  })
+
   it('surfaces a server rejection instead of inventing a queued job', async () => {
     const client = new ReviewJobClient({ fetchImpl: async () => new Response(JSON.stringify({ message: 'No independent reviewer is active.' }), { status: 422 }) })
     await expect(client.create({ id: 'DP-1', title: 'Review this', valueAtRiskUsd: 100, claims: [{ id: 'C-1', statement: 'A premise.', materiality: 0.8 }] })).rejects.toThrow('No independent reviewer')

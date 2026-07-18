@@ -14,7 +14,18 @@ function recordInput(value: unknown): DecisionAssuranceRecord {
     || !record.decision || !record.dispatch || !record.result || !record.serviceAttestation) {
     throw new Error('Record does not have the required signed assurance shape.')
   }
-  return record as DecisionAssuranceRecord
+  // Deliberately normalize the envelope: read capabilities, persistence flags,
+  // or arbitrary caller properties are not part of the signed record payload.
+  return {
+    schemaVersion: record.schemaVersion,
+    recordId: record.recordId,
+    issuedAt: record.issuedAt,
+    attributionStatus: record.attributionStatus as DecisionAssuranceRecord['attributionStatus'],
+    decision: record.decision as DecisionAssuranceRecord['decision'],
+    dispatch: record.dispatch as DecisionAssuranceRecord['dispatch'],
+    result: record.result as DecisionAssuranceRecord['result'],
+    serviceAttestation: record.serviceAttestation as NonNullable<DecisionAssuranceRecord['serviceAttestation']>,
+  }
 }
 
 function actionBindingMatches(record: DecisionAssuranceRecord, intent: ActionIntent) {

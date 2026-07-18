@@ -49,6 +49,8 @@ Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
 Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.
 
+`POST /api/v1/assurance/verify` and `CrossExamClient.verifyRecord(...)` verify a record against an issuer address that the caller has independently pinned, the exact proposed action, and the execution policy. Private read capabilities and API-envelope metadata are never part of the signed record payload.
+
 The endpoint intentionally rejects partial reviews: payment buys deterministic aggregation of attributable evidence, never a fabricated “AI verdict.” The standard route labels caller-supplied review attribution honestly; the network route verifies server-registered reviewer identity, independence, EIP-191 delivery signatures, evidence hashes, and finding-to-artifact links.
 
 ## Run the complete offline lifecycle

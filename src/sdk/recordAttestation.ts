@@ -22,12 +22,23 @@ export class CrossExamRecordAttestationError extends Error {
   }
 }
 
+function attestableRemoteRecord(record: RemoteDecisionAssuranceRecord) {
+  return {
+    schemaVersion: record.schemaVersion,
+    recordId: record.recordId,
+    issuedAt: record.issuedAt,
+    attributionStatus: record.attributionStatus,
+    decision: record.decision,
+    dispatch: record.dispatch,
+    result: record.result,
+  }
+}
+
 /** Verifies the complete returned record against the issuer published in the service manifest. */
 export async function verifyRemoteRecordAttestation(record: RemoteDecisionAssuranceRecord, expectedSigner: Address): Promise<void> {
   const attestation = record.serviceAttestation
   if (!attestation) throw new CrossExamRecordAttestationError('CrossExam record is missing a service attestation.')
-  const { serviceAttestation: _attestation, ...payload } = record
-  const payloadHash = keccak256(stringToHex(canonicalize(payload)))
+  const payloadHash = keccak256(stringToHex(canonicalize(attestableRemoteRecord(record))))
   if (payloadHash !== attestation.payloadHash) throw new CrossExamRecordAttestationError('CrossExam record attestation hash does not match its payload.')
   const signer = await recoverMessageAddress({ message: { raw: payloadHash }, signature: attestation.signature })
   if (signer.toLowerCase() !== attestation.signer.toLowerCase() || signer.toLowerCase() !== expectedSigner.toLowerCase()) {

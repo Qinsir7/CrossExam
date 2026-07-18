@@ -32,4 +32,11 @@ describe('verifyAssuranceRecord', () => {
     } })
     expect(result).toMatchObject({ signatureValid: false, actionBindingValid: false, gate: { status: 'DENY', executable: false } })
   })
+
+  it('verifies the signed portion of a real API result without trusting its transport metadata', async () => {
+    const record = await signedRecord()
+    await expect(verifyAssuranceRecord({ record: { ...record, persistence: 'CREATED', readAccess: { token: 'darv_private' } }, expectedServiceSigner: signer.address, intent: {
+      decisionId: 'DP-VERIFY', valueAtRiskUsd: 100, actionType: 'TRADE', target: 'evm:196:0x1111111111111111111111111111111111111111', parametersHash: '0xbound',
+    } })).resolves.toMatchObject({ signatureValid: true, actionBindingValid: true })
+  })
 })

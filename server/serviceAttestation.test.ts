@@ -24,4 +24,12 @@ describe('service record attestation', () => {
 
     await expect(verifyDecisionAssuranceRecordAttestation({ ...signed, result: { ...signed.result, action: 'HOLD' } })).rejects.toThrow('payload hash')
   })
+
+  it('accepts a signed record returned in an API envelope with unsigned transport fields', async () => {
+    const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z')
+    const signed = await attestDecisionAssuranceRecord(record, privateKey)
+    const envelope = { ...signed, persistence: 'CREATED', readAccess: { token: 'darv_private', expiresAt: '2026-07-16T00:00:00.000Z' } }
+
+    await expect(verifyDecisionAssuranceRecordAttestation(envelope)).resolves.toBeUndefined()
+  })
 })

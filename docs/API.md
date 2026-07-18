@@ -127,6 +127,34 @@ Every procurement scope must be `DELIVERED`. Each delivery must originate from t
 
 Every paid record is additionally issued with an EIP-191 `serviceAttestation` over the complete record payload. The service's public signer is published in `/.well-known/crossexam.json` under `issuer.recordAttestation.signer`. Executors should verify this signature before relying on a record; the SDK provides `getVerifiedRecord` and `preflightVerified` for that purpose.
 
+## Verify a Decision Assurance Record
+
+`POST /api/v1/assurance/verify` is free and stateless. Give it the complete
+record, the exact proposed `ActionIntent`, and an **independently pinned**
+`expectedServiceSigner`. It verifies the EIP-191 signature, checks that the
+action binding is unchanged, and applies the execution gate without accessing
+or trusting a private bearer capability.
+
+```json
+{
+  "record": { "schemaVersion": "0.1", "recordId": "dar_…", "serviceAttestation": { "scheme": "EIP191", "signer": "0x…", "payloadHash": "0x…", "signature": "0x…" } },
+  "expectedServiceSigner": "0x…",
+  "intent": {
+    "decisionId": "DP-042",
+    "valueAtRiskUsd": 5000,
+    "actionType": "TRADE",
+    "target": "evm:196:0x…",
+    "parametersHash": "0x…"
+  }
+}
+```
+
+The server never accepts the signer's address from the record as its trust
+anchor. Pin it in deployment configuration or retrieve it from an
+independently verified service manifest. A result envelope may contain
+unsigned transport metadata such as a time-limited `readAccess` capability;
+that metadata is intentionally excluded from the canonical signed payload.
+
 Every `REFUTED` or `UNRESOLVED` claim generates a reversal condition. It specifies the class of independently verifiable evidence needed before an action can be reconsidered; it does not fabricate a favorable resolution.
 
 After a successful paid aggregation, the record is atomically persisted before the API responds. The response includes `persistence: "CREATED"` or `"EXISTING"`; a persistence failure returns `500` rather than presenting an unrecorded result as an audit artifact.

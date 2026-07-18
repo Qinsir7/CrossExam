@@ -11,9 +11,25 @@ function canonicalize(value: unknown): string {
 
 type AttestableRecord = Omit<DecisionAssuranceRecord, 'serviceAttestation'>
 
+/**
+ * Only these persisted record fields are signed. API envelopes may add
+ * transport metadata (for example a temporary read capability), which must
+ * neither invalidate a real signature nor become accidentally signed.
+ */
+export function attestableAssuranceRecord(record: DecisionAssuranceRecord): AttestableRecord {
+  return {
+    schemaVersion: record.schemaVersion,
+    recordId: record.recordId,
+    issuedAt: record.issuedAt,
+    attributionStatus: record.attributionStatus,
+    decision: record.decision,
+    dispatch: record.dispatch,
+    result: record.result,
+  }
+}
+
 export function assuranceRecordPayloadHash(record: DecisionAssuranceRecord): Hex {
-  const { serviceAttestation: _serviceAttestation, ...payload } = record
-  return keccak256(stringToHex(canonicalize(payload satisfies AttestableRecord)))
+  return keccak256(stringToHex(canonicalize(attestableAssuranceRecord(record))))
 }
 
 /** Signs the exact issued record after its content-derived record ID exists. */

@@ -5,7 +5,18 @@ import type { ActionType, CrossExamResult, DecisionPackage } from '../domain/typ
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { Address } from 'viem'
 import { verifyRemoteRecordAttestation, type RemoteServiceAttestation } from './recordAttestation'
-import type { VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
+import type {
+  AspTrustCheckRequest,
+  AspTrustCheckResponse,
+  CrossExaminationPreparationRequest,
+  CrossExaminationPreparationResponse,
+  CrossExaminationRequest,
+  CrossExaminationResponse,
+  TransactionPreflightRequest,
+  TransactionPreflightResponse,
+  VerifyAssuranceRecordResponse,
+} from '../domain/assuranceContracts'
+import type { ReviewJobView } from './reviewJobClient'
 
 export type RecordAccess = {
   recordId: string
@@ -69,6 +80,16 @@ export class CrossExamActionBlockedError extends Error {
   }
 }
 
+export class CrossExamApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'CrossExamApiError'
+    this.status = status
+  }
+}
+
 export class CrossExamClient {
   private readonly baseUrl: string
   private readonly fetcher: typeof fetch
@@ -88,6 +109,39 @@ export class CrossExamClient {
       throw new Error('CrossExam returned an invalid Decision Assurance Record.')
     }
     return record
+  }
+
+  /** Compile claims, source coverage, limitations, and a quote without charging or creating a job. */
+  async prepareAction(input: CrossExaminationPreparationRequest): Promise<CrossExaminationPreparationResponse> {
+    return this.requestJson('/api/v1/cross-examinations/prepare', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    })
+  }
+
+  /** Create only a fulfillable deep-review job; wallet payment remains a separate x402 authorization. */
+  async startDeepReview(input: CrossExaminationRequest): Promise<CrossExaminationResponse> {
+    return this.requestJson('/api/v1/cross-examinations', {
+      method: 'POST', headers: this.jsonHeaders(input.idempotencyKey), body: JSON.stringify(input),
+    })
+  }
+
+  /** Use an injected x402-capable fetcher to buy an exact transaction preflight. */
+  async preflightTransaction(input: TransactionPreflightRequest): Promise<TransactionPreflightResponse> {
+    return this.requestJson('/api/v1/preflight/transaction', {
+      method: 'POST', headers: this.jsonHeaders(input.idempotencyKey), body: JSON.stringify(input),
+    })
+  }
+
+  /** Use an injected x402-capable fetcher to buy an SSRF-constrained ASP trust check. */
+  async checkAsp(input: AspTrustCheckRequest): Promise<AspTrustCheckResponse> {
+    return this.requestJson('/api/v1/preflight/asp', {
+      method: 'POST', headers: this.jsonHeaders(input.idempotencyKey), body: JSON.stringify(input),
+    })
+  }
+
+  /** Retrieve a durable review job with its owner capability. */
+  async getReview(jobId: string, accessToken: string): Promise<ReviewJobView> {
+    return this.requestJson(`/api/v1/review-jobs/${encodeURIComponent(jobId)}`, { headers: { authorization: `Bearer ${accessToken}` } })
   }
 
   async preflight(access: RecordAccess, intent: ActionIntent, policy?: PreActionPolicy): Promise<PreActionDecision> {
@@ -204,5 +258,18 @@ export class CrossExamClient {
     }, input.expectedServiceSigner, input.policy)
     if (!gate.executable) throw new CrossExamActionBlockedError(gate)
     return input.execute(Object.freeze(transaction))
+  }
+
+  private jsonHeaders(idempotencyKey?: string): Record<string, string> {
+    return { 'content-type': 'application/json', ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}) }
+  }
+
+  private async requestJson<T>(path: string, init: RequestInit): Promise<T> {
+    const response = await this.fetcher(`${this.baseUrl}${path}`, init)
+    const body = await response.json().catch(() => null) as { message?: unknown } | null
+    if (!response.ok) {
+      throw new CrossExamApiError(response.status, typeof body?.message === 'string' ? body.message : `CrossExam API request failed with status ${response.status}.`)
+    }
+    return body as T
   }
 }

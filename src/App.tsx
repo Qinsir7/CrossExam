@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse } from './domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
 import { displayUsdt0 } from './sdk/browserX402'
@@ -67,6 +67,11 @@ function App() {
   const [retryingReviewJob, setRetryingReviewJob] = useState(false)
   const [recoveringReviewJob, setRecoveringReviewJob] = useState(false)
   const [sharingReviewRecord, setSharingReviewRecord] = useState(false)
+  const [verificationSigner, setVerificationSigner] = useState('')
+  const [verifyingReviewRecord, setVerifyingReviewRecord] = useState(false)
+  const [recordVerification, setRecordVerification] = useState<VerifyAssuranceRecordResponse | null>(null)
+  const claimTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const claimCloseRef = useRef<HTMLButtonElement | null>(null)
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
@@ -86,6 +91,20 @@ function App() {
       window.sessionStorage.removeItem(reviewSessionKey)
     }
   }, [reviewJob, reviewJobAccessToken])
+
+  useEffect(() => {
+    if (!selectedClaim) return
+    claimCloseRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSelectedClaim(null)
+        window.requestAnimationFrame(() => claimTriggerRef.current?.focus())
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [selectedClaim])
   useEffect(() => {
     if (!reviewJob || !reviewJobAccessToken || reviewJob.status === 'READY_FOR_ASSURANCE' || reviewJob.status === 'FAILED' || reviewJob.status === 'CANCELLED' || reviewJob.status === 'EXPIRED') return
     const client = new ReviewJobClient()
@@ -324,6 +343,40 @@ function App() {
     }
   }
 
+  function closeClaimDetail() {
+    setSelectedClaim(null)
+    window.requestAnimationFrame(() => claimTriggerRef.current?.focus())
+  }
+
+  async function verifyReviewRecord() {
+    const binding = reviewJobResult?.decision.actionBinding
+    if (!reviewJobResult || !binding) return
+    setVerifyingReviewRecord(true)
+    setRecordVerification(null)
+    try {
+      const verified = await new ReviewJobClient().verifyAssuranceRecord({
+        record: reviewJobResult,
+        expectedServiceSigner: verificationSigner.trim() as `0x${string}`,
+        intent: {
+          decisionId: reviewJobResult.decision.id,
+          valueAtRiskUsd: reviewJobResult.decision.valueAtRiskUsd,
+          actionType: binding.actionType,
+          target: binding.target,
+          parametersHash: binding.parametersHash,
+        },
+      })
+      setRecordVerification(verified)
+    } catch (error) {
+      setRecordVerification({
+        signatureValid: false,
+        actionBindingValid: false,
+        gate: { status: 'DENY', executable: false, reasons: [error instanceof Error ? error.message : 'Record verification could not complete.'], requiredClaimIds: [] },
+      })
+    } finally {
+      setVerifyingReviewRecord(false)
+    }
+  }
+
   const reviewStatusLabel: Record<ReviewJobView['status'], string> = {
     AWAITING_MATCH: 'Awaiting independent reviewer match',
     AWAITING_DELIVERIES: 'Independent review procurement in progress',
@@ -372,8 +425,8 @@ function App() {
         <h1>Before an agent acts,<br /><em>make the decision survive.</em></h1>
         <p>CrossExam buys independent counter-evidence, challenges material claims, and returns a signed verdict before an agent spends, trades, deploys, publishes, or delegates.</p>
         <form className="hero-composer" id="check-action" onSubmit={submitDecision}>
-          <div className="scenario-tabs" role="tablist" aria-label="Action scenario">
-            {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" role="tab" aria-selected={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
+          <div className="scenario-tabs" aria-label="Action scenario">
+            {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" aria-pressed={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
           </div>
           <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this X Layer token only if liquidity and contract risk survive review." rows={2} /></label>
           <div className="hero-composer-grid">
@@ -518,7 +571,7 @@ await wallet.sendTransaction(tx)`}</code></pre>
               <button
                 className={`claim-row ${claim.verdict.toLowerCase()} ${selectedClaim?.id === claim.id ? 'selected' : ''}`}
                 key={claim.id}
-                onClick={() => setSelectedClaim(claim)}
+                onClick={(event) => { claimTriggerRef.current = event.currentTarget; setSelectedClaim(claim) }}
               >
                 <Mark type={claim.verdict} />
                 <span className="claim-text"><small>{claim.id}</small>{claim.text}</span>
@@ -562,6 +615,13 @@ await wallet.sendTransaction(tx)`}</code></pre>
             </div>
             {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
             {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}
+            {reviewJobResult?.decision.actionBinding && <div className="record-verification">
+              <label>Trusted CrossExam signer<input value={verificationSigner} onChange={(event) => { setVerificationSigner(event.target.value); setRecordVerification(null) }} placeholder="0x… pin from your deployment config" autoComplete="off" spellCheck="false" /></label>
+              <p>Paste the issuer you independently pinned from deployment configuration or a verified manifest. Do not take it from this record.</p>
+              <a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open issuer manifest →</a>
+              <button onClick={() => void verifyReviewRecord()} disabled={verifyingReviewRecord || !/^0x[a-fA-F0-9]{40}$/.test(verificationSigner.trim())}>{verifyingReviewRecord ? 'Verifying signed record…' : 'Verify signed record'}</button>
+              {recordVerification && <output className={recordVerification.signatureValid && recordVerification.actionBindingValid && recordVerification.gate.executable ? 'verified' : 'rejected'} aria-live="polite"><strong>{recordVerification.signatureValid ? 'Issuer signature valid' : 'Issuer signature rejected'}</strong><span>{recordVerification.actionBindingValid ? 'Exact action binding matches.' : 'Exact action binding does not match.'} {recordVerification.gate.reasons[0] ?? recordVerification.gate.status}</span></output>}
+            </div>}
           </aside>
         </div>
       </section>
@@ -616,12 +676,12 @@ await wallet.sendTransaction(tx)`}</code></pre>
       )}
 
       {selectedClaim && (
-        <div className="detail-backdrop" onClick={() => setSelectedClaim(null)} role="presentation">
-          <aside className="detail-panel" onClick={(event) => event.stopPropagation()}>
-            <button className="close-button" onClick={() => setSelectedClaim(null)} aria-label="Close detail">×</button>
+        <div className="detail-backdrop" onClick={closeClaimDetail} role="presentation">
+          <aside className="detail-panel" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="claim-detail-title">
+            <button className="close-button" ref={claimCloseRef} onClick={closeClaimDetail} aria-label="Close detail">×</button>
             <span className={`detail-label ${selectedClaim.verdict.toLowerCase()}`}>{verdictLabel[selectedClaim.verdict]}</span>
             <small>{selectedClaim.id} · challenged by {selectedClaim.challenger}</small>
-            <h2>{selectedClaim.text}</h2>
+            <h2 id="claim-detail-title">{selectedClaim.text}</h2>
             <div className="evidence-block"><span>Evidence finding</span><p>{selectedClaim.evidence}</p></div>
             <div className="reversal-block"><span>Reversal condition</span><p>Provide a current, independently verifiable data point that addresses this contradiction.</p></div>
           </aside>

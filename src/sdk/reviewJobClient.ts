@@ -1,7 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse } from '../domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
@@ -152,6 +152,13 @@ export class ReviewJobClient {
     return this.request('/api/v1/cross-examinations', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
     }) as Promise<CrossExaminationResponse>
+  }
+
+  /** Stateless verification against a caller-pinned service issuer and exact intended action. */
+  async verifyAssuranceRecord(input: VerifyAssuranceRecordRequest): Promise<VerifyAssuranceRecordResponse> {
+    return this.request('/api/v1/assurance/verify', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }) as Promise<VerifyAssuranceRecordResponse>
   }
 
   async recoverWithBrowserWallet(transaction: string): Promise<CreatedReviewJob> {

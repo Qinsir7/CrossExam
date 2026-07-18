@@ -1197,14 +1197,16 @@ Evidence (2026-07-18): `src/App.tsx` derives the visible progress stages directl
 
 ### Day 8 — SDK, developer page, and production hardening
 
-- [ ] Add ergonomic SDK methods.
-- [ ] Add Verify Assurance Record endpoint and UI.
-- [ ] Build developer page.
-- [ ] Complete accessibility/mobile pass.
-- [ ] Complete secret/logging/SSRF review.
-- [ ] Clean unused assets and metadata.
+- [x] Add ergonomic SDK methods.
+- [x] Add Verify Assurance Record endpoint and UI.
+- [x] Build developer page.
+- [x] Complete accessibility/mobile pass.
+- [x] Complete secret/logging/SSRF review.
+- [x] Clean unused assets and metadata.
 
 Acceptance: a developer can understand integration from one code example; verification rejects changed actions and untrusted signers.
+
+Evidence (2026-07-18): `CrossExamClient` now exposes `prepareAction`, `startDeepReview`, `preflightTransaction`, `checkAsp`, `getReview`, and offline `verifyRecord`, while `ReviewJobClient.verifyAssuranceRecord` drives the free server verifier. `POST /api/v1/assurance/verify`, the SDK, and the result UI require a caller-pinned signer and verify the exact action binding; regression tests cover a wrong signer, substituted action, and a production-shaped result envelope with unsigned read-capability metadata. The landing developer section explains the signed preflight boundary in one executable code block, and `docs/API.md` documents the trust boundary. The claim detail surface now has dialog semantics, Escape close and focus restoration; focus rings and reduced-motion handling are global. Local viewport checks at 320, 375, 390, 768, 1024, and 1440px found no horizontal overflow and confirmed the primary CTA/recovery path. Unused Vite/React/legacy icon assets were removed; the 2048px `logo.jpg` remains the favicon/social source, and title, description, canonical, and Open Graph metadata are set. `git diff --check`, tracked-secret review, `npm audit --omit=dev --audit-level=high` (0 vulnerabilities), lint, 39 test files / 162 tests, and the production build passed.
 
 ### Day 9 — production economics and end-to-end acceptance
 

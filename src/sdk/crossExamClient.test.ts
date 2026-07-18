@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CrossExamActionBlockedError, CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
+import { CrossExamActionBlockedError, CrossExamApiError, CrossExamClient, CrossExamRecordAccessError } from './crossExamClient'
 import { createActionBinding } from '../domain/actionBinding'
 import { createEvmActionBinding } from '../domain/evmAction'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -41,6 +41,34 @@ describe('CrossExamClient', () => {
     })
   })
 
+  it('exposes the product endpoints through ergonomic SDK methods and preserves idempotency', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ canStart: true }), { status: 200 }))
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher })
+
+    await client.prepareAction({ simple: { title: 'Review', intent: 'Check this action.', valueAtRiskUsd: 1 } })
+    await client.startDeepReview({ simple: { title: 'Review', intent: 'Check this action.', valueAtRiskUsd: 1 }, idempotencyKey: 'deep-review-1' })
+    await client.preflightTransaction({ title: 'Trade', intent: 'Trade safely.', valueAtRiskUsd: 1, actionType: 'TRADE', chainId: 196, to: '0x1111111111111111111111111111111111111111', data: '0x', idempotencyKey: 'preflight-1' })
+    await client.checkAsp({ endpoint: 'https://agent.example', valueAtRiskUsd: 1, idempotencyKey: 'asp-1' })
+    await client.getReview('rj_1', 'rjv_owner')
+
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'https://cross.exam/api/v1/cross-examinations/prepare',
+      'https://cross.exam/api/v1/cross-examinations',
+      'https://cross.exam/api/v1/preflight/transaction',
+      'https://cross.exam/api/v1/preflight/asp',
+      'https://cross.exam/api/v1/review-jobs/rj_1',
+    ])
+    expect(fetcher.mock.calls[1][1]).toMatchObject({ headers: { 'idempotency-key': 'deep-review-1' } })
+    expect(fetcher.mock.calls[4][1]).toMatchObject({ headers: { authorization: 'Bearer rjv_owner' } })
+  })
+
+  it('preserves API status and a safe server message for product endpoint failures', async () => {
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ message: 'No real source matches this action.' }), { status: 422 })) })
+    await expect(client.prepareAction({ simple: { title: 'Review', intent: 'Check this action.', valueAtRiskUsd: 1 } })).rejects.toEqual(expect.objectContaining({
+      name: 'CrossExamApiError', status: 422, message: 'No real source matches this action.',
+    } satisfies Partial<CrossExamApiError>))
+  })
+
   it('turns a fetched record into an executable preflight decision', async () => {
     const client = new CrossExamClient({ baseUrl: 'https://cross.exam', fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(record), { status: 200 })) })
 
@@ -72,6 +100,16 @@ describe('CrossExamClient', () => {
     await expect(client.verifyRecord(signed, {
       decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parametersHash: '0xdemo',
     }, privateKeyToAccount(privateKey).address)).resolves.toMatchObject({ signatureValid: true, actionBindingValid: true, gate: { executable: true } })
+  })
+
+  it('verifies a job-result envelope without including its private access capability in the signed payload', async () => {
+    const privateKey = '0x0123456789012345678901234567890123456789012345678901234567890123' as const
+    const signed = await attestDecisionAssuranceRecord(record, privateKey)
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam' })
+    const envelope = { ...signed, persistence: 'CREATED' as const, readAccess: { token: 'darv_private', expiresAt: '2026-08-01T00:00:00.000Z' } }
+    await expect(client.verifyRecord(envelope, {
+      decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parametersHash: '0xdemo',
+    }, privateKeyToAccount(privateKey).address)).resolves.toMatchObject({ signatureValid: true, actionBindingValid: true })
   })
 
   it('hands the exact payload to an executor only after a matching assurance preflight', async () => {
