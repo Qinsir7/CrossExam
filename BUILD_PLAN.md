@@ -1122,13 +1122,15 @@ Evidence (2026-07-18): `src/domain/assuranceAction.ts` reuses `canonicalizeEvmTr
 
 ### Day 2 — transaction claim compiler and policy
 
-- [ ] Implement deterministic transaction claim compilation.
-- [ ] Decode/inspect transaction value, recipient, approval patterns where supported.
-- [ ] Implement transaction evidence-to-claim mapping.
-- [ ] Implement fail-closed transaction policy.
-- [ ] Add focused positive/negative tests.
+- [x] Implement deterministic transaction claim compilation.
+- [x] Decode/inspect transaction value, recipient, approval patterns where supported.
+- [x] Implement transaction evidence-to-claim mapping.
+- [x] Implement fail-closed transaction policy.
+- [x] Add focused positive/negative tests.
 
 Acceptance: a real-shaped transaction deterministically yields material claims and cannot receive `PERMIT` with missing required evidence.
+
+Evidence (2026-07-18): `src/domain/transactionClaims.ts` derives explicit claims from canonical EVM actions and recognizes a bounded subset of ERC-20/operator approval calldata; `src/domain/transactionEvidence.ts` maps only named, normalized provider facts; `src/domain/transactionPolicy.ts` blocks one material contradiction and holds on missing evidence or insufficient attribution. Focused positive/negative tests cover liquidity contradiction, missing evidence, unlimited approval, and high-value attribution gating.
 
 ### Day 3 — paid Transaction Preflight endpoint
 
