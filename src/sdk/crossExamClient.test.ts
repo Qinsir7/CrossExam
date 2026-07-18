@@ -65,6 +65,15 @@ describe('CrossExamClient', () => {
     await expect(client.getVerifiedRecord({ recordId: record.recordId, token: 'darv_token' }, privateKeyToAccount(privateKey).address)).resolves.toMatchObject({ recordId: record.recordId })
   })
 
+  it('verifies a supplied record offline against a pinned issuer and exact action', async () => {
+    const privateKey = '0x0123456789012345678901234567890123456789012345678901234567890123' as const
+    const signed = await attestDecisionAssuranceRecord(record, privateKey)
+    const client = new CrossExamClient({ baseUrl: 'https://cross.exam' })
+    await expect(client.verifyRecord(signed, {
+      decisionId: 'DP-1', valueAtRiskUsd: 2000, actionType: 'TRADE', target: 'dex:demo', parametersHash: '0xdemo',
+    }, privateKeyToAccount(privateKey).address)).resolves.toMatchObject({ signatureValid: true, actionBindingValid: true, gate: { executable: true } })
+  })
+
   it('hands the exact payload to an executor only after a matching assurance preflight', async () => {
     const parameters = '{"side":"buy","amount":"1"}'
     const binding = await createActionBinding('TRADE', 'dex:demo', parameters)

@@ -5,6 +5,7 @@ import type { ActionType, CrossExamResult, DecisionPackage } from '../domain/typ
 import type { ReviewDispatch } from '../network/reviewNetwork'
 import type { Address } from 'viem'
 import { verifyRemoteRecordAttestation, type RemoteServiceAttestation } from './recordAttestation'
+import type { VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
 
 export type RecordAccess = {
   recordId: string
@@ -119,6 +120,37 @@ export class CrossExamClient {
       result: record.result,
       actionBinding: record.decision.actionBinding,
     }, intent, policy)
+  }
+
+  /** Verify a supplied record offline against a caller-pinned issuer and exact proposed action. */
+  async verifyRecord(record: RemoteDecisionAssuranceRecord, intent: ActionIntent, expectedServiceSigner: Address, policy?: PreActionPolicy): Promise<VerifyAssuranceRecordResponse> {
+    try {
+      await verifyRemoteRecordAttestation(record, expectedServiceSigner)
+    } catch (error) {
+      return {
+        signatureValid: false,
+        actionBindingValid: Boolean(record.decision?.actionBinding
+          && record.decision.actionBinding.actionType === intent.actionType
+          && record.decision.actionBinding.target === intent.target
+          && record.decision.actionBinding.parametersHash === intent.parametersHash),
+        gate: { status: 'DENY', executable: false, reasons: [error instanceof Error ? error.message : 'Record signature is invalid.'], requiredClaimIds: [] },
+      }
+    }
+    const gate = evaluatePreAction({
+      recordId: record.recordId,
+      issuedAt: record.issuedAt,
+      decisionId: record.decision.id,
+      valueAtRiskUsd: record.decision.valueAtRiskUsd,
+      attributionStatus: record.attributionStatus,
+      result: record.result,
+      actionBinding: record.decision.actionBinding,
+    }, intent, policy)
+    const binding = record.decision.actionBinding
+    return {
+      signatureValid: true,
+      actionBindingValid: Boolean(binding && binding.actionType === intent.actionType && binding.target === intent.target && binding.parametersHash === intent.parametersHash),
+      gate,
+    }
   }
 
   /**
