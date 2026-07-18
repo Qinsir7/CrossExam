@@ -16,12 +16,12 @@ const verdictLabel: Record<ClaimVerdict, string> = {
 
 const reviewSessionKey = 'crossexam.review-session.v1'
 const canonicalDemoCandidate = {
-  title: 'Review a 10,000 USD Xwawa acquisition',
-  intent: 'Acquire Xwawa on X Layer only if the exact route has sufficient liquidity and the token-transfer premise survives independent review.',
+  title: 'Review a 10,000 USD WOKB acquisition',
+  intent: 'Acquire WOKB on X Layer through the exact routed swap only if the execution-liquidity and token-transfer premises survive independent review.',
   valueAtRiskUsd: '10000',
-  tokenRiskTarget: 'token:xlayer:0x095c1a875b985be6e2c86b2cae0b66a3df702e6a',
+  tokenRiskTarget: 'token:xlayer:0xe538905cf8410324e03a5a23c1c177a474d59b2b',
   inputTokenAddress: '0x779ded0c9e1022225f8e0630b35a9b54be713736' as const,
-  outputTokenAddress: '0x095c1a875b985be6e2c86b2cae0b66a3df702e6a' as const,
+  outputTokenAddress: '0xe538905cf8410324e03a5a23c1c177a474d59b2b' as const,
   inputAmountAtomic: '10000000000',
   slippagePercent: '0.5',
 }
@@ -523,7 +523,7 @@ function App() {
             {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" aria-pressed={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
           </div>
           <div className="candidate-prefill">
-            <div><span>Canonical live candidate</span><p>Xwawa · 10,000 USD risk screen · X Layer</p></div>
+            <div><span>Canonical live candidate</span><p>WOKB · 10,000 USD exact-route review · X Layer</p></div>
             <div className="candidate-actions">
               <button type="button" onClick={loadCanonicalCandidate}>Load candidate</button>
               <button type="button" onClick={() => void quoteCanonicalCandidate()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Requesting live route' : 'Generate exact route'}</button>
