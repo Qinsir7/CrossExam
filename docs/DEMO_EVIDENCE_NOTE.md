@@ -10,10 +10,10 @@ Observed on 2026-07-19 (Asia/Shanghai) in the production browser flow. This note
 
 ## Evidence and economics shown by the record
 
-| Scope | Production source | Visible source state | Provenance | Cost basis |
+| Scope | Production source | Procurement record | Provenance | Cost basis |
 | --- | --- | --- | --- | --- |
-| Execution liquidity | OKX Onchain OS Market | REQUESTED | Verified | Included quota (0.005 USDT estimated) |
-| Contract and token risk | GoPlus X Layer Token Security | REQUESTED | Verified | Included quota (0 USDT estimated) |
+| Execution liquidity | OKX Onchain OS Market | Source accepted request; verified delivery retained | Verified | Included quota (0.005 USDT estimated) |
+| Contract and token risk | GoPlus X Layer Token Security | Source accepted request; verified delivery retained | Verified | Included quota (0 USDT estimated) |
 
 - External settled cost: **0.00 USDT0**.
 - Realized gross margin: **0.20 USDT0**.

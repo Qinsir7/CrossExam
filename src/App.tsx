@@ -767,9 +767,10 @@ await wallet.sendTransaction(tx)`}</code></pre>
               {reviewJob.plan.scopes.map((scope) => {
                 const assignment = reviewJob.dispatch.assignments.find((item) => item.scopeId === scope.id)
                 const procurement = reviewJob.procurements.find((item) => item.scopeId === scope.id)
+                const evidenceState = assignment?.delivery ? 'Evidence received' : procurement?.status ?? 'UNSENT'
                 return <div key={scope.id}>
                   <span>{scope.title}</span>
-                  <small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${procurement?.status ?? 'UNSENT'}`} · {scope.estimatedFeeUsdt} USDT</small>
+                  <small>{assignment?.status === 'AWAITING_MATCH' ? 'Awaiting independent match' : `${assignment?.reviewer?.displayName ?? 'Matched reviewer'} · ${evidenceState}`} · {scope.estimatedFeeUsdt} USDT</small>
                   {assignment?.delivery?.provenance && <details className="evidence-proof">
                     <summary>Verified provenance</summary>
                     <p>{assignment.delivery.provenance.kind.replaceAll('_', ' ')} · {new Date(assignment.delivery.provenance.observedAt).toLocaleString()}</p>
