@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
-import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
+import { evaluatePreAction } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, TransactionQuoteResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
@@ -68,7 +68,7 @@ function App() {
   const [candidateRoute, setCandidateRoute] = useState<TransactionQuoteResponse | null>(null)
   const [quotingCandidateRoute, setQuotingCandidateRoute] = useState(false)
   const [formErrors, setFormErrors] = useState<string[]>([])
-  const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
+  const [gateCheckedAt, setGateCheckedAt] = useState<string | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(restoredReviewSession?.job ?? null)
   const [reviewJobResult, setReviewJobResult] = useState<ReviewJobResult | null>(null)
   const [procurementLedger, setProcurementLedger] = useState<ProcurementLedgerView | null>(null)
@@ -254,9 +254,9 @@ function App() {
       target: binding.target,
       parametersHash: binding.parametersHash,
     })
-  }, [reviewJobResult])
+  }, [reviewJobResult, gateCheckedAt])
 
-  const displayedGate = gateDecision ?? realGate ?? demoGate
+  const displayedGate = realGate ?? demoGate
   const decisiveClaim = result.claims.find((claim) => claim.verdict === 'REFUTED')
     ?? result.claims.find((claim) => claim.verdict === 'UNRESOLVED')
   const resultDecision = reviewJobResult?.decision ?? demoDecision
@@ -369,7 +369,7 @@ function App() {
   }
 
   async function queueReview() {
-    setGateDecision(null)
+    setGateCheckedAt(null)
     if (isDemo) {
       setRunState('demo-complete')
       return
@@ -403,7 +403,7 @@ function App() {
       setReviewJob(job)
       setReviewJobAccessToken(accessToken)
       setReviewJobResult(null)
-      setGateDecision(null)
+      setGateCheckedAt(null)
       setRunState('queued')
     } catch (error) {
       setReviewJobError(error instanceof Error ? error.message : 'Paid review access could not be recovered.')
@@ -420,6 +420,13 @@ function App() {
     anchor.download = `${reviewJobResult.recordId}.json`
     anchor.click()
     URL.revokeObjectURL(href)
+  }
+
+  function rerunExactGateCheck() {
+    // This is deliberately a local, pure policy evaluation over the issued
+    // record and its exact action binding. It must make the re-check visible
+    // without asking the wallet to sign or broadcasting the transaction.
+    setGateCheckedAt(new Date().toISOString())
   }
 
   async function shareReviewRecord() {
@@ -718,7 +725,8 @@ await wallet.sendTransaction(tx)`}</code></pre>
                 <span>{displayedGate.reasons[0]}</span>
                 {displayedGate.requiredClaimIds.length > 0 && <small>Remediate {displayedGate.requiredClaimIds.join(' · ')}</small>}
               </div>
-              <button className="guard-button" onClick={() => setGateDecision(realGate ?? demoGate)}>Re-run exact gate check <span>→</span></button>
+              <button className="guard-button" onClick={rerunExactGateCheck}>Re-run exact gate check <span>→</span></button>
+              {gateCheckedAt && <output className="gate-check-feedback" aria-live="polite">Checked locally at {new Date(gateCheckedAt).toLocaleTimeString()} · {displayedGate.status} remains enforced. No signature or transaction was sent.</output>}
             </div>
             {reviewJobResult && <div className="record-proof"><span>Signed assurance record</span><p>{reviewJobResult.recordId}</p><small>{reviewJobResult.attributionStatus} · {reviewJobResult.persistence} · access expires {new Date(reviewJobResult.readAccess.expiresAt).toLocaleString()}</small></div>}
             {reviewJobResult && <div className="record-actions"><button onClick={downloadPrivateRecord}>Download private JSON</button><button onClick={() => void shareReviewRecord()} disabled={sharingReviewRecord}>{sharingReviewRecord ? 'Creating safe link…' : 'Create safe share link'}</button></div>}
