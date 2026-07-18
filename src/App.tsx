@@ -361,6 +361,7 @@ function App() {
         </a>
         <div className="network-status"><span className="live-dot" /> Live on X Layer</div>
         <div className="topbar-actions">
+          <a className="developer-link" href="#developers">For developers</a>
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
           <a className="new-decision-button" href="#check-action" onClick={invalidatePreparation}>Check an action <span>+</span></a>
         </div>
@@ -483,6 +484,19 @@ function App() {
       </section>
 
       {reviewJobError && <section className="service-error" role="alert"><strong>CrossExam needs attention.</strong><span>{reviewJobError}</span></section>}
+
+      <section className="developer-section" id="developers">
+        <div><span className="eyebrow"><span /> Developer integration</span><h2>One decision before<br /><em>one irreversible call.</em></h2><p>Request an action-bound verdict, pin CrossExam’s service signer, then let the execution boundary refuse a changed, stale, unresolved, or blocked action.</p><a href="https://api.cross-exam.xyz/.well-known/crossexam.json" target="_blank" rel="noreferrer">Open API discovery →</a></div>
+        <pre aria-label="CrossExam integration example"><code>{`const gate = await crossExam.preflightVerified(
+  access, exactIntent, trustedCrossExamSigner,
+)
+
+if (!gate.executable) {
+  throw new Error(gate.reasons.join(' '))
+}
+
+await wallet.sendTransaction(tx)`}</code></pre>
+      </section>
 
       <section className={`results ${ran || reviewJobResult ? 'visible' : ''}`} aria-live="polite">
         <div className="results-intro">
