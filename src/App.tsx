@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { runCrossExam } from './domain/crossExam'
-import { createDecisionPackage } from './domain/decisionPackage'
-import { createActionBinding } from './domain/actionBinding'
-import { createEvmActionBinding } from './domain/evmAction'
 import { evaluatePreAction, type PreActionDecision } from './domain/preActionGate'
 import type { ActionType, DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
 import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
 import { displayUsdt0 } from './sdk/browserX402'
@@ -46,17 +44,17 @@ function App() {
   const [composerOpen, setComposerOpen] = useState(false)
   const [activeDecision, setActiveDecision] = useState<DecisionPackage>(restoredReviewSession?.job.decision ?? demoDecision)
   const [draftTitle, setDraftTitle] = useState('')
+  const [draftIntent, setDraftIntent] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
-  const [draftClaims, setDraftClaims] = useState('')
-  const [draftActionType, setDraftActionType] = useState<ActionType>('OTHER')
-  const [draftEvmTransaction, setDraftEvmTransaction] = useState(false)
-  const [draftTarget, setDraftTarget] = useState('')
-  const [draftParameters, setDraftParameters] = useState('')
+  const [draftActionType, setDraftActionType] = useState<ActionType>('TRADE')
+  const [draftEvmTransaction, setDraftEvmTransaction] = useState(true)
   const [draftChainId, setDraftChainId] = useState('196')
   const [draftRecipient, setDraftRecipient] = useState('')
   const [draftCalldata, setDraftCalldata] = useState('0x')
   const [draftValueWei, setDraftValueWei] = useState('0')
   const [draftTokenRiskTarget, setDraftTokenRiskTarget] = useState('')
+  const [preparedReview, setPreparedReview] = useState<CrossExaminationPreparationResponse | null>(null)
+  const [preparedInput, setPreparedInput] = useState<CrossExaminationPreparationRequest | null>(null)
   const [formErrors, setFormErrors] = useState<string[]>([])
   const [gateDecision, setGateDecision] = useState<PreActionDecision | null>(null)
   const [reviewJob, setReviewJob] = useState<ReviewJobView | null>(restoredReviewSession?.job ?? null)
@@ -71,6 +69,7 @@ function App() {
 
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
+  const invalidatePreparation = () => { setPreparedReview(null); setPreparedInput(null) }
   useEffect(() => {
     if (reviewJob && reviewJobAccessToken) {
       window.sessionStorage.setItem(reviewSessionKey, JSON.stringify({ job: reviewJob, accessToken: reviewJobAccessToken }))
@@ -169,43 +168,62 @@ function App() {
     })
   }, [reviewJobResult])
 
+  function simpleInput(): CrossExaminationPreparationRequest {
+    return {
+      simple: {
+        title: draftTitle,
+        intent: draftIntent,
+        valueAtRiskUsd: Number(draftRisk),
+        ...(draftEvmTransaction ? {
+          ...(draftTokenRiskTarget.trim() ? { tokenRiskTarget: draftTokenRiskTarget.trim() } : {}),
+          transaction: {
+            actionType: draftActionType,
+            chainId: Number(draftChainId),
+            to: draftRecipient || undefined,
+            data: draftCalldata,
+            valueWei: draftValueWei,
+          },
+        } : {}),
+      },
+    }
+  }
+
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     try {
-      const binding = draftEvmTransaction
-        ? await createEvmActionBinding({
-          actionType: draftActionType,
-          chainId: Number(draftChainId),
-          to: draftRecipient,
-          data: draftCalldata,
-          valueWei: draftValueWei,
-          tokenRiskTarget: draftTokenRiskTarget || undefined,
-        })
-        : { actionBinding: await createActionBinding(draftActionType, draftTarget, draftParameters) }
-      const created = createDecisionPackage({
-        title: draftTitle,
-        valueAtRiskUsd: Number(draftRisk),
-        claimsText: draftClaims,
-        actionBinding: binding.actionBinding,
-        reviewEvidenceContext: binding.reviewEvidenceContext,
-        reviewProfile: draftEvmTransaction || ['TRADE', 'SPEND', 'DEPLOY'].includes(draftActionType) ? 'PRETRADE_ONCHAIN' : 'GENERAL',
-      })
-
-      if (created.ok === false) {
-        setFormErrors(created.errors)
-        return
-      }
-
-      setActiveDecision(created.value)
+      const input = simpleInput()
+      const prepared = await new ReviewJobClient().prepareCrossExamination(input)
+      setActiveDecision(prepared.decision)
+      setPreparedInput(input)
+      setPreparedReview(prepared)
       setRunState('idle')
       setReviewJob(null)
       setReviewJobResult(null)
       setReviewJobAccessToken(null)
       setReviewJobError(null)
       setFormErrors([])
+    } catch (error) {
+      setFormErrors([error instanceof Error ? error.message : 'Unable to prepare this action for Cross-Examination.'])
+    }
+  }
+
+  async function startPreparedReview() {
+    if (!preparedInput || !preparedReview?.canStart) return
+    setCreatingReviewJob(true)
+    setReviewJobError(null)
+    try {
+      const client = new ReviewJobClient()
+      const started = await client.startCrossExamination(preparedInput)
+      const job = await client.get(started.jobId, started.accessToken)
+      setActiveDecision(job.decision)
+      setReviewJob(job)
+      setReviewJobAccessToken(started.accessToken)
+      setRunState('queued')
       setComposerOpen(false)
     } catch (error) {
-      setFormErrors([error instanceof Error ? error.message : 'Unable to create an action binding.'])
+      setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not start the durable review.')
+    } finally {
+      setCreatingReviewJob(false)
     }
   }
 
@@ -235,19 +253,8 @@ function App() {
       setRunState('demo-complete')
       return
     }
-    setCreatingReviewJob(true)
-    setReviewJobError(null)
-    try {
-      const created = await new ReviewJobClient().create(activeDecision)
-      const { accessToken, ...job } = created
-      setReviewJob(job)
-      setReviewJobAccessToken(accessToken)
-      setRunState('queued')
-    } catch (error) {
-      setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not create the review job.')
-    } finally {
-      setCreatingReviewJob(false)
-    }
+    if (preparedReview?.canStart) return startPreparedReview()
+    setComposerOpen(true)
   }
 
   async function retryReview() {
@@ -303,7 +310,7 @@ function App() {
         <div className="network-status"><span className="live-dot" /> Live on X Layer</div>
         <div className="topbar-actions">
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
-          <button className="new-decision-button" onClick={() => setComposerOpen(true)}>New decision <span>+</span></button>
+          <button className="new-decision-button" onClick={() => { invalidatePreparation(); setComposerOpen(true) }}>New decision <span>+</span></button>
         </div>
       </nav>
 
@@ -312,7 +319,7 @@ function App() {
         <h1>Before an agent acts,<br /><em>make the decision survive.</em></h1>
         <p>CrossExam buys independent counter-evidence, challenges material claims, and returns a signed verdict before an agent spends, trades, deploys, publishes, or delegates.</p>
         <div className="hero-actions">
-          <button className="hero-primary" onClick={() => setComposerOpen(true)}>Cross-examine a decision <span>→</span></button>
+          <button className="hero-primary" onClick={() => { invalidatePreparation(); setComposerOpen(true) }}>Cross-examine a decision <span>→</span></button>
           <a className="hero-secondary" href="#workspace">Explore the first live network</a>
         </div>
         <div className="proof-strip" aria-label="Production capabilities">
@@ -382,7 +389,7 @@ function App() {
 
           {runState === 'idle' ? (
             <button className="run-button" onClick={() => void queueReview()} disabled={creatingReviewJob}>
-              <span className="button-cross">×</span> {creatingReviewJob ? 'Creating real review job' : isDemo ? 'Explore sample verdict' : 'Queue CrossExam'} <span className="button-arrow">→</span>
+              <span className="button-cross">×</span> {creatingReviewJob ? 'Starting durable review' : isDemo ? 'Explore sample verdict' : preparedReview?.canStart ? `Start ${preparedReview.quote.priceUsdt} USDT review` : 'Prepare a live review'} <span className="button-arrow">→</span>
             </button>
           ) : (
             <div className="completed-run">
@@ -523,29 +530,34 @@ function App() {
         <div className="detail-backdrop composer-backdrop" onClick={() => setComposerOpen(false)} role="presentation">
           <form className="composer-panel" onSubmit={submitDecision} onClick={(event) => event.stopPropagation()}>
             <button type="button" className="close-button" onClick={() => setComposerOpen(false)} aria-label="Close composer">×</button>
-            <span className="card-kicker">Decision package</span>
-            <h2>Create a reviewable action.</h2>
-            <p className="composer-intro">CrossExam only challenges claims you explicitly submit. It will never fill unknown facts with confident prose.</p>
-            <label>Proposed action<input autoFocus value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="e.g. Approve a $5,000 vendor contract" /></label>
-            <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => setDraftRisk(event.target.value)} placeholder="5000" /></label>
-            <label>Execution type<select value={draftActionType} onChange={(event) => setDraftActionType(event.target.value as ActionType)}><option value="SPEND">Spend</option><option value="TRADE">Trade</option><option value="DEPLOY">Deploy</option><option value="PUBLISH">Publish</option><option value="OTHER">Other</option></select></label>
-            <label className="transaction-format"><input type="checkbox" checked={draftEvmTransaction} onChange={(event) => setDraftEvmTransaction(event.target.checked)} /> Bind an exact EVM transaction</label>
+            <span className="card-kicker">Deep Cross-Examination</span>
+            <h2>State the action. We extract the claims.</h2>
+            <p className="composer-intro">CrossExam binds the action, generates deterministic material claims, and shows only real available sources before your wallet is asked to pay.</p>
+            <label>Proposed action<input autoFocus value={draftTitle} onChange={(event) => { setDraftTitle(event.target.value); invalidatePreparation() }} placeholder="e.g. Approve a $5,000 vendor contract" /></label>
+            <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="e.g. Buy this X Layer token only if the contract is transferable and liquidity can support this size." rows={3} /></label>
+            <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => { setDraftRisk(event.target.value); invalidatePreparation() }} placeholder="5000" /></label>
+            <label className="transaction-format"><input type="checkbox" checked={draftEvmTransaction} onChange={(event) => { setDraftEvmTransaction(event.target.checked); invalidatePreparation() }} /> This is an exact X Layer transaction</label>
             {draftEvmTransaction ? <div className="evm-transaction-fields">
-              <p>CrossExam hashes the canonical chain, recipient, calldata and native value. A token target is separately routed to contract-risk evidence.</p>
+              <p>Live launch sources cover X Layer transaction risk. CrossExam hashes the exact payload; it never guesses a token from router calldata.</p>
+              <label>Action type<select value={draftActionType} onChange={(event) => { setDraftActionType(event.target.value as ActionType); invalidatePreparation() }}><option value="TRADE">Trade</option><option value="SPEND">Spend</option><option value="DEPLOY">Deploy</option></select></label>
               <div className="composer-field-grid">
-                <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => setDraftChainId(event.target.value)} placeholder="196" /></label>
-                <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => setDraftValueWei(event.target.value)} placeholder="0" /></label>
+                <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => { setDraftChainId(event.target.value); invalidatePreparation() }} placeholder="196" /></label>
+                <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => { setDraftValueWei(event.target.value); invalidatePreparation() }} placeholder="0" /></label>
               </div>
-              <label>Transaction recipient{draftActionType === 'DEPLOY' ? ' (empty only for contract creation)' : ''}<input value={draftRecipient} onChange={(event) => setDraftRecipient(event.target.value)} placeholder="0x…" /></label>
-              <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => setDraftCalldata(event.target.value)} placeholder="0x…" rows={3} /></label>
-              <label>Token risk target (optional)<input value={draftTokenRiskTarget} onChange={(event) => setDraftTokenRiskTarget(event.target.value)} placeholder="token:xlayer:0x…" /></label>
-            </div> : <>
-              <label>Execution target<input value={draftTarget} onChange={(event) => setDraftTarget(event.target.value)} placeholder="e.g. xlayer:0x... or vendor:acme" /></label>
-              <label>Action parameters<textarea value={draftParameters} onChange={(event) => setDraftParameters(event.target.value)} placeholder="Raw transaction parameters, contract payload, or canonical action JSON" rows={3} /></label>
-            </>}
-            <label>Claims that must be true<textarea value={draftClaims} onChange={(event) => setDraftClaims(event.target.value)} placeholder={'One material claim per line\nThe vendor has a valid SOC 2 report.\nCustomer data remains in the EU.'} rows={6} /></label>
+              <label>Transaction recipient{draftActionType === 'DEPLOY' ? ' (empty only for contract creation)' : ''}<input value={draftRecipient} onChange={(event) => { setDraftRecipient(event.target.value); invalidatePreparation() }} placeholder="0x…" /></label>
+              <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => { setDraftCalldata(event.target.value); invalidatePreparation() }} placeholder="0x…" rows={3} /></label>
+              <label>Token risk target<input value={draftTokenRiskTarget} onChange={(event) => { setDraftTokenRiskTarget(event.target.value); invalidatePreparation() }} placeholder="token:xlayer:0x…" /></label>
+            </div> : <p className="composer-intro">You can preview a general action, but CrossExam will not sell it until a complete independent provider plan exists.</p>}
+            {preparedReview && <section className="prepared-review" aria-live="polite">
+              <div><span>Prepared claims</span><strong>{preparedReview.generatedClaims.length}</strong></div>
+              <div><span>Evidence sources</span><strong>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length || 'None matched'}</strong></div>
+              <div><span>Review quote</span><strong>{preparedReview.quote.priceUsdt} USDT</strong></div>
+              <ul>{preparedReview.generatedClaims.map((claim) => <li key={claim.id}><b>{claim.id}</b>{claim.statement}</li>)}</ul>
+              {preparedReview.limitations.length > 0 && <div className="prepared-limitations">{preparedReview.limitations.map((limitation) => <p key={limitation}>{limitation}</p>)}</div>}
+              {preparedReview.canStart && <button className="run-button" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}><span className="button-cross">×</span>{creatingReviewJob ? 'Starting durable review' : `Continue to ${preparedReview.quote.priceUsdt} USDT authorization`}<span className="button-arrow">→</span></button>}
+            </section>}
             {formErrors.length > 0 && <div className="form-errors">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
-            <button className="run-button" type="submit"><span className="button-cross">×</span> Structure Decision Package <span className="button-arrow">→</span></button>
+            <button className="run-button" type="submit"><span className="button-cross">×</span>{preparedReview ? 'Refresh preparation' : 'Preview claims and quote'}<span className="button-arrow">→</span></button>
           </form>
         </div>
       )}
