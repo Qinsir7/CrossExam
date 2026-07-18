@@ -529,6 +529,7 @@ function App() {
           <div className="scenario-tabs" aria-label="Action scenario">
             {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" aria-pressed={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
           </div>
+          <p className="live-scope-notice"><b>Live evidence today:</b> exact X Layer token trades. Other scenarios can be structured, but stay unpurchasable until their own independent evidence profiles are live.</p>
           <div className="candidate-prefill">
             <div><span>Canonical live candidate</span><p>WOKB · 10,000 USD exact-route review · X Layer</p></div>
             <div className="candidate-actions">

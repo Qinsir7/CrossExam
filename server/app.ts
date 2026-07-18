@@ -643,19 +643,25 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
   })
   app.post('/api/v1/preflight/transaction', async (request, response, next) => {
+    if (!request.header('idempotency-key')) {
+      response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Transaction Preflight requires an Idempotency-Key so a paid action cannot be accidentally repeated.' })
+      return
+    }
     try {
-      if (!request.header('idempotency-key')) {
-        response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Transaction Preflight requires an Idempotency-Key so a paid action cannot be accidentally repeated.' })
-        return
-      }
       // Reject unsupported work before x402. The current production sources
       // cover an exact X Layer token trade only; accepting payment for another
       // action type would turn a known product limitation into a paid failure.
       await validateTransactionPreflightInput(request.body)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Transaction Preflight input is unsupported.'
+      response.status(422).json({ error: 'TRANSACTION_PREFLIGHT_UNSUPPORTED', message })
+      return
+    }
+    try {
       if (!await serveIdempotentReplay(transactionPreflightRoute, request, response)) next()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Invalid Idempotency-Key.'
-      response.status(422).json({ error: 'TRANSACTION_PREFLIGHT_UNSUPPORTED', message })
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
     }
   })
   app.post('/api/v1/preflight/asp', async (request, response, next) => {
