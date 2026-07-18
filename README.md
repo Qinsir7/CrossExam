@@ -43,6 +43,8 @@ CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assuran
 
 The current paid transaction profile is deliberately narrow: it accepts only exact X Layer token trades with an explicit `token:xlayer:0x…` target. The public product does not advertise unsupported transaction types as purchasable; each additional action class will ship only after CrossExam has real, action-appropriate independent evidence sources for it.
 
+The live homepage is not a fixed demo trade. A user supplies the X Layer token they actually intend to buy and the USDT0 amount at risk. CrossExam uses the connected wallet address to request a real, unbroadcast OKX route, binds the returned router and calldata to that token and amount, prepares the evidence plan, and shows the review price before any payment is requested.
+
 `POST /api/v1/preflight/asp` is the paid endpoint-first Agent Trust Check. Its passive mode performs an SSRF-resistant GET probe, validates the observed unpaid X Layer payment challenge, compares explicit commercial expectations, and signs `BUY`, `CAUTION`, or `AVOID` without purchasing the target ASP.
 
 `POST /api/v1/cross-examinations/prepare` gives an agent or operator a free, deterministic deep-review preview: action binding, generated claims, active evidence sources, limitations, and a quote. `POST /api/v1/cross-examinations` turns a fulfillable preview into a durable job and returns the x402 authorization hand-off; no provider can be paid until that bounded authorization settles. Unsupported general requests remain explicitly unpurchasable rather than being dressed up as independent research.

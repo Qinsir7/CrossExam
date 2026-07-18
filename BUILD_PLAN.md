@@ -654,8 +654,9 @@ The homepage should contain, in order:
 2. Hero:
    - headline: “Before an agent acts, make the decision survive.”
    - one short supporting sentence;
-   - live action composer visible without opening a large modal;
-   - scenario tabs: `Trade`, `Pay`, `Approve`, `Hire an Agent`, `Deploy`.
+   - category positioning remains action-agnostic;
+   - the first live paid product is clearly separated from that category promise;
+   - the live composer asks for the user’s actual X Layer token and USDT0 amount, then builds an exact unbroadcast route.
 3. A compact five-step live flow visualization:
    - understand action;
    - extract claims;
@@ -670,13 +671,18 @@ Remove procurement ledger, reviewer registry internals, and long result details 
 
 ### 6.4 Action composer
 
-Default experience:
+Default experience for the first production wedge:
 
-- one large input: “What is your agent about to do?”
-- scenario selector;
-- value at risk;
-- primary CTA: `Cross-examine`;
-- advanced transaction fields collapsed.
+- token contract the user actually intends to buy;
+- USDT0 amount the user actually intends to put at risk;
+- primary CTA: `Build route and preview`;
+- wallet connection is used only to construct the exact OKX route;
+- price and evidence plan appear before payment;
+- exact transaction fields remain available for users who already have a transaction.
+
+Do not use a fixed WOKB or other canonical candidate as the public product’s
+primary entry. A stable target may still be used for a reproducible recording,
+but the real product must accept a user-owned action and purchase decision.
 
 For transaction mode, support:
 
@@ -1182,7 +1188,7 @@ Evidence (2026-07-19, supported-scope hardening): the direct paid Transaction Pr
 
 - [x] Implement simplified homepage information architecture.
 - [x] Put the action composer directly in the hero.
-- [x] Add scenario tabs and collapsed advanced fields.
+- [x] Separate the broad category promise from the first live paid wedge and collapse advanced transaction fields.
 - [x] Add prepare/quote view before payment.
 - [x] Remove architecture-heavy internals from above the fold.
 - [x] Preserve recovery access on mobile.
@@ -1244,7 +1250,7 @@ This is now the first execution priority. Complete it before any ASP service-lis
 - [x] Preserve `UNRESOLVED` and fail closed whenever provider output is missing, stale, inapplicable, ambiguous or outside the adapter's supported schema.
 - [x] Add focused regression tests for positive, contradictory, inapplicable, malformed and provider-outage evidence paths.
 - [x] Select a stable real X Layer demo target using read-only provider checks; record why its live evidence is likely to produce a meaningful `BLOCK` or `HOLD` without fabricating risk.
-- [x] Add a clearly labelled one-click transaction prefill for that real target while keeping every result, payment and progress state live.
+- [x] Add a user-owned token-and-amount route builder while keeping every result, payment and progress state live; retain any stable target only for reproducible recording.
 - [x] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
 - [x] Verify that no sample, fixture, cached verdict or precomputed provider response is presented as the live run.
 - [x] Run lint, all tests, production build, dependency audit, tracked-secret scan and `git diff --check`.

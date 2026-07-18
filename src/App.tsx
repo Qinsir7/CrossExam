@@ -4,6 +4,7 @@ import { evaluatePreAction } from './domain/preActionGate'
 import type { DecisionPackage, ExaminedClaim, ClaimVerdict } from './domain/types'
 import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, TransactionQuoteResponse, VerifyAssuranceRecordResponse } from './domain/assuranceContracts'
 import { demoDecision, demoFindings, demoReviewers } from './data/demoDecision'
+import { usdt0Atomic } from './domain/tradeAmount'
 import { ReviewJobClient, type ProcurementLedgerView, type ReviewJobResult, type ReviewJobView } from './sdk/reviewJobClient'
 import { displayUsdt0, requestXLayerAccount } from './sdk/browserX402'
 import './App.css'
@@ -15,16 +16,7 @@ const verdictLabel: Record<ClaimVerdict, string> = {
 }
 
 const reviewSessionKey = 'crossexam.review-session.v1'
-const canonicalDemoCandidate = {
-  title: 'Review a 10,000 USD WOKB acquisition',
-  intent: 'Acquire WOKB on X Layer through the exact routed swap only if the execution-liquidity and token-transfer premises survive independent review.',
-  valueAtRiskUsd: '10000',
-  tokenRiskTarget: 'token:xlayer:0xe538905cf8410324e03a5a23c1c177a474d59b2b',
-  inputTokenAddress: '0x779ded0c9e1022225f8e0630b35a9b54be713736' as const,
-  outputTokenAddress: '0xe538905cf8410324e03a5a23c1c177a474d59b2b' as const,
-  inputAmountAtomic: '10000000000',
-  slippagePercent: '0.5',
-}
+const xLayerUsdt0Address = '0x779ded0c9e1022225f8e0630b35a9b54be713736' as const
 
 function loadReviewSession(): { job: ReviewJobView; accessToken: string } | null {
   try {
@@ -55,6 +47,8 @@ function App() {
   const [draftTitle, setDraftTitle] = useState('')
   const [draftIntent, setDraftIntent] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
+  const [tradeTokenAddress, setTradeTokenAddress] = useState('')
+  const [tradeSpendUsdt0, setTradeSpendUsdt0] = useState('500')
   const [draftChainId, setDraftChainId] = useState('196')
   const [draftRecipient, setDraftRecipient] = useState('')
   const [draftCalldata, setDraftCalldata] = useState('0x')
@@ -85,48 +79,44 @@ function App() {
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
   const invalidatePreparation = () => { setPreparedReview(null); setPreparedInput(null) }
-  const loadCanonicalCandidate = () => {
-    setDraftTitle(canonicalDemoCandidate.title)
-    setDraftIntent(canonicalDemoCandidate.intent)
-    setDraftRisk(canonicalDemoCandidate.valueAtRiskUsd)
-    setDraftChainId('196')
-    setDraftTokenRiskTarget(canonicalDemoCandidate.tokenRiskTarget)
-    // The candidate provides a real asset and review size, but it deliberately
-    // never invents a router, recipient, calldata, or executable swap.
-    setDraftRecipient('')
-    setDraftCalldata('')
-    setDraftValueWei('0')
-    setCandidateRoute(null)
-    setFormErrors([])
-    invalidatePreparation()
-  }
-  const quoteCanonicalCandidate = async () => {
-    // This is the primary one-click path: build an exact route, then prepare
-    // the claims and fixed-price review. It never signs, pays, or broadcasts.
-    loadCanonicalCandidate()
+  const prepareTokenTrade = async () => {
     setQuotingCandidateRoute(true)
     setFormErrors([])
     try {
+      const target = tradeTokenAddress.trim().toLowerCase()
+      if (!/^0x[a-fA-F0-9]{40}$/.test(target)) throw new Error('Enter the X Layer token contract you actually plan to buy.')
+      if (target === xLayerUsdt0Address) throw new Error('Choose a token other than the USDT0 you are spending.')
+      const inputAmountAtomic = usdt0Atomic(tradeSpendUsdt0)
+      const normalizedSpend = tradeSpendUsdt0.trim()
+      const valueAtRiskUsd = Number(normalizedSpend)
+      if (!Number.isFinite(valueAtRiskUsd) || valueAtRiskUsd > 100_000_000) throw new Error('Enter a trade amount at or below 100,000,000 USDT0.')
+      const shortTarget = `${target.slice(0, 8)}…${target.slice(-6)}`
+      const title = `Review a ${normalizedSpend} USDT0 purchase of ${shortTarget}`
+      const intent = `Acquire token ${target} on X Layer through the exact OKX-routed transaction only if executable liquidity and token-transfer safety survive independent review.`
       const userWalletAddress = await requestXLayerAccount()
       const client = new ReviewJobClient()
       const quote = await client.quoteTransaction({
-        fromTokenAddress: canonicalDemoCandidate.inputTokenAddress,
-        toTokenAddress: canonicalDemoCandidate.outputTokenAddress,
-        amount: canonicalDemoCandidate.inputAmountAtomic,
-        slippagePercent: canonicalDemoCandidate.slippagePercent,
+        fromTokenAddress: xLayerUsdt0Address,
+        toTokenAddress: target as `0x${string}`,
+        amount: inputAmountAtomic,
+        slippagePercent: '0.5',
         userWalletAddress,
       })
+      setDraftTitle(title)
+      setDraftIntent(intent)
+      setDraftRisk(normalizedSpend)
       setDraftChainId(String(quote.transaction.chainId))
       setDraftRecipient(quote.transaction.to)
       setDraftCalldata(quote.transaction.data)
       setDraftValueWei(quote.transaction.valueWei)
+      setDraftTokenRiskTarget(`token:xlayer:${target}`)
       setCandidateRoute(quote)
       const input: CrossExaminationPreparationRequest = {
         simple: {
-          title: canonicalDemoCandidate.title,
-          intent: canonicalDemoCandidate.intent,
-          valueAtRiskUsd: Number(canonicalDemoCandidate.valueAtRiskUsd),
-          tokenRiskTarget: canonicalDemoCandidate.tokenRiskTarget,
+          title,
+          intent,
+          valueAtRiskUsd,
+          tokenRiskTarget: `token:xlayer:${target}`,
           transaction: {
             actionType: 'TRADE',
             chainId: quote.transaction.chainId,
@@ -139,7 +129,10 @@ function App() {
       const prepared = await client.prepareCrossExamination(input)
       applyPreparedReview(input, prepared)
     } catch (error) {
-      setFormErrors([error instanceof Error ? error.message : 'CrossExam could not obtain an exact X Layer route.'])
+      setCandidateRoute(null)
+      setPreparedReview(null)
+      setPreparedInput(null)
+      setFormErrors([error instanceof Error ? error.message : 'CrossExam could not build and prepare this X Layer trade.'])
     } finally {
       setQuotingCandidateRoute(false)
     }
@@ -515,31 +508,38 @@ function App() {
         <div className="topbar-actions">
           <a className="developer-link" href="#developers">API</a>
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
-          <a className="new-decision-button" href="#check-action">Review a trade <span>→</span></a>
+          <a className="new-decision-button" href="#check-action">Start a review <span>→</span></a>
         </div>
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span /> Pre-execution assurance</div>
-        <h1>Stop a bad trade<br /><em>before it reaches the wallet.</em></h1>
-        <p className="hero-copy">CrossExam checks the exact X Layer route against live liquidity and token-risk evidence, then returns a signed gate your agent can enforce.</p>
-        <div className="live-scope"><span className="live-dot" /> Live now · X Layer token trades</div>
+        <div className="eyebrow">The adversarial decision layer for autonomous agents</div>
+        <h1>Before an agent acts,<span>make the decision survive.</span></h1>
+        <p className="hero-copy">CrossExam buys independent counter-evidence, challenges the assumptions behind a high-stakes action, and returns a signed verdict before execution.</p>
         <form className="hero-composer" id="check-action" onSubmit={submitDecision}>
           <div className="candidate-prefill">
-            <div className="candidate-copy"><span>Try the live product</span><h2>Review a $10,000 WOKB trade</h2><p>Build an exact OKX route, extract its material claims, and see the fixed review price.</p></div>
-            <button className="hero-primary candidate-primary" type="button" onClick={() => void quoteCanonicalCandidate()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Building exact route…' : 'Prepare live review'} <span>→</span></button>
-            <small>Connects your wallet for the route address only. No payment, approval, signature, or trade is sent.</small>
-            {candidateRoute && <p className="candidate-route" aria-live="polite">Route ready · {candidateRoute.route.protocols.join(' + ')} · {candidateRoute.route.priceImpactPercent ?? 'unknown'}% quoted price impact.</p>}
+            <div className="candidate-copy">
+              <div className="live-product-label"><span className="live-dot" /> Live product · X Layer</div>
+              <h2>Cross-examine a token trade</h2>
+              <p>Check the exact OKX route for executable liquidity and token-transfer risk before your agent signs.</p>
+            </div>
+            <div className="trade-entry-grid">
+              <label>Token you plan to buy<input value={tradeTokenAddress} onChange={(event) => { setTradeTokenAddress(event.target.value); setCandidateRoute(null); invalidatePreparation() }} placeholder="0x… token contract" autoComplete="off" spellCheck="false" /></label>
+              <label>Amount to spend<div className="amount-input"><input inputMode="decimal" value={tradeSpendUsdt0} onChange={(event) => { setTradeSpendUsdt0(event.target.value); setCandidateRoute(null); invalidatePreparation() }} aria-label="Amount to spend in USDT0" /><span>USDT0</span></div></label>
+              <button className="hero-primary candidate-primary" type="button" onClick={() => void prepareTokenTrade()} disabled={quotingCandidateRoute}>{quotingCandidateRoute ? 'Building your exact route…' : 'Build route and preview'} <span>→</span></button>
+            </div>
+            <small>Connects your wallet only to build the route. Nothing is approved, signed, paid, or broadcast until you explicitly continue.</small>
+            {candidateRoute && <p className="candidate-route" aria-live="polite"><b>Exact route ready.</b> {candidateRoute.route.protocols.join(' + ')} · {candidateRoute.route.priceImpactPercent ?? 'unknown'}% quoted price impact.</p>}
           </div>
           {formErrors.length > 0 && <div className="hero-form-errors" role="alert">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
           {preparedReview && <div className={`hero-prepared ${preparedReview.canStart ? 'ready' : 'limited'}`} aria-live="polite">
-            <div className="prepared-heading"><span>Ready for review</span><strong>{preparedReview.quote.priceUsdt} USDT</strong></div>
-            <div className="prepared-facts"><span><b>{preparedReview.generatedClaims.length}</b> material claims</span><span><b>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length}</b> live sources</span><span><b>0</b> transactions sent</span></div>
+            <div className="prepared-heading"><span>Your review is ready</span><strong>{preparedReview.quote.priceUsdt} USDT</strong></div>
+            <div className="prepared-facts"><span><b>{preparedReview.generatedClaims.length}</b> assumptions challenged</span><span><b>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length}</b> independent sources</span><span><b>Signed</b> execution gate</span></div>
             {preparedReview.limitations.map((limitation) => <p key={limitation}>{limitation}</p>)}
             {preparedReview.canStart && <button className="hero-primary" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}>{creatingReviewJob ? 'Starting review…' : `Continue · ${preparedReview.quote.priceUsdt} USDT`} <span>→</span></button>}
           </div>}
           <details className="custom-review">
-            <summary>Review your own X Layer trade</summary>
+            <summary>Already have an exact transaction?</summary>
             <div className="custom-review-body">
               <label>What should this trade accomplish?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this token only if liquidity and transfer safety survive review." rows={2} /></label>
               <div className="hero-composer-grid">
@@ -567,9 +567,9 @@ function App() {
           <button className="mobile-recovery" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery…' : 'Recover a paid review'}</button>
         </div>
         <div className="proof-strip" aria-label="How CrossExam works">
-          <span><b>1 · Bind</b> the exact transaction</span>
-          <span><b>2 · Challenge</b> with live evidence</span>
-          <span><b>3 · Enforce</b> the signed gate</span>
+          <span><b>Challenge the assumptions</b>Turn intent into claims that must be true.</span>
+          <span><b>Buy real evidence</b>Check independent sources instead of another opinion.</span>
+          <span><b>Enforce the verdict</b>Bind a signed gate to the exact action.</span>
         </div>
       </section>
 
