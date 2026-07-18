@@ -162,4 +162,42 @@ describe('X402ReviewProvider', () => {
     expect(result.evidence?.provenance.kind).toBe('PUBLIC_API_EVIDENCE_V1')
     expect(result.evidence?.delivery.findings[0].verdict).toBe('INSUFFICIENT_EVIDENCE')
   })
+
+  it('normalizes complete clean GoPlus facts as scoped support without calling them a comprehensive audit', async () => {
+    const securityRegistry: ReviewerRegistry = {
+      goplus: {
+        id: 'goplus', displayName: 'GoPlus', ownerId: 'goplus', modelFamily: 'security', evidenceRoutes: ['token-security'], capabilities: ['contract token risk'],
+        status: 'ACTIVE', procurementEndpoint: 'https://api.gopluslabs.io/api/v1/token_security/196', procurementProtocol: 'PUBLIC_API_EVIDENCE_V1', responseAdapter: 'GOPLUS_TOKEN_SECURITY_V1', estimatedUnitCostUsdt: 0,
+      },
+    }
+    const provider = new X402ReviewProvider({
+      registry: securityRegistry, signingKey, maxPerScopeAtomic: 250000n, allowedAssets: [asset], callbackBaseUrl: 'https://crossexam.example',
+      fetchImpl: async () => new Response(JSON.stringify({ code: 1, result: { '0x1111111111111111111111111111111111111111': {
+        is_open_source: '1', is_proxy: '0', is_honeypot: '0', cannot_buy: '0', cannot_sell_all: '0', is_blacklisted: '0', honeypot_with_same_creator: '0', buy_tax: '0', sell_tax: '0.01', transfer_tax: '0',
+      } } }), { status: 200 }),
+    })
+    const result = await provider.requestReview({
+      ...input, reviewerId: 'goplus', scopeId: 'contract-token-risk',
+      task: { ...input.task, claims: [{ id: 'C-TOKEN-TRANSFER-SAFETY', statement: 'Token safety', materiality: 1 }], scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x1111111111111111111111111111111111111111' } },
+    })
+    expect(result.evidence?.delivery.findings).toEqual([expect.objectContaining({ claimId: 'C-TOKEN-TRANSFER-SAFETY', verdict: 'SUPPORTS' })])
+    expect(result.evidence?.delivery.findings[0].evidence).toContain('not a comprehensive contract audit')
+  })
+
+  it('rejects a malformed GoPlus payload instead of converting it into a safe evidence result', async () => {
+    const securityRegistry: ReviewerRegistry = {
+      goplus: {
+        id: 'goplus', displayName: 'GoPlus', ownerId: 'goplus', modelFamily: 'security', evidenceRoutes: ['token-security'], capabilities: ['contract token risk'],
+        status: 'ACTIVE', procurementEndpoint: 'https://api.gopluslabs.io/api/v1/token_security/196', procurementProtocol: 'PUBLIC_API_EVIDENCE_V1', responseAdapter: 'GOPLUS_TOKEN_SECURITY_V1', estimatedUnitCostUsdt: 0,
+      },
+    }
+    const provider = new X402ReviewProvider({
+      registry: securityRegistry, signingKey, maxPerScopeAtomic: 250000n, allowedAssets: [asset], callbackBaseUrl: 'https://crossexam.example',
+      fetchImpl: async () => new Response(JSON.stringify({ code: 1, result: {} }), { status: 200 }),
+    })
+    await expect(provider.requestReview({
+      ...input, reviewerId: 'goplus', scopeId: 'contract-token-risk',
+      task: { ...input.task, scope: { ...input.task.scope, id: 'contract-token-risk', requiredCapability: 'contract token risk' }, reviewEvidenceContext: { tokenRiskTarget: 'token:xlayer:0x1111111111111111111111111111111111111111' } },
+    })).rejects.toThrow('no record')
+  })
 })

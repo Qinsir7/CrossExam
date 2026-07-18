@@ -1,6 +1,30 @@
-import { runCrossExam } from './crossExam'
-import type { CrossExamResult, DecisionPackage, Reviewer } from './types'
+import { runCrossExam, type DeterministicFinding } from './crossExam'
+import type { CrossExamResult, DecisionPackage, Finding, Reviewer } from './types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
+
+const ACTION_BINDING_CLAIM_ID = 'C-ACTION-BINDING'
+const ACTION_BINDING_REVIEWER_ID = 'crossexam-canonical-action-binding'
+
+/**
+ * The reviewed binding is created and later re-derived by CrossExam itself;
+ * it is neither an external-provider observation nor an independent reviewer
+ * opinion. Keeping it separate prevents a liquidity/security source from
+ * incorrectly making the binding claim unresolved.
+ */
+function deterministicActionBindingFindings(decision: DecisionPackage): DeterministicFinding[] {
+  if (decision.reviewProfile !== 'PRETRADE_ONCHAIN' || !decision.actionBinding) return []
+  const bindingClaim = decision.claims.find((claim) => claim.id === ACTION_BINDING_CLAIM_ID)
+  if (!bindingClaim) return []
+  const finding: Finding = {
+    claimId: bindingClaim.id,
+    reviewerId: ACTION_BINDING_REVIEWER_ID,
+    verdict: 'SUPPORTS',
+    confidence: 1,
+    materiality: bindingClaim.materiality,
+    evidence: 'CrossExam canonically bound the reviewed action parameters. The execution gate will re-derive this binding before any transaction is released.',
+  }
+  return [{ finding, sourceLabel: 'CrossExam canonical action binding' }]
+}
 
 /**
  * The single gateway from procured evidence into a decision recommendation.
@@ -25,5 +49,5 @@ export function completeCrossExam(decision: DecisionPackage, dispatch: ReviewDis
   }))
   const findings = dispatch.assignments.flatMap((assignment) => assignment.delivery!.findings)
 
-  return runCrossExam(decision, reviewers, findings)
+  return runCrossExam(decision, reviewers, findings, deterministicActionBindingFindings(decision))
 }

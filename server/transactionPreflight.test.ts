@@ -109,4 +109,26 @@ describe('prepareTransactionPreflight', () => {
     expect(prepared.record.attributionStatus).toBe('DECLARED_BY_CALLER')
     expect(prepared.procurementFailures).toMatchObject([{ sourceId: 'okx-onchainos-liquidity' }])
   })
+
+  it('carries complete source-specific facts through normalization without letting procurement verification bypass the high-value gate', async () => {
+    const prepared = await prepareTransactionPreflight(request, {
+      registry,
+      provider: provider((reviewerId) => reviewerId === 'okx-onchainos-liquidity'
+        ? { code: '0', data: [{ liquidityUsd: '600000' }] }
+        : { code: 1, result: { [token]: {
+          is_open_source: '1', is_proxy: '0', is_honeypot: '0', cannot_buy: '0', cannot_sell_all: '0', is_blacklisted: '0', honeypot_with_same_creator: '0', buy_tax: '0', sell_tax: '0.01', transfer_tax: '0',
+        } } }),
+      now: () => new Date('2026-07-18T10:00:00.000Z'),
+    })
+
+    expect(prepared.evidence.flatMap((observation) => observation.facts)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'liquidity.totalUsd', value: 600_000 }),
+      expect.objectContaining({ key: 'tokenRisk.sourceOpen', value: true }),
+      expect.objectContaining({ key: 'tokenRisk.proxy', value: false }),
+      expect.objectContaining({ key: 'tokenRisk.sellTax', value: 0.01 }),
+    ]))
+    expect(prepared.verdict).toMatchObject({ verdict: 'HOLD', canExecute: false })
+    expect(prepared.verdict.reasons.join(' ')).toContain('network-verified evidence')
+    expect(prepared.procurementFailures).toEqual([])
+  })
 })

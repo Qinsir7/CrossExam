@@ -114,13 +114,13 @@ export function compileTransactionClaims(action: AssuranceAction): CompiledTrans
       claims.push(
         claim(
           'C-EXECUTION-LIQUIDITY',
-          'Available X Layer liquidity is sufficient for the reviewed trade size without violating CrossExam execution policy.',
+          'Observed X Layer liquidity clears CrossExam\'s conservative evidence-screening floor for the reviewed trade size.',
           'EXECUTION_LIQUIDITY',
           ['okx-onchainos-liquidity'],
         ),
         claim(
           'C-TOKEN-TRANSFER-SAFETY',
-          'The reviewed token has no deterministic transfer, sell, blacklist, honeypot, or critical-tax control that would invalidate the intended trade.',
+          'The reviewed token has no deterministic transfer, sell, blacklist, honeypot, source-availability, or critical-tax control that violates CrossExam\'s supported GoPlus policy.',
           'TOKEN_TRANSFER_SAFETY',
           ['goplus-xlayer-token-risk'],
         ),

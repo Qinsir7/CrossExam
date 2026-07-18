@@ -8,6 +8,11 @@ import type {
   Reviewer,
 } from './types'
 
+export type DeterministicFinding = {
+  finding: Finding
+  sourceLabel: string
+}
+
 const VERIFIED_CONTRADICTION_THRESHOLD = 0.7
 const MATERIAL_THRESHOLD = 0.7
 
@@ -82,9 +87,12 @@ export function runCrossExam(
   decision: DecisionPackage,
   reviewers: Reviewer[],
   findings: Finding[],
+  deterministicFindings: DeterministicFinding[] = [],
 ): CrossExamResult {
+  const firstPartyLabels = new Map(deterministicFindings.map((item) => [item.finding.reviewerId, item.sourceLabel]))
+  const allFindings = [...findings, ...deterministicFindings.map((item) => item.finding)]
   const examinedClaims = decision.claims.map((claim) => {
-    const claimFindings = findings.filter((finding) => finding.claimId === claim.id)
+    const claimFindings = allFindings.filter((finding) => finding.claimId === claim.id)
     const verdict = verdictFor(claimFindings)
     const leadFinding = [...claimFindings].sort(
       (left, right) => right.confidence * right.materiality - left.confidence * left.materiality,
@@ -96,7 +104,7 @@ export function runCrossExam(
       text: claim.statement,
       verdict,
       evidence: leadFinding?.evidence ?? 'No independent evidence was delivered for this claim.',
-      challenger: reviewer?.name ?? 'No reviewer assigned',
+      challenger: reviewer?.name ?? (leadFinding ? firstPartyLabels.get(leadFinding.reviewerId) ?? 'No reviewer assigned' : 'No reviewer assigned'),
     }
   })
 
@@ -104,7 +112,7 @@ export function runCrossExam(
   const materialUnresolved = examinedClaims.filter((claim) => claim.verdict === 'UNRESOLVED').length
   const reversalConditions = decision.claims.flatMap((claim) => {
     const examined = examinedClaims.find((candidate) => candidate.id === claim.id)!
-    const condition = reversalCondition(claim.statement, claim.id, examined.verdict, findings.filter((finding) => finding.claimId === claim.id))
+    const condition = reversalCondition(claim.statement, claim.id, examined.verdict, allFindings.filter((finding) => finding.claimId === claim.id))
     return condition ? [condition] : []
   })
 

@@ -47,4 +47,45 @@ describe('completeCrossExam', () => {
     expect(result.claims[0].verdict).toBe('REFUTED')
     expect(result.action).toBe('HOLD')
   })
+
+  it('keeps a canonical pre-trade action binding as a first-party deterministic fact and scopes each external source to its own claim', () => {
+    const pretrade: DecisionPackage = {
+      id: 'DP-PRETRADE',
+      title: 'Review an X Layer trade',
+      valueAtRiskUsd: 5_000,
+      reviewProfile: 'PRETRADE_ONCHAIN',
+      actionBinding: { actionType: 'TRADE', target: 'evm:196:0x1111111111111111111111111111111111111111', parametersHash: `0x${'1'.repeat(64)}` },
+      claims: [
+        { id: 'C-ACTION-BINDING', statement: 'The reviewed action is unchanged.', materiality: 1 },
+        { id: 'C-EXECUTION-LIQUIDITY', statement: 'Liquidity is sufficient.', materiality: 1 },
+        { id: 'C-TOKEN-TRANSFER-SAFETY', statement: 'The token is transferable.', materiality: 1 },
+      ],
+    }
+    const pretradeReviewers: ReviewerProfile[] = [
+      { id: 'liquidity', displayName: 'Liquidity source', ownerId: 'liquidity-owner', modelFamily: 'market-data', evidenceRoutes: ['liquidity'], capabilities: ['execution liquidity'] },
+      { id: 'risk', displayName: 'Token-risk source', ownerId: 'risk-owner', modelFamily: 'security', evidenceRoutes: ['token-risk'], capabilities: ['contract token risk'] },
+    ]
+    const plan = createReviewPlan(pretrade)
+    let dispatch = stageReviewPlan(plan, pretradeReviewers)
+    const liquidityArtifact = { id: 'E-liquidity', kind: 'TOOL_OUTPUT' as const, locator: 'https://example.com/liquidity', observedAt: '2026-07-18T00:00:00.000Z', excerpt: 'Pool evidence.', contentHash: '0x01' as const }
+    const riskArtifact = { id: 'E-risk', kind: 'TOOL_OUTPUT' as const, locator: 'https://example.com/risk', observedAt: '2026-07-18T00:00:00.000Z', excerpt: 'Risk evidence.', contentHash: '0x02' as const }
+    dispatch = acceptReviewDelivery(plan, dispatch, 'execution-liquidity', {
+      reviewerId: 'liquidity', deliveredAt: '2026-07-18T00:00:00.000Z', artifacts: [liquidityArtifact],
+      findings: [{ claimId: 'C-EXECUTION-LIQUIDITY', reviewerId: 'liquidity', verdict: 'INSUFFICIENT_EVIDENCE', confidence: 1, materiality: 1, evidence: 'Pool depth is incomplete.', evidenceArtifactIds: [liquidityArtifact.id] }],
+    })
+    dispatch = acceptReviewDelivery(plan, dispatch, 'contract-token-risk', {
+      reviewerId: 'risk', deliveredAt: '2026-07-18T00:00:00.000Z', artifacts: [riskArtifact],
+      findings: [{ claimId: 'C-TOKEN-TRANSFER-SAFETY', reviewerId: 'risk', verdict: 'CONTRADICTS', confidence: 0.95, materiality: 1, evidence: 'The token cannot be sold.', evidenceArtifactIds: [riskArtifact.id] }],
+    })
+
+    const result = completeCrossExam(pretrade, dispatch)
+
+    expect(result.claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'C-ACTION-BINDING', verdict: 'SURVIVED', challenger: 'CrossExam canonical action binding' }),
+      expect.objectContaining({ id: 'C-EXECUTION-LIQUIDITY', verdict: 'UNRESOLVED', challenger: 'Liquidity source' }),
+      expect.objectContaining({ id: 'C-TOKEN-TRANSFER-SAFETY', verdict: 'REFUTED', challenger: 'Token-risk source' }),
+    ]))
+    expect(result.action).toBe('HOLD')
+    expect(result.effectiveIndependence).toBe(1.8)
+  })
 })

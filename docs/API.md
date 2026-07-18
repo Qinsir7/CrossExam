@@ -22,6 +22,31 @@ Required JSON fields are `title`, `actionType`, `chainId`, `data`, and `valueAtR
 
 An unavailable, malformed, unmatched, or unnormalized external source is returned only as an honest procurement failure and forces `HOLD`; it is never represented as a reviewer signature, support, or a safe result. A fully delivered built-in source set yields `PROCUREMENT_VERIFIED`, not `NETWORK_VERIFIED`. The `economics.externalEvidenceCostUsdt` field reports actual settled downstream x402 spend only; included API quota/public source evidence has zero reported marginal x402 spend and is labeled by `costBasis`.
 
+### Current deterministic X Layer evidence policy
+
+The built-in sources are each routed only to the claim they can actually
+address. CrossExam itself supports the exact action-binding claim from the
+canonical transaction it created; this is a first-party deterministic fact,
+not an external reviewer opinion.
+
+- OKX Onchain OS liquidity evidence contradicts the liquidity-screening claim
+  below **10×** reviewed value at risk, supports it at or above **100×**, and
+  remains unresolved in between. A supported result only clears this explicit
+  evidence-screening floor; it is not a promise of route-specific slippage or
+  execution quality.
+- GoPlus X Layer token evidence contradicts the transfer-safety claim on a
+  reported honeypot, disabled buy/sell, blacklist control, closed source,
+  creator-linked honeypot, or tax at or above **50%**. It supports the claim
+  only if every required deterministic field is present, source is open, the
+  token is not a proxy, all relevant flags are false, and buy/sell/transfer
+  taxes are present and below that threshold. Missing, malformed, proxy, or
+  otherwise unsupported response shapes remain unresolved.
+
+These policies are intentionally narrow and conservative. A `SUPPORTS` result
+does not represent a comprehensive smart-contract audit; any contradiction,
+unresolved material premise, stale record, substituted binding, or unmet
+verification threshold continues to fail closed in the execution gate.
+
 ## Agent Trust Check
 
 `POST /api/v1/preflight/asp` is a paid, endpoint-first ASP purchase check. It requires `endpoint`, `valueAtRiskUsd`, and an `Idempotency-Key`. The current passive profile permits **only GET** against a credential-free HTTPS URL on port 443. It resolves the host before probing, rejects private/link-local/loopback/multicast destinations, pins the validated public IP for TLS, rejects redirects, applies an 8-second timeout and a 64 KiB response limit.

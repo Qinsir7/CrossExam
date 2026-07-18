@@ -1229,14 +1229,14 @@ Audit correction (2026-07-18): this run proves the production payment, procureme
 
 This is now the first execution priority. Complete it before any ASP service-list mutation, final recording, X post, or competition submission.
 
-- [ ] Diagnose why the first paid deep review left all three generated claims unresolved.
-- [ ] Trace each real provider fact from adapter output through stored delivery, aggregation, record result, UI and execution gate.
-- [ ] Fix only demonstrated evidence-to-claim or deterministic-policy gaps; never hardcode a target, provider response, contradiction or verdict.
-- [ ] Make exact action-binding verification a deterministic first-party fact when the server-created canonical action and reviewed action match; do not pretend this fact came from an external reviewer.
-- [ ] Ensure liquidity facts can resolve or contradict the execution-liquidity claim under explicit documented thresholds.
-- [ ] Ensure token-security facts can resolve or contradict the transfer-safety claim under explicit documented risk rules.
-- [ ] Preserve `UNRESOLVED` and fail closed whenever provider output is missing, stale, inapplicable, ambiguous or outside the adapter's supported schema.
-- [ ] Add focused regression tests for positive, contradictory, inapplicable, malformed and provider-outage evidence paths.
+- [x] Diagnose why the first paid deep review left all three generated claims unresolved.
+- [x] Trace each real provider fact from adapter output through stored delivery, aggregation, record result, UI and execution gate.
+- [x] Fix only demonstrated evidence-to-claim or deterministic-policy gaps; never hardcode a target, provider response, contradiction or verdict.
+- [x] Make exact action-binding verification a deterministic first-party fact when the server-created canonical action and reviewed action match; do not pretend this fact came from an external reviewer.
+- [x] Ensure liquidity facts can resolve or contradict the execution-liquidity claim under explicit documented thresholds.
+- [x] Ensure token-security facts can resolve or contradict the transfer-safety claim under explicit documented risk rules.
+- [x] Preserve `UNRESOLVED` and fail closed whenever provider output is missing, stale, inapplicable, ambiguous or outside the adapter's supported schema.
+- [x] Add focused regression tests for positive, contradictory, inapplicable, malformed and provider-outage evidence paths.
 - [ ] Select a stable real X Layer demo target using read-only provider checks; record why its live evidence is likely to produce a meaningful `BLOCK` or `HOLD` without fabricating risk.
 - [ ] Add a clearly labelled one-click transaction prefill for that real target while keeping every result, payment and progress state live.
 - [ ] Tighten the result page so the verdict, strongest contradiction, protected value and blocked execution outcome are visible in one viewport before audit details.
@@ -1251,6 +1251,8 @@ This is now the first execution priority. Complete it before any ASP service-lis
 - [ ] Save a sanitized demo evidence note containing timestamps, statuses, source names, verdict, gate result, revenue, cost basis and margin; never commit access tokens, authorization headers, private record links, payer addresses or raw settlement credentials.
 
 Acceptance: a first-time visitor can start the canonical scenario without internal schema knowledge; one fresh browser run produces a real paid, multi-source, signed and action-bound `BLOCK` or `HOLD`; the exact transaction remains unbroadcast and the execution gate visibly refuses it for a reason derived from the live record. The run must require no terminal, database edit, worker command, manual callback or fabricated progress/result.
+
+Evidence (2026-07-18, local): the first paid result had all three claims unresolved because the generic PRETRADE plan supplied every claim to both external adapters and those adapters correctly refused to upgrade non-applicable or incomplete facts. Canonical scopes now send only liquidity to OKX Market and only transfer safety to GoPlus; `C-ACTION-BINDING` is a labeled first-party deterministic finding, never an external opinion. The source adapters and direct preflight normalizer share explicit policy: liquidity contradicts below 10× reviewed value and supports at/above 100×; GoPlus contradicts documented critical flags or ≥50% tax and supports only complete, clean, non-proxy field coverage. Missing, malformed, ambiguous, proxy, stale/unavailable, or unsupported data remains unresolved/fail-closed. Tests cover support, contradiction, missing/inapplicable, malformed response, provider outage, storage normalization, aggregation and gate behavior. `docs/API.md` documents the exact boundary; no target, provider answer, verdict, payment, or production configuration was fabricated or changed.
 
 Execution order inside Day 9.5:
 

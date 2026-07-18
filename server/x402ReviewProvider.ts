@@ -9,6 +9,7 @@ import type { ExternalReviewProvider } from './reviewJobWorker'
 import type { ReviewerRegistry } from './reviewerRegistry'
 import { evidenceArtifactHash } from './evidenceIntegrity'
 import type { RegisteredReviewer } from './reviewerRegistry'
+import { assessLiquidityEvidence, assessTokenRiskEvidence } from '../src/domain/transactionEvidence'
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
@@ -120,15 +121,13 @@ function okxLiquidityFindings(input: Parameters<ExternalReviewProvider['requestR
   const liquidities = pools.map((pool) => Number(pool.liquidityUsd)).filter((value) => Number.isFinite(value) && value >= 0)
   if (!liquidities.length) throw new Error('OKX Market liquidity response contains no usable pool liquidity values.')
   const totalLiquidityUsd = liquidities.reduce((sum, value) => sum + value, 0)
-  const ratio = totalLiquidityUsd / input.task.valueAtRiskUsd
-  const contradiction = pools.length === 0 || ratio < 10
-  const verdict = contradiction ? 'CONTRADICTS' as const : 'INSUFFICIENT_EVIDENCE' as const
-  const explanation = `OKX Onchain OS Market observed ${pools.length} top pool(s) with ${totalLiquidityUsd.toFixed(2)} USD aggregate liquidity (${ratio.toFixed(2)}× the reviewed value at risk). ${contradiction ? 'This is below the 10× hard liquidity floor and materially contradicts safe execution.' : 'Pool TVL alone does not prove route-specific executable depth or slippage, so CrossExam does not upgrade it to support.'}`
+  const assessment = assessLiquidityEvidence(totalLiquidityUsd, input.task.valueAtRiskUsd)
+  const explanation = `OKX Onchain OS Market observed ${pools.length} top pool(s). ${assessment.explanation}`
   return input.task.claims.map((claim) => ({
     claimId: claim.id,
     reviewerId: reviewer.id,
-    verdict,
-    confidence: contradiction ? 0.9 : 1,
+    verdict: assessment.verdict,
+    confidence: assessment.confidence,
     materiality: claim.materiality,
     evidence: explanation,
     evidenceArtifactIds: [artifactId],
@@ -142,29 +141,31 @@ function goPlusFindings(input: Parameters<ExternalReviewProvider['requestReview'
   const result = address ? (response.result as Record<string, unknown>)[address] : undefined
   if (!result || typeof result !== 'object') throw new Error('GoPlus token security returned no record for the bound X Layer contract.')
   const risk = result as Record<string, unknown>
-  const tax = Math.max(Number(risk.buy_tax || 0), Number(risk.sell_tax || 0), Number(risk.transfer_tax || 0))
-  const criticalFlags = [
-    ['is_honeypot', 'honeypot behavior'],
-    ['cannot_buy', 'buying disabled'],
-    ['cannot_sell_all', 'full selling disabled'],
-    ['is_blacklisted', 'blacklist controls'],
-  ] as const
-  const triggered: string[] = criticalFlags.filter(([field]) => risk[field] === '1').map(([, label]) => label)
-  if (risk.is_open_source === '0') triggered.push('contract source is not open')
-  if (Number.isFinite(tax) && tax >= 0.5) triggered.push(`tax at ${(tax * 100).toFixed(2)}%`)
-  const contradiction = triggered.length > 0
-  const warnings = [risk.is_proxy === '1' ? 'proxy contract' : '', risk.honeypot_with_same_creator === '1' ? 'creator linked to another honeypot' : ''].filter(Boolean)
-  const verdict = contradiction ? 'CONTRADICTS' as const : 'INSUFFICIENT_EVIDENCE' as const
-  const explanation = contradiction
-    ? `GoPlus X Layer token security detected material execution risk: ${triggered.join(', ')}.`
-    : `GoPlus found no deterministic critical token-control flag in this response${warnings.length ? `; non-blocking warnings: ${warnings.join(', ')}` : ''}. Absence of a flag is not proof of safety, so CrossExam does not upgrade it to support.`
+  const boolean = (value: unknown) => value === true || value === '1' || value === 'true'
+    ? true : value === false || value === '0' || value === 'false' ? false : undefined
+  const numeric = (value: unknown) => {
+    const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const assessment = assessTokenRiskEvidence({
+    honeypot: boolean(risk.is_honeypot),
+    cannotBuy: boolean(risk.cannot_buy),
+    cannotSellAll: boolean(risk.cannot_sell_all),
+    blacklist: boolean(risk.is_blacklisted),
+    sourceOpen: boolean(risk.is_open_source),
+    proxy: boolean(risk.is_proxy),
+    creatorHoneypot: boolean(risk.honeypot_with_same_creator),
+    buyTax: numeric(risk.buy_tax),
+    sellTax: numeric(risk.sell_tax),
+    transferTax: numeric(risk.transfer_tax),
+  })
   return input.task.claims.map((claim) => ({
     claimId: claim.id,
     reviewerId: reviewer.id,
-    verdict,
-    confidence: contradiction ? 0.95 : 1,
+    verdict: assessment.verdict,
+    confidence: assessment.confidence,
     materiality: claim.materiality,
-    evidence: explanation,
+    evidence: assessment.explanation,
     evidenceArtifactIds: [artifactId],
   }))
 }

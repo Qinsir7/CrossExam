@@ -16,6 +16,9 @@ export type ReviewPlan = {
   estimatedTotalUsdt: number
 }
 
+const EXECUTION_LIQUIDITY_CLAIM_ID = 'C-EXECUTION-LIQUIDITY'
+const TOKEN_TRANSFER_SAFETY_CLAIM_ID = 'C-TOKEN-TRANSFER-SAFETY'
+
 function fee(valueAtRiskUsd: number, share: number) {
   const proposed = valueAtRiskUsd * 0.00012 * share
   return Number(Math.max(0.05, Math.min(4, proposed)).toFixed(2))
@@ -29,12 +32,22 @@ function fee(valueAtRiskUsd: number, share: number) {
 export function createReviewPlan(decision: DecisionPackage): ReviewPlan {
   const claimIds = decision.claims.map((claim) => claim.id)
   if (decision.reviewProfile === 'PRETRADE_ONCHAIN') {
+    const canonicalLiquidityClaims = claimIds.filter((id) => id === EXECUTION_LIQUIDITY_CLAIM_ID)
+    const canonicalTokenRiskClaims = claimIds.filter((id) => id === TOKEN_TRANSFER_SAFETY_CLAIM_ID)
+    const hasCanonicalPretradeClaims = canonicalLiquidityClaims.length > 0 || canonicalTokenRiskClaims.length > 0
+    // Canonical transaction claims have distinct evidence owners. Do not ask a
+    // liquidity endpoint to opine on token controls (or vice versa), and do
+    // not send the first-party action-binding claim to either external source.
+    // Older advanced PRETRADE packages without the canonical IDs retain the
+    // historical all-claims scope so they remain reviewable.
+    const liquidityClaimIds = hasCanonicalPretradeClaims ? canonicalLiquidityClaims : claimIds
+    const tokenRiskClaimIds = hasCanonicalPretradeClaims ? canonicalTokenRiskClaims : claimIds
     const scopes: ReviewScope[] = [
       {
         id: 'execution-liquidity',
         title: 'Execution liquidity',
         objective: 'Measure executable liquidity, expected slippage, depth imbalance, and market conditions that could invalidate this exact onchain action.',
-        claimIds,
+        claimIds: liquidityClaimIds,
         requiredCapability: 'execution liquidity',
         estimatedFeeUsdt: fee(decision.valueAtRiskUsd, 0.5),
       },
@@ -42,11 +55,11 @@ export function createReviewPlan(decision: DecisionPackage): ReviewPlan {
         id: 'contract-token-risk',
         title: 'Contract and token risk',
         objective: 'Check contract controls, transfer restrictions, concentration, approval risk, and exploit signals relevant to this exact onchain action.',
-        claimIds,
+        claimIds: tokenRiskClaimIds,
         requiredCapability: 'contract token risk',
         estimatedFeeUsdt: fee(decision.valueAtRiskUsd, 0.5),
       },
-    ]
+    ].filter((scope) => scope.claimIds.length > 0)
     return {
       id: `RP-${decision.id.replace('DP-', '')}`,
       decisionId: decision.id,

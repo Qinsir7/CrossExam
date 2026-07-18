@@ -37,8 +37,10 @@ function numeric(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function boolean(value: unknown) {
-  return value === true || value === '1' || value === 'true'
+function optionalBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === '1' || value === 'true') return true
+  if (value === false || value === '0' || value === 'false') return false
+  return undefined
 }
 
 function observationKind(kind: string): EvidenceObservation['kind'] {
@@ -73,14 +75,28 @@ function responseObservation(action: AssuranceAction, job: ReviewJob, scopeId: s
     const result = object(body.result, 'GoPlus result')
     const risk = address ? object(result[address], 'GoPlus token record') : undefined
     if (!risk) throw new Error('GoPlus evidence has no record for the action-bound token.')
-    facts.push(
-      { key: 'tokenRisk.honeypot', value: boolean(risk.is_honeypot) },
-      { key: 'tokenRisk.cannotBuy', value: boolean(risk.cannot_buy) },
-      { key: 'tokenRisk.cannotSellAll', value: boolean(risk.cannot_sell_all) },
-      { key: 'tokenRisk.blacklist', value: boolean(risk.is_blacklisted) },
-    )
-    const taxes = [risk.buy_tax, risk.sell_tax, risk.transfer_tax].map(numeric).filter((value): value is number => value !== undefined)
-    if (taxes.length) facts.push({ key: 'tokenRisk.maxTax', value: Math.max(...taxes), unit: 'fraction' })
+    const flags: Array<[string, unknown]> = [
+      ['tokenRisk.honeypot', risk.is_honeypot],
+      ['tokenRisk.cannotBuy', risk.cannot_buy],
+      ['tokenRisk.cannotSellAll', risk.cannot_sell_all],
+      ['tokenRisk.blacklist', risk.is_blacklisted],
+      ['tokenRisk.sourceOpen', risk.is_open_source],
+      ['tokenRisk.proxy', risk.is_proxy],
+      ['tokenRisk.creatorHoneypot', risk.honeypot_with_same_creator],
+    ]
+    flags.forEach(([key, value]) => {
+      const normalized = optionalBoolean(value)
+      if (normalized !== undefined) facts.push({ key, value: normalized })
+    })
+    const taxes: Array<[string, unknown]> = [
+      ['tokenRisk.buyTax', risk.buy_tax],
+      ['tokenRisk.sellTax', risk.sell_tax],
+      ['tokenRisk.transferTax', risk.transfer_tax],
+    ]
+    taxes.forEach(([key, value]) => {
+      const normalized = numeric(value)
+      if (normalized !== undefined) facts.push({ key, value: normalized, unit: 'fraction' })
+    })
   } else {
     // A generic opaque source may be retained in the signed record, but it is
     // not silently converted into a policy fact. That keeps unknown schemas

@@ -30,9 +30,21 @@ describe('createReviewPlan', () => {
     expect(plan.estimatedTotalUsdt).toBeLessThan(decision.valueAtRiskUsd * 0.01)
   })
 
-  it('uses the two independent evidence routes required for a pre-trade onchain review', () => {
-    const plan = createReviewPlan({ ...decision, reviewProfile: 'PRETRADE_ONCHAIN' })
+  it('routes canonical pre-trade claims only to the provider that can address them', () => {
+    const plan = createReviewPlan({
+      ...decision,
+      reviewProfile: 'PRETRADE_ONCHAIN',
+      claims: [
+        { id: 'C-ACTION-BINDING', statement: 'The bound action is unchanged.', materiality: 1 },
+        { id: 'C-EXECUTION-LIQUIDITY', statement: 'Liquidity is sufficient.', materiality: 1 },
+        { id: 'C-TOKEN-TRANSFER-SAFETY', statement: 'The token is transferable.', materiality: 1 },
+      ],
+    })
     expect(plan.scopes.map((scope) => scope.requiredCapability)).toEqual(['execution liquidity', 'contract token risk'])
+    expect(plan.scopes.map((scope) => scope.claimIds)).toEqual([
+      ['C-EXECUTION-LIQUIDITY'],
+      ['C-TOKEN-TRANSFER-SAFETY'],
+    ])
     expect(plan.scopes).toHaveLength(2)
   })
 })
