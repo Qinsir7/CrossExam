@@ -1172,14 +1172,16 @@ Evidence (2026-07-18): `server/crossExamination.ts` accepts either simple intent
 
 ### Day 6 — new homepage and composer
 
-- [ ] Implement simplified homepage information architecture.
-- [ ] Put the action composer directly in the hero.
-- [ ] Add scenario tabs and collapsed advanced fields.
-- [ ] Add prepare/quote view before payment.
-- [ ] Remove architecture-heavy internals from above the fold.
-- [ ] Preserve recovery access on mobile.
+- [x] Implement simplified homepage information architecture.
+- [x] Put the action composer directly in the hero.
+- [x] Add scenario tabs and collapsed advanced fields.
+- [x] Add prepare/quote view before payment.
+- [x] Remove architecture-heavy internals from above the fold.
+- [x] Preserve recovery access on mobile.
 
 Acceptance: a new user can state what CrossExam does and start the correct scenario within ten seconds.
+
+Evidence (2026-07-18): The direct first-screen composer in `src/App.tsx` presents Trade, Pay, Approve, Hire agent and Deploy scenarios, a natural-language intent field, value-at-risk, and an expandable exact X Layer transaction section. It delegates all claim/source/quote generation to the free server façade before it renders a payment continuation; opaque dispatch schema, reviewer registry detail and economics remain below the primary action. Input changes invalidate the prior preparation. The desktop and 375px viewport were inspected locally; the mobile path has no horizontal page overflow and exposes `Recover paid review` below the composer. Lint, all 150 focused tests, and production build passed.
 
 ### Day 7 — live progress and verdict experience
 

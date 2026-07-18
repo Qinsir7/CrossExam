@@ -41,13 +41,13 @@ function App() {
   const [runState, setRunState] = useState<'idle' | 'demo-complete' | 'queued'>(restoredReviewSession ? 'queued' : 'idle')
   const [selectedClaim, setSelectedClaim] = useState<ExaminedClaim | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
-  const [composerOpen, setComposerOpen] = useState(false)
   const [activeDecision, setActiveDecision] = useState<DecisionPackage>(restoredReviewSession?.job.decision ?? demoDecision)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftIntent, setDraftIntent] = useState('')
   const [draftRisk, setDraftRisk] = useState('')
   const [draftActionType, setDraftActionType] = useState<ActionType>('TRADE')
   const [draftEvmTransaction, setDraftEvmTransaction] = useState(true)
+  const [draftScenario, setDraftScenario] = useState<'Trade' | 'Pay' | 'Approve' | 'Hire agent' | 'Deploy'>('Trade')
   const [draftChainId, setDraftChainId] = useState('196')
   const [draftRecipient, setDraftRecipient] = useState('')
   const [draftCalldata, setDraftCalldata] = useState('0x')
@@ -70,6 +70,14 @@ function App() {
   const isDemo = activeDecision.id === demoDecision.id
   const ran = runState === 'demo-complete'
   const invalidatePreparation = () => { setPreparedReview(null); setPreparedInput(null) }
+  const chooseScenario = (scenario: typeof draftScenario) => {
+    setDraftScenario(scenario)
+    if (scenario === 'Trade') { setDraftEvmTransaction(true); setDraftActionType('TRADE') }
+    if (scenario === 'Pay' || scenario === 'Approve') { setDraftEvmTransaction(true); setDraftActionType('SPEND') }
+    if (scenario === 'Deploy') { setDraftEvmTransaction(true); setDraftActionType('DEPLOY') }
+    if (scenario === 'Hire agent') { setDraftEvmTransaction(false); setDraftActionType('OTHER') }
+    invalidatePreparation()
+  }
   useEffect(() => {
     if (reviewJob && reviewJobAccessToken) {
       window.sessionStorage.setItem(reviewSessionKey, JSON.stringify({ job: reviewJob, accessToken: reviewJobAccessToken }))
@@ -219,7 +227,6 @@ function App() {
       setReviewJob(job)
       setReviewJobAccessToken(started.accessToken)
       setRunState('queued')
-      setComposerOpen(false)
     } catch (error) {
       setReviewJobError(error instanceof Error ? error.message : 'CrossExam could not start the durable review.')
     } finally {
@@ -254,7 +261,7 @@ function App() {
       return
     }
     if (preparedReview?.canStart) return startPreparedReview()
-    setComposerOpen(true)
+    document.getElementById('check-action')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   async function retryReview() {
@@ -310,7 +317,7 @@ function App() {
         <div className="network-status"><span className="live-dot" /> Live on X Layer</div>
         <div className="topbar-actions">
           <button className="recover-button" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery' : 'Recover paid review'}</button>
-          <button className="new-decision-button" onClick={() => { invalidatePreparation(); setComposerOpen(true) }}>New decision <span>+</span></button>
+          <a className="new-decision-button" href="#check-action" onClick={invalidatePreparation}>Check an action <span>+</span></a>
         </div>
       </nav>
 
@@ -318,9 +325,39 @@ function App() {
         <div className="eyebrow"><span /> Adversarial decision assurance</div>
         <h1>Before an agent acts,<br /><em>make the decision survive.</em></h1>
         <p>CrossExam buys independent counter-evidence, challenges material claims, and returns a signed verdict before an agent spends, trades, deploys, publishes, or delegates.</p>
+        <form className="hero-composer" id="check-action" onSubmit={submitDecision}>
+          <div className="scenario-tabs" role="tablist" aria-label="Action scenario">
+            {(['Trade', 'Pay', 'Approve', 'Hire agent', 'Deploy'] as const).map((scenario) => <button key={scenario} type="button" role="tab" aria-selected={draftScenario === scenario} className={draftScenario === scenario ? 'selected' : ''} onClick={() => chooseScenario(scenario)}>{scenario}</button>)}
+          </div>
+          <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="Buy this X Layer token only if liquidity and contract risk survive review." rows={2} /></label>
+          <div className="hero-composer-grid">
+            <label>Action title<input value={draftTitle} onChange={(event) => { setDraftTitle(event.target.value); invalidatePreparation() }} placeholder="Buy a reviewed X Layer token" /></label>
+            <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => { setDraftRisk(event.target.value); invalidatePreparation() }} placeholder="5000" /></label>
+          </div>
+          {draftEvmTransaction && <details className="hero-advanced">
+            <summary>Exact X Layer transaction details</summary>
+            <p>Required for the live pretrade evidence profile. CrossExam binds these fields before payment.</p>
+            <div className="hero-composer-grid">
+              <label>Recipient<input value={draftRecipient} onChange={(event) => { setDraftRecipient(event.target.value); invalidatePreparation() }} placeholder="0x…" /></label>
+              <label>Token target<input value={draftTokenRiskTarget} onChange={(event) => { setDraftTokenRiskTarget(event.target.value); invalidatePreparation() }} placeholder="token:xlayer:0x…" /></label>
+            </div>
+            <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => { setDraftCalldata(event.target.value); invalidatePreparation() }} placeholder="0x…" rows={2} /></label>
+            <div className="hero-composer-grid compact">
+              <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => { setDraftChainId(event.target.value); invalidatePreparation() }} /></label>
+              <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => { setDraftValueWei(event.target.value); invalidatePreparation() }} /></label>
+            </div>
+          </details>}
+          {formErrors.length > 0 && <div className="hero-form-errors" role="alert">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
+          {preparedReview && <div className={`hero-prepared ${preparedReview.canStart ? 'ready' : 'limited'}`} aria-live="polite">
+            <span><b>{preparedReview.generatedClaims.length}</b> claims prepared</span><span><b>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length}</b> real sources matched</span><span><b>{preparedReview.quote.priceUsdt} USDT</b> review quote</span>
+            {preparedReview.limitations.map((limitation) => <p key={limitation}>{limitation}</p>)}
+            {preparedReview.canStart && <button className="hero-primary" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}>{creatingReviewJob ? 'Starting durable review' : `Continue to ${preparedReview.quote.priceUsdt} USDT authorization`} <span>→</span></button>}
+          </div>}
+          <button className="hero-primary" type="submit">{preparedReview ? 'Refresh claims and quote' : 'Cross-examine'} <span>→</span></button>
+        </form>
         <div className="hero-actions">
-          <button className="hero-primary" onClick={() => { invalidatePreparation(); setComposerOpen(true) }}>Cross-examine a decision <span>→</span></button>
-          <a className="hero-secondary" href="#workspace">Explore the first live network</a>
+          <a className="hero-secondary" href="#workspace">See the live evidence path</a>
+          <button className="mobile-recovery" onClick={() => void recoverPaidReview()} disabled={recoveringReviewJob}>{recoveringReviewJob ? 'Signing recovery…' : 'Recover paid review'}</button>
         </div>
         <div className="proof-strip" aria-label="Production capabilities">
           <span><b>Action-agnostic</b> spend · trade · deploy</span>
@@ -523,42 +560,6 @@ function App() {
             <div className="evidence-block"><span>Evidence finding</span><p>{selectedClaim.evidence}</p></div>
             <div className="reversal-block"><span>Reversal condition</span><p>Provide a current, independently verifiable data point that addresses this contradiction.</p></div>
           </aside>
-        </div>
-      )}
-
-      {composerOpen && (
-        <div className="detail-backdrop composer-backdrop" onClick={() => setComposerOpen(false)} role="presentation">
-          <form className="composer-panel" onSubmit={submitDecision} onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="close-button" onClick={() => setComposerOpen(false)} aria-label="Close composer">×</button>
-            <span className="card-kicker">Deep Cross-Examination</span>
-            <h2>State the action. We extract the claims.</h2>
-            <p className="composer-intro">CrossExam binds the action, generates deterministic material claims, and shows only real available sources before your wallet is asked to pay.</p>
-            <label>Proposed action<input autoFocus value={draftTitle} onChange={(event) => { setDraftTitle(event.target.value); invalidatePreparation() }} placeholder="e.g. Approve a $5,000 vendor contract" /></label>
-            <label>What is your agent about to do?<textarea value={draftIntent} onChange={(event) => { setDraftIntent(event.target.value); invalidatePreparation() }} placeholder="e.g. Buy this X Layer token only if the contract is transferable and liquidity can support this size." rows={3} /></label>
-            <label>Value at risk (USD)<input inputMode="decimal" value={draftRisk} onChange={(event) => { setDraftRisk(event.target.value); invalidatePreparation() }} placeholder="5000" /></label>
-            <label className="transaction-format"><input type="checkbox" checked={draftEvmTransaction} onChange={(event) => { setDraftEvmTransaction(event.target.checked); invalidatePreparation() }} /> This is an exact X Layer transaction</label>
-            {draftEvmTransaction ? <div className="evm-transaction-fields">
-              <p>Live launch sources cover X Layer transaction risk. CrossExam hashes the exact payload; it never guesses a token from router calldata.</p>
-              <label>Action type<select value={draftActionType} onChange={(event) => { setDraftActionType(event.target.value as ActionType); invalidatePreparation() }}><option value="TRADE">Trade</option><option value="SPEND">Spend</option><option value="DEPLOY">Deploy</option></select></label>
-              <div className="composer-field-grid">
-                <label>Chain ID<input inputMode="numeric" value={draftChainId} onChange={(event) => { setDraftChainId(event.target.value); invalidatePreparation() }} placeholder="196" /></label>
-                <label>Native value (wei)<input inputMode="numeric" value={draftValueWei} onChange={(event) => { setDraftValueWei(event.target.value); invalidatePreparation() }} placeholder="0" /></label>
-              </div>
-              <label>Transaction recipient{draftActionType === 'DEPLOY' ? ' (empty only for contract creation)' : ''}<input value={draftRecipient} onChange={(event) => { setDraftRecipient(event.target.value); invalidatePreparation() }} placeholder="0x…" /></label>
-              <label>Calldata / init code<textarea value={draftCalldata} onChange={(event) => { setDraftCalldata(event.target.value); invalidatePreparation() }} placeholder="0x…" rows={3} /></label>
-              <label>Token risk target<input value={draftTokenRiskTarget} onChange={(event) => { setDraftTokenRiskTarget(event.target.value); invalidatePreparation() }} placeholder="token:xlayer:0x…" /></label>
-            </div> : <p className="composer-intro">You can preview a general action, but CrossExam will not sell it until a complete independent provider plan exists.</p>}
-            {preparedReview && <section className="prepared-review" aria-live="polite">
-              <div><span>Prepared claims</span><strong>{preparedReview.generatedClaims.length}</strong></div>
-              <div><span>Evidence sources</span><strong>{preparedReview.evidencePlan.flatMap((scope) => scope.sourceIds).length || 'None matched'}</strong></div>
-              <div><span>Review quote</span><strong>{preparedReview.quote.priceUsdt} USDT</strong></div>
-              <ul>{preparedReview.generatedClaims.map((claim) => <li key={claim.id}><b>{claim.id}</b>{claim.statement}</li>)}</ul>
-              {preparedReview.limitations.length > 0 && <div className="prepared-limitations">{preparedReview.limitations.map((limitation) => <p key={limitation}>{limitation}</p>)}</div>}
-              {preparedReview.canStart && <button className="run-button" type="button" onClick={() => void startPreparedReview()} disabled={creatingReviewJob}><span className="button-cross">×</span>{creatingReviewJob ? 'Starting durable review' : `Continue to ${preparedReview.quote.priceUsdt} USDT authorization`}<span className="button-arrow">→</span></button>}
-            </section>}
-            {formErrors.length > 0 && <div className="form-errors">{formErrors.map((error) => <p key={error}>{error}</p>)}</div>}
-            <button className="run-button" type="submit"><span className="button-cross">×</span>{preparedReview ? 'Refresh preparation' : 'Preview claims and quote'}<span className="button-arrow">→</span></button>
-          </form>
         </div>
       )}
 
