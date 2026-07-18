@@ -25,6 +25,10 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
     payment: { protocol: 'x402', network: 'eip155:196', scheme: 'exact' },
     capabilities: [
       {
+        id: 'decision-assurance.verify-record', endpoint: endpoint('/api/v1/assurance/verify'), paid: false,
+        description: 'Verify an assurance record signature against a caller-pinned issuer, exact action binding, freshness policy, and machine execution gate.',
+      },
+      {
         id: 'decision-assurance.aggregate', endpoint: endpoint('/api/v1/assurance/aggregate'), paid: true,
         description: 'Fail closed on generic GET or POST decision inputs, or aggregate a fully delivered independent review into a signed Decision Assurance Record.',
       },

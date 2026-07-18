@@ -31,6 +31,7 @@ import { prepareAspTrustCheck } from './aspEndpointProbe'
 import { prepareCrossExamination, startCrossExamination } from './crossExamination'
 import type { CrossExaminationPreparationRequest } from '../src/domain/assuranceContracts'
 import { publicRecordProjection } from './publicRecord'
+import { verifyAssuranceRecord } from './assuranceVerification'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -192,6 +193,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.get('/.well-known/crossexam.json', (_request, response) => {
     response.json(createServiceManifest(config.publicUrl, config.serviceSignerAddress))
+  })
+  app.post('/api/v1/assurance/verify', async (request, response) => {
+    try {
+      response.json(await verifyAssuranceRecord(request.body))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Assurance record verification input is invalid.'
+      response.status(422).json({ error: 'ASSURANCE_VERIFICATION_REJECTED', message })
+    }
   })
   app.get('/api/v1/assurance/records/:recordId', async (request, response) => {
     const authorization = request.header('authorization')
