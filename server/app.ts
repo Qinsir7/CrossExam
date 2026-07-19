@@ -46,6 +46,22 @@ const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
 const aspTrustRoute = 'POST /api/v1/preflight/asp'
 const paidReviewRoute = 'POST /api/v1/reviews'
 
+function paidReviewInput(request: express.Request): ReviewPreflightInput & { idempotencyKey?: string } {
+  const rawBody = request.body && !Array.isArray(request.body) && typeof request.body === 'object' ? request.body as Record<string, unknown> : {}
+  const nested = rawBody.params && !Array.isArray(rawBody.params) && typeof rawBody.params === 'object' ? rawBody.params as Record<string, unknown> : {}
+  const value = (key: string) => rawBody[key] ?? nested[key] ?? request.query[key]
+  const text = value('text')
+  const profile = value('profile')
+  const filename = value('filename')
+  const idempotencyKey = request.header('idempotency-key') ?? value('idempotencyKey')
+  return {
+    text: typeof text === 'string' ? text : '',
+    ...(typeof profile === 'string' ? { profile: profile as ReviewPreflightInput['profile'] } : {}),
+    ...(typeof filename === 'string' ? { filename } : {}),
+    ...(typeof idempotencyKey === 'string' ? { idempotencyKey } : {}),
+  }
+}
+
 export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; adversarialProvider?: AdversarialReviewProvider; dexQuoteFetcher?: typeof fetch } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
   // uses the official SDK's asynchronous settlement default.
@@ -670,8 +686,8 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   }
 
   async function servePaidReviewReplay(request: express.Request, response: express.Response) {
-    const input = request.body as ReviewPreflightInput & { idempotencyKey?: unknown }
-    const key = request.header('idempotency-key') ?? (typeof input.idempotencyKey === 'string' ? input.idempotencyKey : undefined)
+    const input = paidReviewInput(request)
+    const key = input.idempotencyKey
     if (!key) return false
     const fingerprint = requestFingerprint(paidReviewRoute, { text: input.text, profile: input.profile, filename: input.filename })
     const lookup = await idempotencyStore.lookup(paidReviewRoute, key, fingerprint)
@@ -759,13 +775,12 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'ADVERSARIAL_REVIEW_UNAVAILABLE', message: 'The paid adversarial-review provider is not configured.' })
       return
     }
-    const bodyIdempotencyKey = (request.body as { idempotencyKey?: unknown })?.idempotencyKey
-    if (!request.header('idempotency-key') && typeof bodyIdempotencyKey !== 'string') {
+    const input = paidReviewInput(request)
+    if (!input.idempotencyKey) {
       response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Paid review requires an Idempotency-Key header or idempotencyKey JSON field so payment and analysis cannot be accidentally repeated.' })
       return
     }
     try {
-      const input = request.body as ReviewPreflightInput
       const preflight = prepareReviewPreflight(input)
       if (preflight.characterCount > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
       if (!await servePaidReviewReplay(request, response)) next()
@@ -918,7 +933,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     try {
       if (!adversarialProvider) throw new Error('The paid adversarial-review provider is not configured.')
       if (!config.serviceSigningKey) throw new Error('Paid adversarial review requires a configured service signing key.')
-      const prepared = await preparePaidAdversarialReview(request.body as ReviewPreflightInput, adversarialProvider)
+      const prepared = await preparePaidAdversarialReview(paidReviewInput(request), adversarialProvider)
       const record = await attestDecisionAssuranceRecord(prepared.record, config.serviceSigningKey)
       const persistence = await recordStore.save(record)
       await persistIdempotency(response, record.recordId)
