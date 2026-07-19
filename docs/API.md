@@ -32,8 +32,9 @@ verdict: it never calls a candidate claim verified and never creates a record.
 
 ## Paid universal adversarial review
 
-`POST /api/v1/reviews` accepts the same `{ text, profile?, filename? }` body and
-requires an `Idempotency-Key`. Without a payment signature it returns the
+`POST /api/v1/reviews` accepts `{ text, profile?, filename?, idempotencyKey? }`
+and requires a stable key either in the `Idempotency-Key` header or the JSON
+`idempotencyKey` field used by A2MCP parameter-only clients. Without a payment signature it returns the
 standard X Layer exact x402 challenge at the server-owned deep-review price.
 After settlement, the server calls its configured DeepSeek model, validates a
 bounded JSON result that addresses every extracted claim exactly once, and

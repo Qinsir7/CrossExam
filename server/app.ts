@@ -670,9 +670,10 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   }
 
   async function servePaidReviewReplay(request: express.Request, response: express.Response) {
-    const key = request.header('idempotency-key')
+    const input = request.body as ReviewPreflightInput & { idempotencyKey?: unknown }
+    const key = request.header('idempotency-key') ?? (typeof input.idempotencyKey === 'string' ? input.idempotencyKey : undefined)
     if (!key) return false
-    const fingerprint = requestFingerprint(paidReviewRoute, request.body)
+    const fingerprint = requestFingerprint(paidReviewRoute, { text: input.text, profile: input.profile, filename: input.filename })
     const lookup = await idempotencyStore.lookup(paidReviewRoute, key, fingerprint)
     if (lookup.status === 'MISSING') {
       response.locals.idempotency = { route: paidReviewRoute, key, fingerprint }
@@ -758,8 +759,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'ADVERSARIAL_REVIEW_UNAVAILABLE', message: 'The paid adversarial-review provider is not configured.' })
       return
     }
-    if (!request.header('idempotency-key')) {
-      response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Paid review requires an Idempotency-Key so payment and analysis cannot be accidentally repeated.' })
+    const bodyIdempotencyKey = (request.body as { idempotencyKey?: unknown })?.idempotencyKey
+    if (!request.header('idempotency-key') && typeof bodyIdempotencyKey !== 'string') {
+      response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Paid review requires an Idempotency-Key header or idempotencyKey JSON field so payment and analysis cannot be accidentally repeated.' })
       return
     }
     try {

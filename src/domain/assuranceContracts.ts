@@ -27,7 +27,10 @@ export type DocumentExtractionResponse = {
 export type GenericReviewPreflightRequest = ReviewPreflightInput
 export type GenericReviewPreflightResponse = ReviewPreflight
 
-export type PaidAdversarialReviewRequest = ReviewPreflightInput
+export type PaidAdversarialReviewRequest = ReviewPreflightInput & {
+  /** A2MCP clients may carry this in JSON; browser clients use Idempotency-Key. */
+  idempotencyKey?: string
+}
 export type PaidAdversarialReviewResponse = {
   preflight: ReviewPreflight
   analysis: AdversarialReviewResult
