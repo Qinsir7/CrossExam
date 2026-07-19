@@ -27,6 +27,8 @@
     "@okxweb3/x402-evm": "^0.2.1",
     "@okxweb3/x402-express": "^0.1.1",
     "express": "^5.2.1",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^5.0.375",
     "pg": "^8.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

@@ -67,6 +67,19 @@ describe('ReviewJobClient', () => {
     expect(fetchImpl).toHaveBeenCalledWith('https://api.cross.exam/api/v1/transactions/quote', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }))
   })
 
+  it('extracts an uploaded file and preflights its claims through the additive generic routes', async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ filename: 'plan.txt', mediaType: 'text/plain', text: 'A sufficiently detailed plan.', warnings: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ profile: 'PLAN', claimCount: 1, claims: [] }), { status: 200 }))
+    const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })
+    const file = new File(['A sufficiently detailed plan.'], 'plan.txt', { type: 'text/plain' })
+
+    await expect(client.extractFile(file)).resolves.toMatchObject({ filename: 'plan.txt', mediaType: 'text/plain' })
+    await expect(client.preflightReview({ text: 'A sufficiently detailed plan.', profile: 'PLAN' })).resolves.toMatchObject({ profile: 'PLAN' })
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, 'https://api.cross.exam/api/v1/intake/files?name=plan.txt', expect.objectContaining({ method: 'POST', body: file }))
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://api.cross.exam/api/v1/reviews/preflight', expect.objectContaining({ method: 'POST' }))
+  })
+
   it('submits record verification with an explicitly pinned issuer', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ signatureValid: true, actionBindingValid: true, gate: { status: 'PERMIT', executable: true, reasons: [], requiredClaimIds: [] } }), { status: 200 }))
     const client = new ReviewJobClient({ baseUrl: 'https://api.cross.exam', fetchImpl })

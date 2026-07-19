@@ -14,6 +14,22 @@ Produces a Decision Assurance Record from a Decision Package and a fully deliver
 
 `POST /api/v1/assurance/network-aggregate` accepts the same payload, but requires every delivered review to include an EIP-191 wallet attestation. Each reviewer ID must be bound to a different signing wallet in CrossExam's server-side registry. This endpoint returns `attributionStatus: "NETWORK_VERIFIED"` only after those signatures verify.
 
+## Free document intake and review preflight
+
+`POST /api/v1/intake/files?name={filename}` accepts a raw TXT, Markdown, DOCX,
+or text-based PDF body. The original upload is extracted in memory and is not
+persisted. The route rejects files over 8 MB, PDFs over 250 pages, extracted
+text over 200,000 characters, unsupported or mismatched media types, empty
+documents, and scanned/image-only PDFs without readable text.
+
+`POST /api/v1/reviews/preflight` accepts `{ text, profile?, filename? }`, where
+`profile` is `LEGAL`, `MONEY`, `PLAN`, or `GENERAL`. When omitted, the server
+infers the closest deep profile. It returns the detected document type,
+candidate material claims, verification routes (`TOOL_READY`,
+`SOURCE_REQUIRED`, or `ARGUMENT_ONLY`), attack tasks, exact missing evidence,
+and bounded limitations. This endpoint is free claim preparation, not a paid
+verdict: it never calls a candidate claim verified and never creates a record.
+
 ## Transaction Preflight
 
 `POST /api/v1/preflight/transaction` is the product-facing x402 service for an exact EVM action. It requires a 32–200 character `Idempotency-Key` before issuing a payment challenge. The current X Layer trade profile derives deterministic binding, approval, native-value, liquidity, and token-transfer claims; it obtains only configured OKX Onchain OS and GoPlus source output, preserves each source request/response hash, and returns a signed `PERMIT`, `HOLD`, or `BLOCK` record.

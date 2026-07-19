@@ -1,7 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, TransactionQuoteRequest, TransactionQuoteResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, DocumentExtractionResponse, GenericReviewPreflightRequest, GenericReviewPreflightResponse, TransactionQuoteRequest, TransactionQuoteResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
@@ -152,6 +152,21 @@ export class ReviewJobClient {
     return this.request('/api/v1/transactions/quote', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
     }) as Promise<TransactionQuoteResponse>
+  }
+
+  /** Read a bounded local document on the server without storing the original upload. */
+  async extractFile(file: File): Promise<DocumentExtractionResponse> {
+    const contentType = file.type || (file.name.toLowerCase().endsWith('.md') ? 'text/markdown' : 'application/octet-stream')
+    return this.request(`/api/v1/intake/files?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers: { 'content-type': contentType }, body: file,
+    }) as Promise<DocumentExtractionResponse>
+  }
+
+  /** Decompose material into candidate claims without charging or issuing a verdict. */
+  async preflightReview(input: GenericReviewPreflightRequest): Promise<GenericReviewPreflightResponse> {
+    return this.request('/api/v1/reviews/preflight', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+    }) as Promise<GenericReviewPreflightResponse>
   }
 
   /** Start a fulfillable durable review; authorization remains an explicit x402 step. */

@@ -33,6 +33,8 @@ import type { CrossExaminationPreparationRequest } from '../src/domain/assurance
 import { publicRecordProjection } from './publicRecord'
 import { verifyAssuranceRecord } from './assuranceVerification'
 import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
+import { extractDocument } from './documentIntake'
+import { prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -159,7 +161,23 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
     next()
   })
-  app.use(express.json({ limit: '128kb' }))
+  // File intake is mounted before the JSON parser. The body exists only in
+  // memory for extraction and is never written to the record/job stores.
+  app.post('/api/v1/intake/files', fixedWindowRateLimit({ limit: 12, windowMs: 60_000 }), express.raw({ type: () => true, limit: '8mb' }), async (request, response) => {
+    try {
+      const filename = typeof request.query.name === 'string' ? request.query.name : ''
+      const extracted = await extractDocument({
+        filename,
+        contentType: request.header('content-type') ?? '',
+        body: request.body as Buffer,
+      })
+      response.status(200).json(extracted)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The document could not be read.'
+      response.status(422).json({ error: 'DOCUMENT_EXTRACTION_REJECTED', message })
+    }
+  })
+  app.use(express.json({ limit: '512kb' }))
   app.get('/health', async (_request, response) => {
     try {
       const heartbeat = await jobStore.getProcurementWorkerHeartbeat()
@@ -216,6 +234,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'An exact X Layer swap route could not be prepared.'
       response.status(422).json({ error: 'DEX_QUOTE_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/reviews/preflight', fixedWindowRateLimit({ limit: 30, windowMs: 60_000 }), (request, response) => {
+    try {
+      response.status(200).json(prepareReviewPreflight(request.body as ReviewPreflightInput))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The material could not be preflighted.'
+      response.status(422).json({ error: 'REVIEW_PREFLIGHT_REJECTED', message })
     }
   })
   app.get('/api/v1/assurance/records/:recordId', async (request, response) => {

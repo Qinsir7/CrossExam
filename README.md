@@ -1,10 +1,12 @@
 # CrossExam
 
-> The adversarial decision layer for autonomous agents.
+> Before you act, make it survive.
 
 [Live product](https://www.cross-exam.xyz/) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md) · [Build plan](BUILD_PLAN.md)
 
-CrossExam buys independent counter-evidence before a consequential agent action, then returns an evidence-backed verdict, explicit reversal conditions, and a signed guardrail that software can enforce.
+Paste a decision, document, trade thesis, or plan. CrossExam decomposes its material claims, attacks the logic, verifies what real sources can verify, and makes unresolved evidence visible before the user acts. Agents receive the same capability through API/A2MCP: **Before your agent acts, make it survive.**
+
+The human product is one three-stage flow: input text or a TXT/Markdown/DOCX/PDF file; watch the claim-by-claim cross-examination map; receive a concise verdict card with attacks, missing evidence, blind spots, and export/share actions. File preflight is free and ephemeral. It never calls unverified model memory “evidence” or turns missing material into support.
 
 ## Why
 
@@ -43,7 +45,7 @@ CrossExam ships a paid, standardized A2MCP endpoint at `GET|POST /api/v1/assuran
 
 The current paid transaction profile is deliberately narrow: it accepts only exact X Layer token trades with an explicit `token:xlayer:0x…` target. The public product does not advertise unsupported transaction types as purchasable; each additional action class will ship only after CrossExam has real, action-appropriate independent evidence sources for it.
 
-The live homepage is not a fixed demo trade. A user supplies the X Layer token they actually intend to buy and the USDT0 amount at risk. CrossExam uses the connected wallet address to request a real, unbroadcast OKX route, binds the returned router and calldata to that token and amount, prepares the evidence plan, and shows the review price before any payment is requested.
+The live homepage is not a fixed demo trade. Its general input supports Legal, Money, Plan, and unrestricted decisions. When a Money review contains an X Layer contract, the deeper onchain path remains available: a user supplies the token and USDT0 amount they actually intend to trade, CrossExam builds a real unbroadcast route, and the existing paid evidence chain binds the result to that action.
 
 `POST /api/v1/preflight/asp` is the paid endpoint-first Agent Trust Check. Its passive mode performs an SSRF-resistant GET probe, validates the observed unpaid X Layer payment challenge, compares explicit commercial expectations, and signs `BUY`, `CAUTION`, or `AVOID` without purchasing the target ASP.
 

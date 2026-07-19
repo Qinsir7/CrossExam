@@ -40,6 +40,95 @@ When a task is complete, change only its checkbox from `[ ]` to `[x]`, add a con
 
 The current priority is the real product: supported-scope truthfulness, economic and security boundaries, compatibility, reliability, and production behavior. Day 10 listing operations and Section 12 recording/submission work are intentionally deferred; they are not product-build blockers. Do not chase a cosmetically stronger `HOLD`/`BLOCK` result. A truthful non-executable result is preferable to a fabricated contradiction.
 
+### Product V2 contract — supersedes the old website/composer scope (2026-07-19)
+
+The hardened transaction, x402, procurement, record, recovery, and gate code remains
+production infrastructure. The public product is no longer a fixed token-trade demo.
+CrossExam is a general adversarial decision review with three deliberately deep
+profiles: `LEGAL`, `MONEY`, and `PLAN`, plus an honest `GENERAL` fallback.
+
+The product promise is:
+
+> Before you act, make it survive.
+
+The agent/API variant is:
+
+> Before your agent acts, make it survive.
+
+The primary human call to action is exactly `Make it survive`.
+
+The website is one focused three-stage experience:
+
+1. **Input** — one large text/file surface. The user pastes a decision, plan,
+   document, or trade thesis. CrossExam, not the user, extracts claims and
+   assumptions. Legal accepts PDF/DOCX; Plan also accepts Markdown; all profiles
+   accept plain text. Optional context may improve the review but never blocks it.
+2. **Cross-examination** — real persisted work is visible claim by claim. The UI
+   may show extraction, source checks, counterargument search, and verdict synthesis
+   only when those stages have actually started or completed. Fake timers and
+   prewritten progress are prohibited.
+3. **Verdict** — one concise card answers whether the decision survived, what was
+   refuted, what remains unresolved, which blind spots matter, and what material
+   would make an unresolved item verifiable. Evidence has direct source links.
+
+Every uploaded file receives a free preflight before payment: detected document
+type, extracted claim count, and count of potentially verifiable references. The
+server extracts text ephemerally and does not persist the original file. Missing
+material becomes an `UNRESOLVED` finding with a specific evidence request; it is
+never a submission gate and never silently becomes support.
+
+Truth boundaries by profile:
+
+- `LEGAL`: attack reasoning immediately, but label law validity, citation accuracy,
+  jurisdiction, and deadline calculations unresolved until a trustworthy legal
+  source adapter actually answers them. Never call model memory legal verification.
+- `MONEY`: attack the user's thesis, not merely the asset. A detected X Layer
+  contract can use the existing OKX/GoPlus evidence path. Unsupported chains or
+  assets remain explicit limitations and are never charged as if supported.
+- `PLAN`: attack causal logic, dependencies, incentives, failure modes, budget,
+  timing, and success criteria. Verify cited facts only through real sources.
+- `GENERAL`: provide adversarial argument review and clearly distinguish source-
+  verified facts from claims that could not be independently tested.
+
+The same review contract must ultimately be available through the website, API,
+and MCP/A2MCP, with the paid review protected by standard OKX x402. Free file
+extraction/preflight is not a verdict and must not be marketed as one. Export/share
+uses a sanitized image/record projection and never exposes the private source file.
+
+Current implementation order for Product V2:
+
+- [x] Add bounded TXT/MD/DOCX/PDF extraction and a free, real upload preflight.
+- [x] Add deterministic generic document classification and automatic claim decomposition.
+- [ ] Add a real reasoning-provider boundary and claim-level persisted review events.
+- [ ] Add profile-specific verification routing with honest unsupported states.
+- [x] Add the three-stage responsive UI and remove the old transaction form from the public entry.
+- [ ] Add concise verdict image export and sanitized share flow.
+- [ ] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
+- [ ] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
+
+Evidence (2026-07-19, Product V2 intake): `/api/v1/intake/files` is mounted
+before the JSON parser and extracts TXT/Markdown, DOCX (Mammoth), and text-based
+PDF (PDF.js) in memory with 8 MB, 250-page, and 200,000-character bounds. It
+does not write the original or extracted material to a job/record store. Tests
+exercise real generated DOCX/PDF payloads plus empty, mismatched, unsupported,
+and oversized rejection. `/api/v1/reviews/preflight` deterministically infers
+Legal/Money/Plan/General, decomposes at most 30 candidate claims, classifies
+their verification route, and turns missing evidence into an explicit request.
+It never labels a legal citation or model-derived assertion verified. The local
+three-stage browser flow completed a Chinese appeal preflight with four actual
+claims and a clearly bounded preliminary result; 320, 375, 390, 768, 1024, and
+1440 CSS-pixel input/result states had no horizontal overflow.
+
+Evidence (2026-07-19, Product V2 web): `src/AppV2.tsx` is now the public entry
+and contains only the three product stages: one text/file intake, a visible
+claim-by-claim review map driven by the returned preflight, and one concise
+verdict card. The exact requested human and agent slogans and `Make it survive`
+CTA are present. The result labels itself a free structural preflight rather
+than a paid signed verdict, exports a standalone SVG card, and never animates a
+provider task that has not run. The hardened paid transaction app remains
+available additively at `/check/transaction`; an applicable Money preflight can
+link to it, while it no longer defines the homepage or category positioning.
+
 ## 1. Product decision — do not reinterpret
 
 ### 1.1 Category

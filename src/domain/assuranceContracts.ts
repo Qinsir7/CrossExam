@@ -1,6 +1,7 @@
 import type { ActionIntent, PreActionDecision, PreActionPolicy } from './preActionGate'
 import type { DecisionClaim, DecisionPackage } from './types'
 import type { AssuranceAction, AssuranceVerdict, EvidenceObservation, TransactionAssuranceActionInput } from './assuranceAction'
+import type { ReviewPreflightInput, ReviewPreflight } from './generalReview'
 
 /** Stable contract names for the product-level endpoints introduced after the legacy aggregate API. */
 export const assuranceProductEndpoints = {
@@ -10,7 +11,20 @@ export const assuranceProductEndpoints = {
   transactionQuote: '/api/v1/transactions/quote',
   prepareCrossExamination: '/api/v1/cross-examinations/prepare',
   crossExaminations: '/api/v1/cross-examinations',
+  documentIntake: '/api/v1/intake/files',
+  reviewPreflight: '/api/v1/reviews/preflight',
 } as const
+
+export type DocumentExtractionResponse = {
+  filename: string
+  mediaType: string
+  text: string
+  pageCount?: number
+  warnings: string[]
+}
+
+export type GenericReviewPreflightRequest = ReviewPreflightInput
+export type GenericReviewPreflightResponse = ReviewPreflight
 
 /** Free read-only OKX DEX route construction. It returns a candidate exact
  * transaction but never requests approval, a signature, or a broadcast. */
