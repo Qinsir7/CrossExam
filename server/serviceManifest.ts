@@ -53,6 +53,14 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
         description: 'Compile a simple or advanced consequential decision into bound claims, matched real evidence sources, limitations, and a no-charge quote before payment; unfulfillable scopes are explicitly unpurchasable.',
       },
       {
+        id: 'decision-assurance.review-preflight', endpoint: endpoint('/api/v1/reviews/preflight'), paid: false,
+        description: 'Decompose a Legal, Money, Plan, or unrestricted document into material claims and explicit verification routes without issuing a verdict.',
+      },
+      {
+        id: 'decision-assurance.adversarial-review', endpoint: endpoint('/api/v1/reviews'), paid: true,
+        description: 'Cross-examine every extracted claim, preserve all source-dependent facts as unresolved, and return an EIP-191-signed MODEL_ANALYZED verdict record.',
+      },
+      {
         id: 'decision-assurance.cross-examination', endpoint: endpoint('/api/v1/cross-examinations'), paid: false,
         description: 'Start a fulfillable durable, multi-source Cross-Examination and receive the x402 authorization capability for evidence procurement, recovery, ledger, and signed result.',
       },

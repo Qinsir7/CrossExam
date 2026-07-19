@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { CrossExamResult, DecisionPackage } from '../src/domain/types'
 import type { ReviewDispatch } from '../src/network/reviewNetwork'
+import type { AdversarialReviewResult, ReviewPreflight } from '../src/domain/generalReview'
 import type { Address, Hex } from 'viem'
 
 export type ServiceAttestation = {
@@ -14,10 +15,12 @@ export type DecisionAssuranceRecord = {
   schemaVersion: '0.1'
   recordId: string
   issuedAt: string
-  attributionStatus: 'DECLARED_BY_CALLER' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
+  attributionStatus: 'DECLARED_BY_CALLER' | 'MODEL_ANALYZED' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
   decision: DecisionPackage
   dispatch: ReviewDispatch
   result: CrossExamResult
+  reviewPreflight?: ReviewPreflight
+  adversarialAnalysis?: AdversarialReviewResult
   serviceAttestation?: ServiceAttestation
 }
 
@@ -48,6 +51,7 @@ export function issueDecisionAssuranceRecord(
   result: CrossExamResult,
   issuedAt: string,
   attributionStatus: DecisionAssuranceRecord['attributionStatus'] = 'DECLARED_BY_CALLER',
+  extensions: Pick<DecisionAssuranceRecord, 'reviewPreflight' | 'adversarialAnalysis'> = {},
 ): DecisionAssuranceRecord {
   const payload: RecordPayload = {
     schemaVersion: '0.1',
@@ -56,6 +60,7 @@ export function issueDecisionAssuranceRecord(
     decision,
     dispatch,
     result,
+    ...extensions,
   }
 
   return { ...payload, recordId: recordId(payload) }

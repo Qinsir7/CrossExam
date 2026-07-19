@@ -32,6 +32,11 @@ export type X402ServerConfig = {
   databaseUrl?: string
   publicUrl?: string
   allowedOrigins: string[]
+  deepSeek?: {
+    apiKey: string
+    baseUrl: 'https://api.deepseek.com'
+    model: string
+  }
 }
 
 export type ProcurementWorkerConfig = {
@@ -249,6 +254,18 @@ function allowedOrigins(value: string | undefined) {
   return [...new Set(origins)]
 }
 
+function deepSeekConfig(env: Environment): X402ServerConfig['deepSeek'] {
+  const apiKey = env.CROSSEXAM_DEEPSEEK_API_KEY?.trim()
+  const baseUrl = env.CROSSEXAM_DEEPSEEK_BASE_URL?.trim()
+  const model = env.CROSSEXAM_DEEPSEEK_MODEL?.trim()
+  if (!apiKey && !baseUrl && !model) return undefined
+  if (!apiKey || !baseUrl || !model) throw new Error('DeepSeek integration requires CROSSEXAM_DEEPSEEK_API_KEY, CROSSEXAM_DEEPSEEK_BASE_URL, and CROSSEXAM_DEEPSEEK_MODEL together.')
+  if (!apiKey.startsWith('sk-') || apiKey.length < 20) throw new Error('CROSSEXAM_DEEPSEEK_API_KEY does not look like a DeepSeek API key.')
+  if (baseUrl !== 'https://api.deepseek.com') throw new Error('CROSSEXAM_DEEPSEEK_BASE_URL must be exactly https://api.deepseek.com.')
+  if (!/^deepseek-[a-z0-9-]{2,80}$/.test(model)) throw new Error('CROSSEXAM_DEEPSEEK_MODEL is invalid.')
+  return { apiKey, baseUrl, model }
+}
+
 /**
  * Worker-only configuration intentionally excludes seller payment credentials,
  * record issuer keys, and browser origins. The Railway worker should receive
@@ -334,5 +351,6 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
     allowedOrigins: allowedOrigins(env.CROSSEXAM_ALLOWED_ORIGINS),
+    deepSeek: deepSeekConfig(env),
   }
 }

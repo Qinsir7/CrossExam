@@ -35,6 +35,8 @@ import { verifyAssuranceRecord } from './assuranceVerification'
 import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
 import { extractDocument } from './documentIntake'
 import { prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
+import { DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
+import { preparePaidAdversarialReview, type AdversarialReviewProvider } from './adversarialReview'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -42,8 +44,9 @@ const networkAssuranceRoute = 'POST /api/v1/assurance/network-aggregate'
 const reviewFundingRoute = 'POST /api/v1/review-jobs/authorize'
 const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
 const aspTrustRoute = 'POST /api/v1/preflight/asp'
+const paidReviewRoute = 'POST /api/v1/reviews'
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; dexQuoteFetcher?: typeof fetch } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; adversarialProvider?: AdversarialReviewProvider; dexQuoteFetcher?: typeof fetch } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
   // uses the official SDK's asynchronous settlement default.
   const assuranceFacilitator = new OKXFacilitatorClient({
@@ -83,6 +86,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     callbackBaseUrl: config.publicUrl ?? 'https://preflight.invalid',
     okxMarketCredentials: { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
   })
+  const adversarialProvider = dependencies.adversarialProvider ?? (config.deepSeek ? new DeepSeekAdversarialProvider(config.deepSeek) : undefined)
 
   const reviewAuthorizationAmountAtomic = (job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) => BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
 
@@ -238,7 +242,14 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.post('/api/v1/reviews/preflight', fixedWindowRateLimit({ limit: 30, windowMs: 60_000 }), (request, response) => {
     try {
-      response.status(200).json(prepareReviewPreflight(request.body as ReviewPreflightInput))
+      response.status(200).json({
+        ...prepareReviewPreflight(request.body as ReviewPreflightInput),
+        paidReview: {
+          available: Boolean(adversarialProvider),
+          priceUsd: config.deepReviewPriceUsd,
+          ...(adversarialProvider ? { provider: 'DEEPSEEK' as const } : {}),
+        },
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The material could not be preflighted.'
       response.status(422).json({ error: 'REVIEW_PREFLIGHT_REJECTED', message })
@@ -599,6 +610,17 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       description: 'CrossExam SSRF-resistant passive ASP endpoint and payment-contract trust check',
       mimeType: 'application/json',
     },
+    [paidReviewRoute]: {
+      accepts: {
+        scheme: 'exact' as const,
+        network: 'eip155:196' as const,
+        payTo: config.payTo,
+        price: `$${config.deepReviewPriceUsd}`,
+        maxTimeoutSeconds: 300,
+      },
+      description: 'CrossExam full adversarial review with a signed model-analysis record',
+      mimeType: 'application/json',
+    },
   }
   const fundingPaidRoutes = {
     [reviewFundingRoute]: {
@@ -644,6 +666,35 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     const access = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
     response.setHeader('Idempotent-Replay', 'true')
     response.status(200).json({ ...record, persistence: 'EXISTING', readAccess: access })
+    return true
+  }
+
+  async function servePaidReviewReplay(request: express.Request, response: express.Response) {
+    const key = request.header('idempotency-key')
+    if (!key) return false
+    const fingerprint = requestFingerprint(paidReviewRoute, request.body)
+    const lookup = await idempotencyStore.lookup(paidReviewRoute, key, fingerprint)
+    if (lookup.status === 'MISSING') {
+      response.locals.idempotency = { route: paidReviewRoute, key, fingerprint }
+      return false
+    }
+    if (lookup.status === 'CONFLICT') {
+      response.status(409).json({ error: 'IDEMPOTENCY_KEY_CONFLICT', message: 'This Idempotency-Key is already bound to a different review request.' })
+      return true
+    }
+    const record = await recordStore.find(lookup.recordId)
+    if (!record?.reviewPreflight || !record.adversarialAnalysis || !record.serviceAttestation) {
+      response.status(500).json({ error: 'IDEMPOTENCY_RECORD_MISSING', message: 'The completed review no longer has its signed analysis record.' })
+      return true
+    }
+    const readAccess = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
+    response.setHeader('Idempotent-Replay', 'true')
+    response.status(200).json({
+      preflight: record.reviewPreflight,
+      analysis: record.adversarialAnalysis,
+      record: { recordId: record.recordId, issuedAt: record.issuedAt, attributionStatus: record.attributionStatus, serviceAttestation: record.serviceAttestation, readAccess },
+      persistence: 'EXISTING',
+    })
     return true
   }
 
@@ -702,6 +753,25 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
     }
   })
+  app.post('/api/v1/reviews', async (request, response, next) => {
+    if (!adversarialProvider) {
+      response.status(503).json({ error: 'ADVERSARIAL_REVIEW_UNAVAILABLE', message: 'The paid adversarial-review provider is not configured.' })
+      return
+    }
+    if (!request.header('idempotency-key')) {
+      response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Paid review requires an Idempotency-Key so payment and analysis cannot be accidentally repeated.' })
+      return
+    }
+    try {
+      const input = request.body as ReviewPreflightInput
+      const preflight = prepareReviewPreflight(input)
+      if (preflight.characterCount > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
+      if (!await servePaidReviewReplay(request, response)) next()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Paid adversarial review input is invalid.'
+      response.status(422).json({ error: 'ADVERSARIAL_REVIEW_REJECTED', message })
+    }
+  })
 
   if (config.syncFacilitatorOnStart) {
     app.use(paymentMiddleware(assurancePaidRoutes, assuranceResourceServer))
@@ -722,6 +792,9 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/preflight/asp', (_request, response) => {
+      response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
+    })
+    app.post('/api/v1/reviews', (_request, response) => {
       response.status(503).json({ error: 'PAYMENT_RAIL_NOT_READY', message: 'x402 facilitator sync is disabled.' })
     })
     app.post('/api/v1/review-jobs/authorize', (_request, response) => {
@@ -837,6 +910,27 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ASP trust check could not be issued.'
       response.status(422).json({ error: 'ASP_TRUST_CHECK_REJECTED', message })
+    }
+  })
+  app.post('/api/v1/reviews', async (request, response) => {
+    try {
+      if (!adversarialProvider) throw new Error('The paid adversarial-review provider is not configured.')
+      if (!config.serviceSigningKey) throw new Error('Paid adversarial review requires a configured service signing key.')
+      const prepared = await preparePaidAdversarialReview(request.body as ReviewPreflightInput, adversarialProvider)
+      const record = await attestDecisionAssuranceRecord(prepared.record, config.serviceSigningKey)
+      const persistence = await recordStore.save(record)
+      await persistIdempotency(response, record.recordId)
+      const readAccess = await recordStore.issueReadAccess(record.recordId, config.recordAccessTtlSeconds)
+      if (!record.serviceAttestation) throw new Error('Signed adversarial-review record is missing its service attestation.')
+      response.status(200).json({
+        preflight: prepared.preflight,
+        analysis: prepared.analysis,
+        record: { recordId: record.recordId, issuedAt: record.issuedAt, attributionStatus: record.attributionStatus, serviceAttestation: record.serviceAttestation, readAccess },
+        persistence,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Paid adversarial review could not be issued.'
+      response.status(422).json({ error: 'ADVERSARIAL_REVIEW_REJECTED', message })
     }
   })
   app.post('/api/v1/review-jobs/authorize', async (request, response) => {

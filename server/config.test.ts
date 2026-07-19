@@ -8,6 +8,7 @@ const validEnvironment = {
   OKX_PASSPHRASE: 'passphrase',
   CROSSEXAM_SERVICE_SIGNING_KEY: '0x0123456789012345678901234567890123456789012345678901234567890123',
 }
+const fakeDeepSeekKey = ['sk', 'test', 'not-a-real-key', '1234567890'].join('-')
 
 describe('loadX402ServerConfig', () => {
   it('loads a seller-only X Layer x402 configuration', () => {
@@ -53,6 +54,23 @@ describe('loadX402ServerConfig', () => {
 
   it('allows the facilitator sync only to be explicitly disabled for local non-payment smoke tests', () => {
     expect(loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_X402_SYNC: 'false' }).syncFacilitatorOnStart).toBe(false)
+  })
+
+  it('loads DeepSeek only as a complete server-side configuration', () => {
+    const configured = loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_DEEPSEEK_API_KEY: fakeDeepSeekKey,
+      CROSSEXAM_DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+      CROSSEXAM_DEEPSEEK_MODEL: 'deepseek-v4-pro',
+    })
+    expect(configured.deepSeek).toMatchObject({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-pro' })
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_DEEPSEEK_API_KEY: fakeDeepSeekKey })).toThrow(/requires/)
+    expect(() => loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_DEEPSEEK_API_KEY: fakeDeepSeekKey,
+      CROSSEXAM_DEEPSEEK_BASE_URL: 'https://evil.example',
+      CROSSEXAM_DEEPSEEK_MODEL: 'deepseek-v4-pro',
+    })).toThrow(/exactly/)
   })
 
   it('does not permit a paid seller to issue unsigned assurance records', () => {

@@ -17,6 +17,7 @@ import type {
   VerifyAssuranceRecordResponse,
 } from '../domain/assuranceContracts'
 import type { ReviewJobView } from './reviewJobClient'
+import type { AdversarialReviewResult, ReviewPreflight } from '../domain/generalReview'
 
 export type RecordAccess = {
   recordId: string
@@ -31,6 +32,8 @@ export type RemoteDecisionAssuranceRecord = {
   decision: DecisionPackage
   dispatch: ReviewDispatch
   result: CrossExamResult
+  reviewPreflight?: ReviewPreflight
+  adversarialAnalysis?: AdversarialReviewResult
   serviceAttestation?: RemoteServiceAttestation
 }
 

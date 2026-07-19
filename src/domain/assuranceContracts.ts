@@ -1,7 +1,7 @@
 import type { ActionIntent, PreActionDecision, PreActionPolicy } from './preActionGate'
 import type { DecisionClaim, DecisionPackage } from './types'
 import type { AssuranceAction, AssuranceVerdict, EvidenceObservation, TransactionAssuranceActionInput } from './assuranceAction'
-import type { ReviewPreflightInput, ReviewPreflight } from './generalReview'
+import type { AdversarialReviewResult, ReviewPreflightInput, ReviewPreflight } from './generalReview'
 
 /** Stable contract names for the product-level endpoints introduced after the legacy aggregate API. */
 export const assuranceProductEndpoints = {
@@ -13,6 +13,7 @@ export const assuranceProductEndpoints = {
   crossExaminations: '/api/v1/cross-examinations',
   documentIntake: '/api/v1/intake/files',
   reviewPreflight: '/api/v1/reviews/preflight',
+  paidReview: '/api/v1/reviews',
 } as const
 
 export type DocumentExtractionResponse = {
@@ -25,6 +26,14 @@ export type DocumentExtractionResponse = {
 
 export type GenericReviewPreflightRequest = ReviewPreflightInput
 export type GenericReviewPreflightResponse = ReviewPreflight
+
+export type PaidAdversarialReviewRequest = ReviewPreflightInput
+export type PaidAdversarialReviewResponse = {
+  preflight: ReviewPreflight
+  analysis: AdversarialReviewResult
+  record: AssuranceRecordReference
+  persistence: 'CREATED' | 'EXISTING'
+}
 
 /** Free read-only OKX DEX route construction. It returns a candidate exact
  * transaction but never requests approval, a signature, or a broadcast. */
@@ -57,7 +66,7 @@ export type TransactionQuoteResponse = {
 export type AssuranceRecordReference = {
   recordId: string
   issuedAt: string
-  attributionStatus: 'DECLARED_BY_CALLER' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
+  attributionStatus: 'DECLARED_BY_CALLER' | 'MODEL_ANALYZED' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
   serviceAttestation: {
     scheme: 'EIP191'
     payloadHash: `0x${string}`

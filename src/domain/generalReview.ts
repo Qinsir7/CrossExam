@@ -37,12 +37,46 @@ export type ReviewPreflight = {
     legalReferences: string[]
   }
   limitations: string[]
+  paidReview?: {
+    available: boolean
+    priceUsd: string
+    provider?: 'DEEPSEEK'
+  }
 }
 
 export type ReviewPreflightInput = {
   text: string
   profile?: ReviewProfile
   filename?: string
+}
+
+export type AdversarialClaimResult = {
+  claimId: string
+  verdict: 'SURVIVED' | 'REFUTED' | 'UNRESOLVED'
+  strongestAttack: string
+  reasoning: string
+  blindSpot: string
+  evidenceNeeded?: string
+  verificationStatus: 'MODEL_REASONING_ONLY' | 'REQUIRES_EXTERNAL_SOURCE' | 'TOOL_CHECK_REQUIRED'
+}
+
+export type AdversarialReviewResult = {
+  verdict: 'SURVIVED' | 'REFUTED' | 'UNRESOLVED'
+  headline: string
+  strongestAttack: string
+  claims: AdversarialClaimResult[]
+  blindSpots: string[]
+  nextActions: string[]
+  sources: Array<{ label: string; url: string; verifiedAt: string }>
+  provenance: {
+    provider: 'DEEPSEEK'
+    model: string
+    responseId?: string
+    inputTokens?: number
+    outputTokens?: number
+    requestHash: `0x${string}`
+    responseHash: `0x${string}`
+  }
 }
 
 const MAX_INPUT_CHARACTERS = 200_000
@@ -231,4 +265,3 @@ export function prepareReviewPreflight(input: ReviewPreflightInput): ReviewPrefl
     limitations,
   }
 }
-

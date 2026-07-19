@@ -99,10 +99,10 @@ Current implementation order for Product V2:
 
 - [x] Add bounded TXT/MD/DOCX/PDF extraction and a free, real upload preflight.
 - [x] Add deterministic generic document classification and automatic claim decomposition.
-- [ ] Add a real reasoning-provider boundary and claim-level persisted review events.
-- [ ] Add profile-specific verification routing with honest unsupported states.
+- [x] Add a real reasoning-provider boundary and claim-level persisted review events.
+- [x] Add profile-specific verification routing with honest unsupported states.
 - [x] Add the three-stage responsive UI and remove the old transaction form from the public entry.
-- [ ] Add concise verdict image export and sanitized share flow.
+- [x] Add concise verdict image export and sanitized share flow.
 - [ ] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
 - [ ] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
 
@@ -128,6 +128,21 @@ than a paid signed verdict, exports a standalone SVG card, and never animates a
 provider task that has not run. The hardened paid transaction app remains
 available additively at `/check/transaction`; an applicable Money preflight can
 link to it, while it no longer defines the homepage or category positioning.
+
+Evidence (2026-07-20, Product V2 paid analysis): the server-only DeepSeek
+adapter pins the official API origin, uses strict JSON mode, treats submitted
+material as untrusted, bounds input/output/time/retries, requires every claim
+exactly once, and records provider/model/request/response hashes. The server
+forces every law, citation, numeric, external-source, or onchain claim to
+`UNRESOLVED` regardless of model output; only argument-only claims can survive
+or be refuted by reasoning. Claim findings and the full analysis are persisted
+inside a content-derived `MODEL_ANALYZED` Decision Assurance Record and covered
+by its EIP-191 service signature. The paid result—not the free preflight—now
+drives the verdict card, sanitized SVG/text sharing, blind spots, next actions,
+and verification boundary. Local visual inspection passed the input and claim
+map hierarchy; 194 tests, type-checking, and the production build pass. The new
+paid endpoint and its standard production 402 remain unchecked until the
+deployed route is probed after this commit.
 
 ## 1. Product decision — do not reinterpret
 

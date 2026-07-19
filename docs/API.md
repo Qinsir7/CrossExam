@@ -30,6 +30,24 @@ candidate material claims, verification routes (`TOOL_READY`,
 and bounded limitations. This endpoint is free claim preparation, not a paid
 verdict: it never calls a candidate claim verified and never creates a record.
 
+## Paid universal adversarial review
+
+`POST /api/v1/reviews` accepts the same `{ text, profile?, filename? }` body and
+requires an `Idempotency-Key`. Without a payment signature it returns the
+standard X Layer exact x402 challenge at the server-owned deep-review price.
+After settlement, the server calls its configured DeepSeek model, validates a
+bounded JSON result that addresses every extracted claim exactly once, and
+returns `preflight`, `analysis`, and an EIP-191-signed record reference.
+
+The signed record is labeled `MODEL_ANALYZED`, has effective independence `0`,
+and includes the model name plus request/response hashes. Claims that require a
+current law, citation, external source, number, or dedicated tool are forced to
+`UNRESOLVED` even if the model tried to call them supported. `sources` remains
+empty unless a real source adapter has supplied a URL and observation time.
+For an exact supported X Layer trade, callers should use Transaction Preflight
+to purchase OKX/GoPlus evidence rather than treating model memory as onchain
+fact.
+
 ## Transaction Preflight
 
 `POST /api/v1/preflight/transaction` is the product-facing x402 service for an exact EVM action. It requires a 32–200 character `Idempotency-Key` before issuing a payment challenge. The current X Layer trade profile derives deterministic binding, approval, native-value, liquidity, and token-transfer claims; it obtains only configured OKX Onchain OS and GoPlus source output, preserves each source request/response hash, and returns a signed `PERMIT`, `HOLD`, or `BLOCK` record.

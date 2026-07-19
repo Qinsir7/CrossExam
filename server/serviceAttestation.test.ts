@@ -32,4 +32,16 @@ describe('service record attestation', () => {
 
     await expect(verifyDecisionAssuranceRecordAttestation(envelope)).resolves.toBeUndefined()
   })
+
+  it('signs optional adversarial analysis instead of treating it as transport metadata', async () => {
+    const record = issueDecisionAssuranceRecord(decision, dispatch, result, '2026-07-15T00:00:00.000Z', 'MODEL_ANALYZED', {
+      adversarialAnalysis: {
+        verdict: 'SURVIVED', headline: 'Coherent', strongestAttack: 'A counter-case', claims: [], blindSpots: ['A blind spot'], nextActions: ['Test it'], sources: [],
+        provenance: { provider: 'DEEPSEEK', model: 'deepseek-v4-pro', requestHash: `0x${'1'.repeat(64)}`, responseHash: `0x${'2'.repeat(64)}` },
+      },
+    })
+    const signed = await attestDecisionAssuranceRecord(record, privateKey)
+
+    await expect(verifyDecisionAssuranceRecordAttestation({ ...signed, adversarialAnalysis: { ...signed.adversarialAnalysis!, headline: 'Tampered' } })).rejects.toThrow('payload hash')
+  })
 })

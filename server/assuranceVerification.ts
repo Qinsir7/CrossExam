@@ -24,6 +24,8 @@ function recordInput(value: unknown): DecisionAssuranceRecord {
     decision: record.decision as DecisionAssuranceRecord['decision'],
     dispatch: record.dispatch as DecisionAssuranceRecord['dispatch'],
     result: record.result as DecisionAssuranceRecord['result'],
+    ...(record.reviewPreflight ? { reviewPreflight: record.reviewPreflight as DecisionAssuranceRecord['reviewPreflight'] } : {}),
+    ...(record.adversarialAnalysis ? { adversarialAnalysis: record.adversarialAnalysis as DecisionAssuranceRecord['adversarialAnalysis'] } : {}),
     serviceAttestation: record.serviceAttestation as NonNullable<DecisionAssuranceRecord['serviceAttestation']>,
   }
 }

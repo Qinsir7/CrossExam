@@ -1,7 +1,7 @@
 import type { ReviewPlan } from '../domain/reviewPlan'
 import type { DecisionPackage } from '../domain/types'
 import type { ReviewDispatch } from '../network/reviewNetwork'
-import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, DocumentExtractionResponse, GenericReviewPreflightRequest, GenericReviewPreflightResponse, TransactionQuoteRequest, TransactionQuoteResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
+import type { CrossExaminationPreparationRequest, CrossExaminationPreparationResponse, CrossExaminationResponse, DocumentExtractionResponse, GenericReviewPreflightRequest, GenericReviewPreflightResponse, PaidAdversarialReviewRequest, PaidAdversarialReviewResponse, TransactionQuoteRequest, TransactionQuoteResponse, VerifyAssuranceRecordRequest, VerifyAssuranceRecordResponse } from '../domain/assuranceContracts'
 import type { RemoteDecisionAssuranceRecord } from './crossExamClient'
 import { fetchWithBrowserX402, signReviewAccessRecovery, type BrowserPaymentPreview } from './browserX402'
 
@@ -86,6 +86,14 @@ function settlementTransaction(response: Response) {
   }
 }
 
+function usdt0Atomic(priceUsd: string) {
+  if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(priceUsd)) throw new Error('CrossExam returned an invalid review price.')
+  const [whole, fraction = ''] = priceUsd.split('.')
+  const atomic = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'))
+  if (atomic <= 0n) throw new Error('CrossExam returned an invalid review price.')
+  return atomic.toString()
+}
+
 /**
  * The public product is intentionally split between www.cross-exam.xyz and
  * api.cross-exam.xyz. Keep a deploy-safe fallback so a missing Vercel build
@@ -167,6 +175,30 @@ export class ReviewJobClient {
     return this.request('/api/v1/reviews/preflight', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
     }) as Promise<GenericReviewPreflightResponse>
+  }
+
+  /** Pay once through the browser wallet, then receive a signed model-analysis record. */
+  async runPaidReviewWithBrowserWallet(
+    input: PaidAdversarialReviewRequest,
+    idempotencyKey: string,
+    priceUsd: string,
+    confirm: (preview: BrowserPaymentPreview) => boolean | Promise<boolean>,
+  ): Promise<PaidAdversarialReviewResponse> {
+    if (!/^[a-zA-Z0-9._:-]{8,200}$/.test(idempotencyKey)) throw new Error('A stable review Idempotency-Key is required.')
+    const response = await fetchWithBrowserX402(
+      this.endpoint('/api/v1/reviews'),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
+        body: JSON.stringify(input),
+      },
+      confirm,
+      usdt0Atomic(priceUsd),
+    )
+    const body = await response.json().catch(() => null) as ({ message?: unknown } & Partial<PaidAdversarialReviewResponse>) | null
+    if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : `CrossExam paid review failed (${response.status}).`)
+    if (!body?.preflight || !body.analysis || !body.record?.recordId || !body.record.serviceAttestation) throw new Error('CrossExam returned an incomplete paid-review record.')
+    return body as PaidAdversarialReviewResponse
   }
 
   /** Start a fulfillable durable review; authorization remains an explicit x402 step. */

@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react'
-import type { ReviewPreflight, ReviewProfile } from './domain/generalReview'
+import type { AdversarialReviewResult, ReviewPreflight, ReviewProfile } from './domain/generalReview'
+import type { PaidAdversarialReviewResponse } from './domain/assuranceContracts'
 import { ReviewJobClient } from './sdk/reviewJobClient'
+import { displayUsdt0 } from './sdk/browserX402'
 import './AppV2.css'
 
 type Stage = 'INPUT' | 'REVIEW' | 'RESULT'
@@ -60,18 +62,17 @@ function wrapText(value: string, limit = 64) {
   return lines.slice(0, 4)
 }
 
-function createVerdictSvg(preflight: ReviewPreflight) {
-  const sourceRequired = preflight.claims.filter((claim) => claim.verificationRoute === 'SOURCE_REQUIRED').length
-  const strongest = preflight.claims.find((claim) => claim.materiality === 'MATERIAL')?.attackAngle ?? 'The decision still has material premises to test.'
-  const lines = wrapText(strongest)
+function createVerdictSvg(preflight: ReviewPreflight, analysis: AdversarialReviewResult, recordId: string) {
+  const lines = wrapText(analysis.strongestAttack)
+  const verdict = analysis.verdict === 'SURVIVED' ? 'SURVIVED.' : analysis.verdict === 'REFUTED' ? 'REFUTED.' : 'UNRESOLVED.'
   const textLines = lines.map((line, index) => `<text x="72" y="${310 + index * 34}" fill="#f4efe8" font-family="Arial" font-size="24">${escapeXml(line)}</text>`).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <rect width="1200" height="630" fill="#111619"/><circle cx="1080" cy="80" r="240" fill="#e85d43" opacity=".12"/>
   <text x="72" y="76" fill="#f4efe8" font-family="Arial" font-size="24" font-weight="700">CrossExam</text>
-  <text x="72" y="142" fill="#e9a35f" font-family="Arial" font-size="18" letter-spacing="3">PRELIMINARY VERDICT</text>
-  <text x="72" y="230" fill="#f4efe8" font-family="Arial" font-size="72" font-weight="700">NOT YET.</text>
+  <text x="72" y="142" fill="#e9a35f" font-family="Arial" font-size="18" letter-spacing="3">SIGNED ADVERSARIAL VERDICT</text>
+  <text x="72" y="230" fill="#f4efe8" font-family="Arial" font-size="72" font-weight="700">${verdict}</text>
   ${textLines}
-  <text x="72" y="510" fill="#9ba5a4" font-family="Arial" font-size="20">${preflight.claimCount} claims · ${sourceRequired} source checks · ${escapeXml(preflight.inferredDocumentType)}</text>
+  <text x="72" y="510" fill="#9ba5a4" font-family="Arial" font-size="20">${preflight.claimCount} claims · ${escapeXml(preflight.inferredDocumentType)} · ${escapeXml(recordId)}</text>
   <text x="72" y="570" fill="#e9a35f" font-family="Arial" font-size="22">Before you act, make it survive.</text>
   </svg>`
 }
@@ -101,17 +102,42 @@ export default function AppV2() {
   const [text, setText] = useState('')
   const [filename, setFilename] = useState<string | undefined>()
   const [preflight, setPreflight] = useState<ReviewPreflight | null>(null)
+  const [paidReview, setPaidReview] = useState<PaidAdversarialReviewResponse | null>(null)
   const [busy, setBusy] = useState(false)
+  const [paidState, setPaidState] = useState<'IDLE' | 'WALLET' | 'ANALYZING'>('IDLE')
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [shareFeedback, setShareFeedback] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const idempotencyKey = useRef(`web-review-${crypto.randomUUID()}`)
   const copy = profileCopy(profile)
 
   const sourceRequired = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'SOURCE_REQUIRED') ?? [], [preflight])
   const toolReady = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'TOOL_READY') ?? [], [preflight])
   const attackOnly = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'ARGUMENT_ONLY') ?? [], [preflight])
-  const strongest = preflight?.claims.find((claim) => claim.materiality === 'MATERIAL')
+  const runPaidReview = async () => {
+    if (!preflight?.paidReview?.available) return
+    setError(null)
+    setPaidState('WALLET')
+    try {
+      const result = await new ReviewJobClient().runPaidReviewWithBrowserWallet(
+        { text, profile: preflight.profile, ...(filename ? { filename } : {}) },
+        idempotencyKey.current,
+        preflight.paidReview.priceUsd,
+        async (preview) => {
+          const approved = window.confirm(`Authorize ${displayUsdt0(preview.amountAtomic)} USDT0 on X Layer for one full CrossExam review?\n\nRecipient: ${preview.payTo}\n\nYour wallet will show the final authorization before signing.`)
+          if (approved) setPaidState('ANALYZING')
+          return approved
+        },
+      )
+      setPaidReview(result)
+      setStage('RESULT')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The paid review could not be completed.')
+    } finally {
+      setPaidState('IDLE')
+    }
+  }
 
   const runPreflight = async (material = text, name = filename, nextStage = false) => {
     setBusy(true)
@@ -160,13 +186,15 @@ export default function AppV2() {
     setText('')
     setFilename(undefined)
     setPreflight(null)
+    setPaidReview(null)
+    idempotencyKey.current = `web-review-${crypto.randomUUID()}`
     setError(null)
     setShareFeedback(null)
   }
 
   const downloadCard = () => {
-    if (!preflight) return
-    const blob = new Blob([createVerdictSvg(preflight)], { type: 'image/svg+xml' })
+    if (!preflight || !paidReview) return
+    const blob = new Blob([createVerdictSvg(preflight, paidReview.analysis, paidReview.record.recordId)], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
@@ -176,8 +204,8 @@ export default function AppV2() {
   }
 
   const share = async () => {
-    if (!preflight) return
-    const summary = `CrossExam: NOT YET — ${strongest?.attackAngle ?? 'material premises remain untested.'}`
+    if (!preflight || !paidReview) return
+    const summary = `CrossExam: ${paidReview.analysis.verdict} — ${paidReview.analysis.strongestAttack}`
     try {
       if (navigator.share) await navigator.share({ title: 'CrossExam verdict', text: summary, url: window.location.origin })
       else await navigator.clipboard.writeText(summary)
@@ -241,31 +269,35 @@ export default function AppV2() {
           </li>)}
         </ol>
         <div className="truth-line"><span>{toolReady.length} tool-ready</span><span>{sourceRequired.length} source checks</span><span>{attackOnly.length} argument attacks</span></div>
-        <button className="survive-button compact" type="button" onClick={() => setStage('RESULT')}>See what survives<span>→</span></button>
+        {error && <p className="intake-error review-error" role="alert">{error}</p>}
+        <button className="survive-button compact" type="button" disabled={!preflight.paidReview?.available || paidState !== 'IDLE'} onClick={() => void runPaidReview()}>
+          {paidState === 'WALLET' ? 'Waiting for wallet…' : paidState === 'ANALYZING' ? 'Cross-examining every claim…' : preflight.paidReview?.available ? `Run full cross-examination · ${preflight.paidReview.priceUsd} USDT0` : 'Full review temporarily unavailable'}<span>→</span>
+        </button>
+        <p className="paid-note">One x402 payment. The model analysis and truth boundaries are sealed into a signed record.</p>
       </section>
     </main>}
 
-    {stage === 'RESULT' && preflight && <main className="result-screen">
+    {stage === 'RESULT' && preflight && paidReview && <main className="result-screen">
       <section className="verdict-card">
-        <div className="verdict-top"><p>Preliminary verdict</p><span>{preflight.profile}</span></div>
-        <div className="verdict-word">NOT YET<span>.</span></div>
-        <p className="verdict-lede">This decision has not earned a clean pass. {sourceRequired.length ? `${sourceRequired.length} factual premise${sourceRequired.length === 1 ? '' : 's'} still need independent evidence.` : 'Its strongest assumptions still need to survive the opposing case.'}</p>
+        <div className="verdict-top"><p>Signed adversarial verdict</p><span>{preflight.profile}</span></div>
+        <div className={`verdict-word verdict-${paidReview.analysis.verdict.toLowerCase()}`}>{paidReview.analysis.verdict}<span>.</span></div>
+        <p className="verdict-lede">{paidReview.analysis.headline}</p>
 
         <div className="verdict-focus">
           <small>Strongest attack</small>
-          <h2>{strongest?.attackAngle ?? 'A material premise remains insufficiently supported.'}</h2>
-          <p>{strongest?.text}</p>
+          <h2>{paidReview.analysis.strongestAttack}</h2>
+          <p>{paidReview.analysis.verdict === 'SURVIVED' ? 'The reasoning survived this adversarial pass; factual claims still carry the verification status shown below.' : 'Fix this before relying on the decision.'}</p>
         </div>
 
         <div className="result-grid">
-          <section><h3>What can break</h3>{preflight.claims.slice(0, 3).map((claim) => <div className="finding" key={claim.id}><span>{claim.id}</span><p>{claim.attackAngle}</p></div>)}</section>
-          <section><h3>What would resolve it</h3>{preflight.claims.filter((claim) => claim.evidenceNeeded).slice(0, 3).map((claim) => <div className="finding resolve" key={claim.id}><span>＋</span><p>{claim.evidenceNeeded}</p></div>)}</section>
+          <section><h3>What can break</h3>{paidReview.analysis.claims.slice(0, 4).map((claim) => <div className="finding" key={claim.claimId}><span>{claim.claimId}</span><div><b>{claim.verdict}</b><p>{claim.strongestAttack}</p></div></div>)}</section>
+          <section><h3>What would resolve it</h3>{paidReview.analysis.nextActions.slice(0, 4).map((action, index) => <div className="finding resolve" key={`${index}-${action}`}><span>＋</span><p>{action}</p></div>)}</section>
         </div>
 
-        {preflight.limitations.length > 0 && <div className="honesty-block"><strong>Not claimed as verified</strong>{preflight.limitations.map((item) => <p key={item}>{item}</p>)}</div>}
+        <div className="honesty-block"><strong>Verification boundary</strong><p>{paidReview.analysis.claims.filter((claim) => claim.verificationStatus !== 'MODEL_REASONING_ONLY').length} claim(s) still require an external source or dedicated tool. Model reasoning is not presented as verified fact.</p>{paidReview.analysis.sources.map((source) => <p key={source.url}><a href={source.url}>{source.label}</a></p>)}</div>
         <div className="result-actions"><button type="button" onClick={downloadCard}>Download card</button><button type="button" onClick={() => void share()}>Share verdict</button>{preflight.profile === 'MONEY' && preflight.detected.contractAddresses.length > 0 && <a href="/check/transaction">Run live onchain checks</a>}<button className="primary" type="button" onClick={reset}>Review another</button></div>
         {shareFeedback && <p className="share-feedback" aria-live="polite">{shareFeedback}</p>}
-        <p className="result-boundary">This is the free structural preflight, not a paid signed verdict. Source verification is displayed only after a real provider returns evidence.</p>
+        <p className="result-boundary">Record {paidReview.record.recordId} · {paidReview.record.attributionStatus} · signed by {paidReview.record.serviceAttestation.signer.slice(0, 10)}… · {paidReview.analysis.provenance.model}</p>
       </section>
     </main>}
 

@@ -25,6 +25,8 @@ export function attestableAssuranceRecord(record: DecisionAssuranceRecord): Atte
     decision: record.decision,
     dispatch: record.dispatch,
     result: record.result,
+    ...(record.reviewPreflight ? { reviewPreflight: record.reviewPreflight } : {}),
+    ...(record.adversarialAnalysis ? { adversarialAnalysis: record.adversarialAnalysis } : {}),
   }
 }
 

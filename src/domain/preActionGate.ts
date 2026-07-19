@@ -5,7 +5,7 @@ export type AssuredDecision = {
   issuedAt: string
   decisionId: string
   valueAtRiskUsd: number
-  attributionStatus: 'DECLARED_BY_CALLER' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
+  attributionStatus: 'DECLARED_BY_CALLER' | 'MODEL_ANALYZED' | 'PROCUREMENT_VERIFIED' | 'NETWORK_VERIFIED'
   result: CrossExamResult
   actionBinding?: ActionBinding
 }
