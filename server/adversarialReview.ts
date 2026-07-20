@@ -1,11 +1,15 @@
 import { createHash } from 'node:crypto'
 import type { Finding, CrossExamResult, DecisionPackage } from '../src/domain/types'
-import { prepareReviewPreflight, type AdversarialReviewResult, type ReviewPreflightInput } from '../src/domain/generalReview'
+import { prepareReviewPreflight, type AdversarialReviewResult, type AuthoritativeSourceCheck, type ReviewPreflightInput } from '../src/domain/generalReview'
 import type { ReviewDispatch } from '../src/network/reviewNetwork'
 import { issueDecisionAssuranceRecord } from './assuranceRecord'
 
 export type AdversarialReviewProvider = {
-  review(text: string, preflight: ReturnType<typeof prepareReviewPreflight>): Promise<AdversarialReviewResult>
+  review(text: string, preflight: ReturnType<typeof prepareReviewPreflight>, sourceChecks?: AuthoritativeSourceCheck[]): Promise<AdversarialReviewResult>
+}
+
+export type AuthoritativeSourceVerifier = {
+  verify(preflight: ReturnType<typeof prepareReviewPreflight>): Promise<AuthoritativeSourceCheck[]>
 }
 
 function stableId(prefix: string, value: string) {
@@ -27,10 +31,12 @@ export async function preparePaidAdversarialReview(
   input: ReviewPreflightInput,
   provider: AdversarialReviewProvider,
   issuedAt = new Date().toISOString(),
+  sourceVerifier?: AuthoritativeSourceVerifier,
 ) {
   const preflight = prepareReviewPreflight(input)
   if (preflight.characterCount > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
-  const analysis = await provider.review(input.text, preflight)
+  const sourceChecks = sourceVerifier ? await sourceVerifier.verify(preflight) : []
+  const analysis = await provider.review(input.text, preflight, sourceChecks)
   const decisionId = stableId('DP-GENERAL', `${preflight.profile}\n${preflight.title}\n${input.text}`)
   const decision: DecisionPackage = {
     id: decisionId,
@@ -40,6 +46,7 @@ export async function preparePaidAdversarialReview(
     reviewProfile: 'GENERAL',
   }
   const artifactId = stableId('EA-MODEL', analysis.provenance.responseHash)
+  const sourceArtifactIds = new Map(analysis.sourceChecks?.map((check) => [check.claimId, stableId('EA-SOURCE', `${check.claimId}\n${check.responseHash ?? check.requestHash}`)]) ?? [])
   const findings: Finding[] = analysis.claims.map((claim) => ({
     claimId: claim.claimId,
     reviewerId: 'deepseek-adversarial-reasoning',
@@ -47,7 +54,15 @@ export async function preparePaidAdversarialReview(
     confidence: 0.5,
     materiality: preflight.claims.find((item) => item.id === claim.claimId)?.materiality === 'MATERIAL' ? 1 : 0.5,
     evidence: `${claim.strongestAttack} ${claim.reasoning}`,
-    evidenceArtifactIds: [artifactId],
+    evidenceArtifactIds: [artifactId, ...(sourceArtifactIds.get(claim.claimId) ? [sourceArtifactIds.get(claim.claimId)!] : [])],
+  }))
+  const sourceArtifacts = (analysis.sourceChecks ?? []).map((check) => ({
+    id: sourceArtifactIds.get(check.claimId)!,
+    kind: check.source ? 'PRIMARY_SOURCE' as const : 'SEARCH_LOG' as const,
+    locator: check.source?.url ?? `tavily:search:${check.requestHash}`,
+    observedAt: check.checkedAt,
+    excerpt: `${check.status}: ${check.statement}${check.source?.excerpt ? ` ${check.source.excerpt}` : ''}`.slice(0, 1_400),
+    contentHash: check.responseHash ?? check.requestHash,
   }))
   const dispatch: ReviewDispatch = {
     id: stableId('RD-GENERAL', decisionId),
@@ -63,7 +78,9 @@ export async function preparePaidAdversarialReview(
         modelFamily: analysis.provenance.model,
         evidenceRoutes: ['model-reasoning'],
       },
-      reason: 'Completed as model reasoning. No external factual verification is implied.',
+      reason: analysis.sourceChecks?.length
+        ? 'Completed as model reasoning with separately attributed, authority-domain-restricted source checks. Source status does not imply full-claim verification.'
+        : 'Completed as model reasoning. No external factual verification is implied.',
       delivery: {
         reviewerId: 'deepseek-adversarial-reasoning',
         deliveredAt: issuedAt,
@@ -77,7 +94,24 @@ export async function preparePaidAdversarialReview(
         }],
         findings,
       },
-    }],
+    }, ...(sourceArtifacts.length ? [{
+      scopeId: 'SCOPE-AUTHORITATIVE-SOURCE-CHECKS',
+      status: 'DELIVERED' as const,
+      reviewer: {
+        id: 'tavily-authority-search',
+        displayName: 'Authority-domain source search',
+        ownerId: 'tavily',
+        modelFamily: 'search-retrieval',
+        evidenceRoutes: ['official-public-sources'],
+      },
+      reason: 'Search was restricted to a jurisdiction-sensitive authority-domain allowlist. A link confirms only the explicitly reported source status.',
+      delivery: {
+        reviewerId: 'tavily-authority-search',
+        deliveredAt: issuedAt,
+        artifacts: sourceArtifacts,
+        findings: [],
+      },
+    }] : [])],
   }
   const materialIds = new Set(preflight.claims.filter((claim) => claim.materiality === 'MATERIAL').map((claim) => claim.id))
   const result: CrossExamResult = {
@@ -96,7 +130,9 @@ export async function preparePaidAdversarialReview(
       claimId: claim.claimId,
       kind: claim.verdict === 'REFUTED' ? 'OVERTURN_CONTRADICTION' : 'RESOLVE_UNCERTAINTY',
       requirement: claim.evidenceNeeded ?? `Resolve the blind spot: ${claim.blindSpot}`,
-      basedOnEvidence: 'DeepSeek model-only adversarial analysis; no independent source verification.',
+      basedOnEvidence: analysis.sourceChecks?.find((check) => check.claimId === claim.claimId)
+        ? `DeepSeek adversarial analysis plus bounded official-source check: ${analysis.sourceChecks.find((check) => check.claimId === claim.claimId)!.status}.`
+        : 'DeepSeek model-only adversarial analysis; no independent source verification.',
     })),
   }
   return {

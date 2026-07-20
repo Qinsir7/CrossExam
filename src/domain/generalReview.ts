@@ -35,12 +35,14 @@ export type ReviewPreflight = {
     contractAddresses: `0x${string}`[]
     urls: string[]
     legalReferences: string[]
+    caseReferences: string[]
   }
   limitations: string[]
   paidReview?: {
     available: boolean
     priceUsd: string
     provider?: 'DEEPSEEK'
+    authoritySearchAvailable?: boolean
   }
 }
 
@@ -57,7 +59,34 @@ export type AdversarialClaimResult = {
   reasoning: string
   blindSpot: string
   evidenceNeeded?: string
-  verificationStatus: 'MODEL_REASONING_ONLY' | 'REQUIRES_EXTERNAL_SOURCE' | 'TOOL_CHECK_REQUIRED'
+  verificationStatus: 'MODEL_REASONING_ONLY' | 'REQUIRES_EXTERNAL_SOURCE' | 'TOOL_CHECK_REQUIRED' | 'AUTHORITATIVE_SOURCE_PARTIAL'
+}
+
+export type AuthoritativeSourceCheckStatus =
+  | 'CURRENT_LAW_CONFIRMED'
+  | 'REPEALED_OR_SUPERSEDED'
+  | 'OFFICIAL_SOURCE_FOUND_STATUS_UNCLEAR'
+  | 'CASE_PUBLIC_SOURCE_CONFIRMED'
+  | 'AUTHORITATIVE_SOURCE_LOCATED'
+  | 'NOT_CONFIRMED_IN_PUBLIC_SOURCES'
+  | 'SEARCH_UNAVAILABLE'
+
+export type AuthoritativeSourceCheck = {
+  claimId: string
+  subject: 'LAW' | 'CASE' | 'PRIMARY_SOURCE'
+  status: AuthoritativeSourceCheckStatus
+  statement: string
+  checkedAt: string
+  provider: 'TAVILY'
+  authorityDomains: string[]
+  requestHash: `0x${string}`
+  responseHash?: `0x${string}`
+  source?: {
+    label: string
+    url: string
+    authorityDomain: string
+    excerpt: string
+  }
 }
 
 export type AdversarialReviewResult = {
@@ -67,7 +96,8 @@ export type AdversarialReviewResult = {
   claims: AdversarialClaimResult[]
   blindSpots: string[]
   nextActions: string[]
-  sources: Array<{ label: string; url: string; verifiedAt: string }>
+  sources: Array<{ label: string; url: string; verifiedAt: string; claimId?: string; authorityDomain?: string; status?: AuthoritativeSourceCheckStatus }>
+  sourceChecks?: AuthoritativeSourceCheck[]
   provenance: {
     provider: 'DEEPSEEK'
     model: string
@@ -87,6 +117,7 @@ const LEGAL_WORDS = /起诉状|答辩状|上诉状|代理意见|判决书|裁定
 const MONEY_WORDS = /投资|买入|卖出|交易|收益|估值|仓位|止损|代币|合约地址|流动性|回报率|investment|invest|trade|buy|sell|token|portfolio|valuation|return|liquidity/i
 const PLAN_WORDS = /方案|计划|路线图|产品|架构|预算|里程碑|上线|增长|商业模式|strategy|plan|roadmap|architecture|budget|milestone|launch|growth|business model/i
 const LEGAL_REFERENCE = /(?:《[^》]{1,80}》(?:第[一二三四五六七八九十百千万\d]+条)?|第[一二三四五六七八九十百千万\d]+条|(?:article|section)\s+\d+[a-z0-9().-]*)/gi
+const CASE_REFERENCE = /(?:[（(]\d{4}[）)][\u4e00-\u9fffA-Za-z0-9]{1,24}(?:民|刑|行|商|知|执|赔|破|非诉)[\u4e00-\u9fffA-Za-z0-9]{0,16}号|\b\d{1,4}\s+[A-Z][A-Za-z.]{0,12}\s+\d{1,6}\b|\b[A-Z][A-Za-z.&' -]{1,60}\s+v\.?\s+[A-Z][A-Za-z.&' -]{1,60}(?:\s+\(\d{4}\))?)/gi
 const CONTRACT_ADDRESS = /0x[a-fA-F0-9]{40}/g
 const URL_PATTERN = /https?:\/\/[^\s<>"'，。；）)\]]+/gi
 
@@ -158,8 +189,9 @@ function classifyClaim(text: string, profile: ReviewProfile): Omit<ReviewClaim, 
     }
   }
   CONTRACT_ADDRESS.lastIndex = 0
-  if (LEGAL_REFERENCE.test(text) || /法律|法规|法条|司法解释|statute|regulation|precedent/i.test(text)) {
+  if (LEGAL_REFERENCE.test(text) || CASE_REFERENCE.test(text) || /法律|法规|法条|司法解释|判例|案例|裁判|判决|裁定|statute|regulation|precedent|case\s+law/i.test(text)) {
     LEGAL_REFERENCE.lastIndex = 0
+    CASE_REFERENCE.lastIndex = 0
     return {
       kind: 'LEGAL_CITATION',
       verificationRoute: 'SOURCE_REQUIRED',
@@ -169,6 +201,7 @@ function classifyClaim(text: string, profile: ReviewProfile): Omit<ReviewClaim, 
     }
   }
   LEGAL_REFERENCE.lastIndex = 0
+  CASE_REFERENCE.lastIndex = 0
   if (URL_PATTERN.test(text) || /doi:|报告|研究|数据显示|according to|study|report|source/i.test(text)) {
     URL_PATTERN.lastIndex = 0
     return {
@@ -248,6 +281,7 @@ export function prepareReviewPreflight(input: ReviewPreflightInput): ReviewPrefl
   const contractAddresses = unique((text.match(CONTRACT_ADDRESS) ?? []).map((address) => address.toLowerCase() as `0x${string}`))
   const urls = unique(text.match(URL_PATTERN) ?? [])
   const legalReferences = unique(text.match(LEGAL_REFERENCE) ?? [])
+  const caseReferences = unique(text.match(CASE_REFERENCE) ?? [])
   const limitations: string[] = []
   if (profile === 'LEGAL') limitations.push('Legal citations are not marked verified until an authoritative jurisdiction-specific source answers the check.')
   if (profile === 'MONEY' && !contractAddresses.length) limitations.push('No contract address was detected; CrossExam can attack the thesis but cannot bind onchain evidence to an exact asset yet.')
@@ -261,7 +295,7 @@ export function prepareReviewPreflight(input: ReviewPreflightInput): ReviewPrefl
     claimCount: claims.length,
     verifiableClaimCount: claims.filter((claim) => claim.verificationRoute !== 'ARGUMENT_ONLY').length,
     claims,
-    detected: { contractAddresses, urls, legalReferences },
+    detected: { contractAddresses, urls, legalReferences, caseReferences },
     limitations,
   }
 }

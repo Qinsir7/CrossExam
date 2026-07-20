@@ -37,6 +37,10 @@ export type X402ServerConfig = {
     baseUrl: 'https://api.deepseek.com'
     model: string
   }
+  tavily?: {
+    apiKey: string
+    baseUrl: 'https://api.tavily.com'
+  }
 }
 
 export type ProcurementWorkerConfig = {
@@ -266,6 +270,13 @@ function deepSeekConfig(env: Environment): X402ServerConfig['deepSeek'] {
   return { apiKey, baseUrl, model }
 }
 
+function tavilyConfig(env: Environment): X402ServerConfig['tavily'] {
+  const apiKey = env.CROSSEXAM_TAVILY_API_KEY?.trim()
+  if (!apiKey) return undefined
+  if (!apiKey.startsWith('tvly-') || apiKey.length < 20) throw new Error('CROSSEXAM_TAVILY_API_KEY does not look like a Tavily API key.')
+  return { apiKey, baseUrl: 'https://api.tavily.com' }
+}
+
 /**
  * Worker-only configuration intentionally excludes seller payment credentials,
  * record issuer keys, and browser origins. The Railway worker should receive
@@ -352,5 +363,6 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
     allowedOrigins: allowedOrigins(env.CROSSEXAM_ALLOWED_ORIGINS),
     deepSeek: deepSeekConfig(env),
+    tavily: tavilyConfig(env),
   }
 }

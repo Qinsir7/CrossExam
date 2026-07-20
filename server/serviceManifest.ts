@@ -58,7 +58,7 @@ export function createServiceManifest(publicUrl?: string, serviceSignerAddress?:
       },
       {
         id: 'decision-assurance.adversarial-review', endpoint: endpoint('/api/v1/reviews'), paid: true,
-        description: 'Cross-examine every extracted claim, preserve all source-dependent facts as unresolved, and return an EIP-191-signed MODEL_ANALYZED verdict record.',
+        description: 'Cross-examine every extracted claim, run configured authority-domain source checks with explicit degraded states, and return an EIP-191-signed MODEL_ANALYZED verdict record without treating source discovery as full-claim proof.',
       },
       {
         id: 'decision-assurance.cross-examination', endpoint: endpoint('/api/v1/cross-examinations'), paid: false,

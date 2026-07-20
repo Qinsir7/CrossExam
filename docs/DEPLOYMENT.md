@@ -39,6 +39,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 - `CROSSEXAM_DEEPSEEK_API_KEY`: server-only DeepSeek key for the universal paid adversarial review. Never add it to Vercel or a `VITE_` variable.
 - `CROSSEXAM_DEEPSEEK_BASE_URL=https://api.deepseek.com`: pinned official API origin; arbitrary model endpoints are rejected.
 - `CROSSEXAM_DEEPSEEK_MODEL`: deployed model ID, currently `deepseek-v4-pro`.
+- `CROSSEXAM_TAVILY_API_KEY`: optional server-only key enabling authority-domain-restricted public-source checks for the universal review. Keep it in the API Railway service only, never Vercel or the procurement worker. Without it, the product continues honestly in reasoning-only mode.
 - `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`: seller-side facilitator credentials.
 - `CROSSEXAM_X402_SYNC=true`: production default. The server must synchronize supported payment kinds before it presents a paid route.
 - `CROSSEXAM_REVIEW_AUTHORIZATION_PRICE_USD`: full-review price floor. CrossExam automatically quotes higher-cost jobs upward to preserve the configured margin.

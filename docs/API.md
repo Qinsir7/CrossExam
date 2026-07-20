@@ -32,19 +32,37 @@ verdict: it never calls a candidate claim verified and never creates a record.
 
 ## Paid universal adversarial review
 
-`POST /api/v1/reviews` accepts `{ text, profile?, filename?, idempotencyKey? }`
-and requires a stable key either in the `Idempotency-Key` header or the JSON
-`idempotencyKey` field used by A2MCP parameter-only clients. Without a payment signature it returns the
+`POST /api/v1/reviews` accepts `{ text, profile?, filename?, idempotencyKey? }`.
+A stable key in the `Idempotency-Key` header or JSON `idempotencyKey` field is
+strongly recommended for replay-safe billing; A2MCP callers may instead supply
+`requestId`, `taskId`, or `messageId`. An unpaid probe with no key still reaches
+the standard x402 challenge before business validation, as required by A2MCP.
+Without a payment signature it returns the
 standard X Layer exact x402 challenge at the server-owned deep-review price.
 After settlement, the server calls its configured DeepSeek model, validates a
 bounded JSON result that addresses every extracted claim exactly once, and
 returns `preflight`, `analysis`, and an EIP-191-signed record reference.
+The submitted material is transmitted to DeepSeek for the paid analysis. When
+authority search is enabled, only bounded eligible claim/reference text is sent
+to Tavily; CrossExam requests source content from allowlisted domains and stores
+the resulting source-check metadata inside the signed review record.
 
 The signed record is labeled `MODEL_ANALYZED`, has effective independence `0`,
 and includes the model name plus request/response hashes. Claims that require a
 current law, citation, external source, number, or dedicated tool are forced to
-`UNRESOLVED` even if the model tried to call them supported. `sources` remains
-empty unless a real source adapter has supplied a URL and observation time.
+`UNRESOLVED` even if the model tried to call them supported.
+
+When `CROSSEXAM_TAVILY_API_KEY` is configured, eligible Legal, citation, and
+quantitative claims receive a bounded `sourceChecks` entry. Search is restricted
+to a jurisdiction-sensitive allowlist of government, legislature, and official
+court domains; returned URLs are post-filtered by hostname and matched to the
+exact extracted reference. Statutes are labeled `CURRENT_LAW_CONFIRMED` only
+when the matched official page contains an explicit current/in-force signal.
+Cases are labeled `CASE_PUBLIC_SOURCE_CONFIRMED` only when the exact citation is
+found on an official public court source. Otherwise the API reports status
+unclear, not confirmed in public sources, or search unavailable. These statuses
+confirm only the stated source fact—not jurisdiction, applicability,
+precedential weight, interpretation, numerical accuracy, or case outcome.
 For an exact supported X Layer trade, callers should use Transaction Preflight
 to purchase OKX/GoPlus evidence rather than treating model memory as onchain
 fact.

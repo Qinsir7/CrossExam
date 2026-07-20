@@ -4,12 +4,22 @@ Status: **strategic hold — draft only; no ASP identity or service update has b
 
 The 2026-07-18 independent audit found the current ASP still `not listed` / `Listing under review`. Do not submit this delta while that review is pending. First complete the winner-grade clean-browser demo gate in `BUILD_PLAN.md` Day 9.5, then re-check the platform status. This card is retained only for a later explicit owner decision after approval or a concrete rejection.
 
-Prepared against the read-only state of CrossExam ASP `#6065` on 2026-07-18:
+Re-checked against the read-only state of CrossExam ASP `#6065` on 2026-07-20:
 
 - the identity is online but not listed and remains under review;
 - the existing `Decision Assurance API` service is present at `GET|POST /api/v1/assurance/aggregate` for `0.02 USDT`;
 - the verified production API has x402 enabled, a healthy procurement worker, and a live signed-record issuer;
 - no existing service will be renamed, removed, repriced, or pointed to a different endpoint in this update.
+
+The marketplace's independent service list still shows the registered API
+service even though the identity detail envelope returns an empty embedded
+`serviceList`; the dedicated service-list response is the authoritative view.
+Both GET and POST to the registered endpoint currently return x402 v2 HTTP 402
+with `PAYMENT-REQUIRED`, X Layer `eip155:196`, USD₮0, the registered 0.02 USDT
+amount, the production recipient, and a 300-second timeout. Measured unpaid
+time-to-first-byte was below one second for both methods. The historical
+rejection text remains present in `approvalRemark`, while the current approval
+label is still `Listing under review`; neither signal is treated as approval.
 
 ## Safe service delta
 
@@ -18,6 +28,7 @@ Keep the existing legacy service unchanged. Add the following direct API service
 | Operation | Name | Type | Fee | Endpoint |
 |---|---|---:|---:|---|
 | unchanged | Decision Assurance API | API service | 0.02 USDT | `https://api.cross-exam.xyz/api/v1/assurance/aggregate` |
+| create | Adversarial Decision Review ✏️ | API service | 0.20 USDT | `https://api.cross-exam.xyz/api/v1/reviews` |
 | create | Transaction Preflight ✏️ | API service | 0.02 USDT | `https://api.cross-exam.xyz/api/v1/preflight/transaction` |
 | create | Agent Trust Check ✏️ | API service | 0.02 USDT | `https://api.cross-exam.xyz/api/v1/preflight/asp` |
 | create | Verify Assurance Record ✏️ | API service | 0 USDT | `https://api.cross-exam.xyz/api/v1/assurance/verify` |
@@ -25,6 +36,12 @@ Keep the existing legacy service unchanged. Add the following direct API service
 `✏️` means the name and two-part description below are editorial drafts based on the established product contract and need the owner's review before an update.
 
 ## Exact service text
+
+### Adversarial Decision Review ✏️
+
+① Cross-examines Legal, Money, Plan, or general material, checks eligible public official sources, and returns a signed verdict with explicit unresolved evidence.
+
+② Provide the decision, document, trade thesis, or plan as text with an optional profile and filename.
 
 ### Transaction Preflight ✏️
 
@@ -52,6 +69,6 @@ Do **not** list the internal worker, review-job, result, ledger, recovery, publi
 
 ## Required owner decision before any update
 
-1. Confirm that the three drafted services and their English copy are acceptable.
+1. Confirm that the four drafted services and their English copy are acceptable.
 2. Confirm that adding services while the current listing remains under review will not be avoided in favor of a clean re-review.
 3. Explicitly authorize the external service update; only then may the listing be validated and submitted.

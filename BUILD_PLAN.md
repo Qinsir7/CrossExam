@@ -104,6 +104,9 @@ Current implementation order for Product V2:
 - [x] Add the three-stage responsive UI and remove the old transaction form from the public entry.
 - [x] Add concise verdict image export and sanitized share flow.
 - [x] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
+- [x] Add authority-domain-restricted public-source checks with explicit law/case degradation semantics.
+- [x] Make the universal paid review probe-first x402/A2MCP compatible and normalize common agent envelopes.
+- [ ] Configure a real server-side search key and pass one paid production source-check acceptance.
 - [ ] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
 
 Evidence (2026-07-19, Product V2 intake): `/api/v1/intake/files` is mounted
@@ -157,6 +160,33 @@ against the manifest signer. Replaying the exact input and idempotency key
 without another payment returned HTTP 200, `Idempotent-Replay: true`, the same
 record ID, and `persistence: EXISTING`. No payer address, access capability,
 payment authorization, or private record URL is retained in this evidence note.
+
+Evidence (2026-07-20, authority-source and ASP hardening): the optional Tavily
+adapter searches at most six material eligible claims per review using a
+jurisdiction-sensitive allowlist of legislature, government, and official
+court domains. CrossExam post-validates every HTTPS hostname, matches results
+back to the extracted law/case reference, hashes the request and raw response,
+and persists only bounded source excerpts. A statute is called current only
+when the matched official content contains an explicit current/in-force status
+signal; an exact case citation must appear on an official public court source.
+All other outcomes are explicit status-unclear, not-confirmed, or
+search-unavailable states. Even a confirmed source slice leaves the full legal
+claim unresolved because applicability, jurisdiction, interpretation, and
+precedential weight were not verified. Non-authority search results are
+rejected in tests.
+
+The universal paid endpoint now accepts top-level and nested A2MCP
+`text`/`prompt`/`query`/`input` envelopes plus common platform request IDs. An
+unpaid request without an idempotency key reaches the official x402 middleware
+before business validation, so an empty marketplace probe receives 402 rather
+than a pre-payment 422. The currently registered GET/POST aggregate endpoint
+was not changed: live read-only probes returned HTTP 402 with a decodable x402
+v2 `PAYMENT-REQUIRED` challenge, `eip155:196`, the official USD₮0 asset, the
+registered 0.02 USDT amount, the production recipient, and a 300-second
+timeout; measured time-to-first-byte was below one second for both methods.
+ASP #6065 remains `Listing under review`, not approved. A real Tavily key and a
+paid production source-check remain deliberately unclaimed and require the
+owner's Railway configuration action.
 
 ## 1. Product decision — do not reinterpret
 
@@ -1513,12 +1543,12 @@ The final product is complete for submission only when all of the following are 
 
 ### Engineering
 
-- [ ] Lint, tests, and build pass.
-- [ ] No tracked secrets.
-- [ ] No production dependency vulnerability at high/critical severity.
-- [ ] API and worker health are green.
+- [x] Lint, tests, and build pass.
+- [x] No tracked secrets.
+- [x] No production dependency vulnerability at high/critical severity.
+- [x] API and worker health are green.
 - [ ] Every listed paid endpoint passes standard 402 and paid replay acceptance.
-- [ ] Existing registered aggregate endpoint remains compatible.
+- [x] Existing registered aggregate endpoint remains compatible.
 - [ ] Mobile and desktop primary flows pass visual inspection.
 
 ### Marketplace/submission

@@ -36,7 +36,8 @@ import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
 import { extractDocument } from './documentIntake'
 import { prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
 import { DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
-import { preparePaidAdversarialReview, type AdversarialReviewProvider } from './adversarialReview'
+import { preparePaidAdversarialReview, type AdversarialReviewProvider, type AuthoritativeSourceVerifier } from './adversarialReview'
+import { TavilyAuthoritativeSourceVerifier } from './authoritativeSourceVerifier'
 
 const assuranceRoute = 'POST /api/v1/assurance/aggregate'
 const assuranceGetRoute = 'GET /api/v1/assurance/aggregate'
@@ -46,14 +47,17 @@ const transactionPreflightRoute = 'POST /api/v1/preflight/transaction'
 const aspTrustRoute = 'POST /api/v1/preflight/asp'
 const paidReviewRoute = 'POST /api/v1/reviews'
 
-function paidReviewInput(request: express.Request): ReviewPreflightInput & { idempotencyKey?: string } {
+export function paidReviewInput(request: express.Request): ReviewPreflightInput & { idempotencyKey?: string } {
   const rawBody = request.body && !Array.isArray(request.body) && typeof request.body === 'object' ? request.body as Record<string, unknown> : {}
   const nested = rawBody.params && !Array.isArray(rawBody.params) && typeof rawBody.params === 'object' ? rawBody.params as Record<string, unknown> : {}
-  const value = (key: string) => rawBody[key] ?? nested[key] ?? request.query[key]
-  const text = value('text')
+  const inputEnvelope = (rawBody.input && !Array.isArray(rawBody.input) && typeof rawBody.input === 'object' ? rawBody.input
+    : nested.input && !Array.isArray(nested.input) && typeof nested.input === 'object' ? nested.input : {}) as Record<string, unknown>
+  const value = (key: string) => rawBody[key] ?? nested[key] ?? inputEnvelope[key] ?? request.query[key]
+  const directInput = rawBody.input ?? nested.input
+  const text = value('text') ?? value('prompt') ?? value('query') ?? (typeof directInput === 'string' ? directInput : undefined)
   const profile = value('profile')
   const filename = value('filename')
-  const idempotencyKey = request.header('idempotency-key') ?? value('idempotencyKey')
+  const idempotencyKey = request.header('idempotency-key') ?? value('idempotencyKey') ?? value('requestId') ?? value('taskId') ?? value('messageId')
   return {
     text: typeof text === 'string' ? text : '',
     ...(typeof profile === 'string' ? { profile: profile as ReviewPreflightInput['profile'] } : {}),
@@ -62,7 +66,7 @@ function paidReviewInput(request: express.Request): ReviewPreflightInput & { ide
   }
 }
 
-export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; adversarialProvider?: AdversarialReviewProvider; dexQuoteFetcher?: typeof fetch } = {}) {
+export function createCrossExamX402App(config: X402ServerConfig, dependencies: { recordStore?: AssuranceRecordStore; idempotencyStore?: AssuranceIdempotencyStore; jobStore?: ReviewJobStore; preflightProvider?: ExternalReviewProvider; adversarialProvider?: AdversarialReviewProvider; sourceVerifier?: AuthoritativeSourceVerifier; dexQuoteFetcher?: typeof fetch } = {}) {
   // A2MCP calls must return promptly after replay. This client deliberately
   // uses the official SDK's asynchronous settlement default.
   const assuranceFacilitator = new OKXFacilitatorClient({
@@ -103,6 +107,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     okxMarketCredentials: { apiKey: config.okxApiKey, secretKey: config.okxSecretKey, passphrase: config.okxPassphrase },
   })
   const adversarialProvider = dependencies.adversarialProvider ?? (config.deepSeek ? new DeepSeekAdversarialProvider(config.deepSeek) : undefined)
+  const sourceVerifier = dependencies.sourceVerifier ?? (config.tavily ? new TavilyAuthoritativeSourceVerifier(config.tavily) : undefined)
 
   const reviewAuthorizationAmountAtomic = (job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) => BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
 
@@ -264,6 +269,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
           available: Boolean(adversarialProvider),
           priceUsd: config.deepReviewPriceUsd,
           ...(adversarialProvider ? { provider: 'DEEPSEEK' as const } : {}),
+          authoritySearchAvailable: Boolean(sourceVerifier),
         },
       })
     } catch (error) {
@@ -775,18 +781,15 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       response.status(503).json({ error: 'ADVERSARIAL_REVIEW_UNAVAILABLE', message: 'The paid adversarial-review provider is not configured.' })
       return
     }
-    const input = paidReviewInput(request)
-    if (!input.idempotencyKey) {
-      response.status(422).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Paid review requires an Idempotency-Key header or idempotencyKey JSON field so payment and analysis cannot be accidentally repeated.' })
-      return
-    }
     try {
-      const preflight = prepareReviewPreflight(input)
-      if (preflight.characterCount > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
+      // A2MCP compliance requires the unpaid call—even an empty curl probe—to
+      // reach the standard x402 challenge before business-parameter validation.
+      // Browser and SDK clients still send a stable idempotency key; generic
+      // agent callers may use idempotencyKey/requestId/taskId/messageId.
       if (!await servePaidReviewReplay(request, response)) next()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Paid adversarial review input is invalid.'
-      response.status(422).json({ error: 'ADVERSARIAL_REVIEW_REJECTED', message })
+      const message = error instanceof Error ? error.message : 'Invalid paid-review replay key.'
+      response.status(400).json({ error: 'IDEMPOTENCY_KEY_REJECTED', message })
     }
   })
 
@@ -933,7 +936,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     try {
       if (!adversarialProvider) throw new Error('The paid adversarial-review provider is not configured.')
       if (!config.serviceSigningKey) throw new Error('Paid adversarial review requires a configured service signing key.')
-      const prepared = await preparePaidAdversarialReview(paidReviewInput(request), adversarialProvider)
+      const prepared = await preparePaidAdversarialReview(paidReviewInput(request), adversarialProvider, undefined, sourceVerifier)
       const record = await attestDecisionAssuranceRecord(prepared.record, config.serviceSigningKey)
       const persistence = await recordStore.save(record)
       await persistIdempotency(response, record.recordId)

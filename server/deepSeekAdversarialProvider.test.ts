@@ -27,6 +27,25 @@ describe('DeepSeek adversarial provider', () => {
     expect(result.verdict).toBe('REFUTED')
   })
 
+  it('keeps a law claim unresolved while exposing only the verified source-status slice', async () => {
+    const text = '根据《中华人民共和国民法典》第五百七十七条，对方必须承担违约责任。'
+    const preflight = prepareReviewPreflight({ text, profile: 'LEGAL' })
+    const claims = preflight.claims.map((claim) => ({ claimId: claim.id, verdict: 'SURVIVED', strongestAttack: 'Applicability still depends on the facts.', reasoning: 'Current status does not establish that every element is met.', blindSpot: 'Jurisdiction and elements are incomplete.' }))
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: 'Current source, unresolved application', strongestAttack: 'The cited rule may not apply to the stated facts.', claims, blindSpots: ['Elements not mapped'], nextActions: ['Map each element to evidence'] }) } }] }), { status: 200 }))
+    const check = {
+      claimId: preflight.claims[0].id, subject: 'LAW' as const, status: 'CURRENT_LAW_CONFIRMED' as const,
+      statement: 'Current status confirmed only.', checkedAt: '2026-07-20T00:00:00.000Z', provider: 'TAVILY' as const,
+      authorityDomains: ['flk.npc.gov.cn'], requestHash: `0x${'1'.repeat(64)}` as const, responseHash: `0x${'2'.repeat(64)}` as const,
+      source: { label: '中华人民共和国民法典', url: 'https://flk.npc.gov.cn/detail2.html', authorityDomain: 'flk.npc.gov.cn', excerpt: '效力状态：有效' },
+    }
+    const result = await new DeepSeekAdversarialProvider(config, fetchImpl).review(text, preflight, [check])
+
+    expect(result.claims[0]).toMatchObject({ verdict: 'UNRESOLVED', verificationStatus: 'AUTHORITATIVE_SOURCE_PARTIAL' })
+    expect(result.sources[0]).toMatchObject({ status: 'CURRENT_LAW_CONFIRMED', authorityDomain: 'flk.npc.gov.cn' })
+    const requestBody = JSON.parse(fetchImpl.mock.calls[0][1]!.body as string) as { messages: Array<{ content: string }> }
+    expect(requestBody.messages[1].content).toContain('CURRENT_LAW_CONFIRMED')
+  })
+
   it('rejects missing claims and does not leak response content in its error', async () => {
     const preflight = prepareReviewPreflight({ text: 'We should launch next quarter because customer demand is strong and the architecture is ready.', profile: 'PLAN' })
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"headline":"bad","claims":[]}' } }] }), { status: 200 }))

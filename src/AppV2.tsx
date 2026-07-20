@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react'
-import type { AdversarialReviewResult, ReviewPreflight, ReviewProfile } from './domain/generalReview'
+import type { AdversarialReviewResult, AuthoritativeSourceCheck, AuthoritativeSourceCheckStatus, ReviewPreflight, ReviewProfile } from './domain/generalReview'
 import type { PaidAdversarialReviewResponse } from './domain/assuranceContracts'
 import { ReviewJobClient } from './sdk/reviewJobClient'
 import { displayUsdt0 } from './sdk/browserX402'
@@ -18,7 +18,7 @@ const profiles: Array<{
   {
     id: 'LEGAL', label: 'Legal', title: 'Document or contract',
     hint: 'Optional: include the opposing document or case background. A single document is enough to start.',
-    preview: 'Checks legal references, citations and dates where sources exist — then argues the strongest opposing case.',
+    preview: 'Searches public official sources for cited law and cases, then argues the strongest opposing case. Anything not confirmed stays unresolved.',
     placeholder: 'Paste a pleading, response, appeal, legal opinion, or contract draft…',
   },
   {
@@ -43,6 +43,20 @@ const profiles: Array<{
 
 function profileCopy(profile: ReviewProfile) {
   return profiles.find((item) => item.id === profile) ?? profiles[3]
+}
+
+const sourceStatusCopy: Record<AuthoritativeSourceCheckStatus, { label: string; tone: 'confirmed' | 'warning' | 'unknown' }> = {
+  CURRENT_LAW_CONFIRMED: { label: 'Current status confirmed', tone: 'confirmed' },
+  REPEALED_OR_SUPERSEDED: { label: 'Repeal signal found', tone: 'warning' },
+  OFFICIAL_SOURCE_FOUND_STATUS_UNCLEAR: { label: 'Official source · status unclear', tone: 'unknown' },
+  CASE_PUBLIC_SOURCE_CONFIRMED: { label: 'Case found in official source', tone: 'confirmed' },
+  AUTHORITATIVE_SOURCE_LOCATED: { label: 'Authoritative source located', tone: 'confirmed' },
+  NOT_CONFIRMED_IN_PUBLIC_SOURCES: { label: 'Not confirmed in public sources', tone: 'unknown' },
+  SEARCH_UNAVAILABLE: { label: 'Source check unavailable', tone: 'unknown' },
+}
+
+function sourceCheckTitle(check: AuthoritativeSourceCheck) {
+  return check.subject === 'LAW' ? 'Law status' : check.subject === 'CASE' ? 'Case citation' : 'Primary source'
 }
 
 function escapeXml(value: string) {
@@ -83,7 +97,7 @@ function DeveloperPage() {
     <section>
       <p className="overline">For agents</p>
       <h1>Before your agent acts,<br /><em>make it survive.</em></h1>
-      <p>CrossExam exposes action-bound review through API and A2MCP. The production X Layer route uses standard OKX x402 payment, traceable evidence, signed records, and a fail-closed execution gate.</p>
+        <p>One adversarial-review primitive for agents and people: structured inputs, explicit evidence boundaries, signed records, and standard OKX x402 payment on X Layer.</p>
       <pre><code>{`const verdict = await crossExam.preflightTransaction(tx, {
   intent: "Buy only if the thesis survives",
   valueAtRiskUsd: 5000,
@@ -226,9 +240,9 @@ export default function AppV2() {
 
     {stage === 'INPUT' && <main className="input-screen">
       <section className="intro-copy">
-        <p className="overline">Adversarial review for consequential decisions</p>
+        <p className="overline">Cross-examine before committing</p>
         <h1>Before you act,<br /><em>make it survive.</em></h1>
-        <p>Paste what you are about to rely on. CrossExam finds the claims, attacks the logic, and separates what is proven from what only sounds convincing.</p>
+        <p>Paste the thing you are about to rely on. Get one clear verdict, the strongest attack, and the evidence still missing.</p>
       </section>
 
       <section className="intake-card" aria-label="Start a CrossExam review">
@@ -239,8 +253,8 @@ export default function AppV2() {
           <div className="input-heading"><span>{copy.title}</span>{filename && <button type="button" onClick={() => { setFilename(undefined); setText(''); setPreflight(null) }}>Remove {filename}</button>}</div>
           <textarea value={text} onChange={(event) => { setText(event.target.value); setFilename(undefined); setPreflight(null); setError(null) }} placeholder={copy.placeholder} aria-label="Material to cross-examine" rows={11} />
           <div className="upload-row">
-            <input ref={fileInput} type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void handleFile(event.target.files?.[0])} />
-            <button type="button" onClick={() => fileInput.current?.click()} disabled={busy}><span>＋</span> Upload TXT, MD, DOCX, or PDF</button>
+            <input id="cross-exam-file" ref={fileInput} aria-label="Upload TXT, Markdown, DOCX, or PDF" disabled={busy} type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void handleFile(event.target.files?.[0])} />
+            <label htmlFor="cross-exam-file" aria-disabled={busy}><span>＋</span> Upload TXT, MD, DOCX, or PDF</label>
             <small>{text.length.toLocaleString()} / 200,000</small>
           </div>
         </div>
@@ -259,21 +273,21 @@ export default function AppV2() {
         <h1>{preflight.claimCount} claims.<br /><em>Every premise exposed.</em></h1>
         <p>{preflight.inferredDocumentType} · {preflight.verifiableClaimCount} claims can be routed to evidence checks.</p>
       </section>
-      <section className="process-card" aria-live="polite">
-        <div className="process-summary"><span className="process-pulse">✓</span><div><strong>Material understood</strong><p>CrossExam decomposed the document without asking you to build a form.</p></div></div>
+      <section className="process-card" aria-live="polite" aria-busy={paidState === 'ANALYZING'}>
+        <div className={`process-summary ${paidState === 'ANALYZING' ? 'running' : ''}`}><span className="process-pulse">{paidState === 'ANALYZING' ? '×' : '✓'}</span><div><strong>{paidState === 'ANALYZING' ? 'Cross-examination in progress' : 'Material understood'}</strong><p>{paidState === 'ANALYZING' ? (preflight.paidReview?.authoritySearchAvailable ? 'Attacking every claim and checking eligible citations against public official sources.' : 'Attacking every claim and preserving every unsupported fact as unresolved.') : 'Claims, hidden premises, and verification routes are mapped.'}</p></div></div>
         <ol className="claim-process">
           {preflight.claims.map((claim) => <li key={claim.id}>
             <span className={`route-dot ${claim.verificationRoute.toLowerCase()}`} aria-hidden="true" />
             <div><small>{claim.id} · {claim.kind.replaceAll('_', ' ')}</small><p>{claim.text}</p><strong>{claim.reviewTask}</strong></div>
-            <b>{claim.verificationRoute === 'TOOL_READY' ? 'Tool found' : claim.verificationRoute === 'SOURCE_REQUIRED' ? 'Needs source' : 'Attack mapped'}</b>
+            <b>{paidState === 'ANALYZING' ? (claim.verificationRoute === 'SOURCE_REQUIRED' ? 'Checking source…' : claim.verificationRoute === 'TOOL_READY' ? 'Checking tool…' : 'Attacking…') : claim.verificationRoute === 'TOOL_READY' ? 'Tool ready' : claim.verificationRoute === 'SOURCE_REQUIRED' ? 'Source queued' : 'Attack mapped'}</b>
           </li>)}
         </ol>
-        <div className="truth-line"><span>{toolReady.length} tool-ready</span><span>{sourceRequired.length} source checks</span><span>{attackOnly.length} argument attacks</span></div>
+        <div className="truth-line"><span>{toolReady.length} tool checks</span><span>{sourceRequired.length} source checks</span><span>{attackOnly.length} logic attacks</span>{preflight.paidReview?.authoritySearchAvailable && <span className="truth-ready">Official-source search ready</span>}</div>
         {error && <p className="intake-error review-error" role="alert">{error}</p>}
         <button className="survive-button compact" type="button" disabled={!preflight.paidReview?.available || paidState !== 'IDLE'} onClick={() => void runPaidReview()}>
           {paidState === 'WALLET' ? 'Waiting for wallet…' : paidState === 'ANALYZING' ? 'Cross-examining every claim…' : preflight.paidReview?.available ? `Run full cross-examination · ${preflight.paidReview.priceUsd} USDT0` : 'Full review temporarily unavailable'}<span>→</span>
         </button>
-        <p className="paid-note">One x402 payment. The model analysis and truth boundaries are sealed into a signed record.</p>
+        <p className="paid-note">Paid review sends the material to DeepSeek and eligible citation excerpts to Tavily when source search is enabled. The signed result is stored.</p>
       </section>
     </main>}
 
@@ -294,7 +308,18 @@ export default function AppV2() {
           <section><h3>What would resolve it</h3>{paidReview.analysis.nextActions.slice(0, 4).map((action, index) => <div className="finding resolve" key={`${index}-${action}`}><span>＋</span><p>{action}</p></div>)}</section>
         </div>
 
-        <div className="honesty-block"><strong>Verification boundary</strong><p>{paidReview.analysis.claims.filter((claim) => claim.verificationStatus !== 'MODEL_REASONING_ONLY').length} claim(s) still require an external source or dedicated tool. Model reasoning is not presented as verified fact.</p>{paidReview.analysis.sources.map((source) => <p key={source.url}><a href={source.url}>{source.label}</a></p>)}</div>
+        {(paidReview.analysis.sourceChecks?.length ?? 0) > 0 && <section className="source-ledger" aria-label="Source verification results">
+          <div className="source-ledger-heading"><div><span>Evidence checks</span><h3>What the public record can — and cannot — confirm</h3></div><b>{paidReview.analysis.sourceChecks!.filter((check) => Boolean(check.source)).length}/{paidReview.analysis.sourceChecks!.length} sources located</b></div>
+          <div className="source-checks">{paidReview.analysis.sourceChecks!.map((check) => {
+            const status = sourceStatusCopy[check.status]
+            return <article className={`source-check source-${status.tone}`} key={`${check.claimId}-${check.requestHash}`}>
+              <div><small>{check.claimId} · {sourceCheckTitle(check)}</small><strong>{status.label}</strong></div>
+              <p>{check.statement}</p>
+              {check.source ? <a href={check.source.url} target="_blank" rel="noreferrer">Open {check.source.authorityDomain} source ↗</a> : <span>No source link was accepted</span>}
+            </article>
+          })}</div>
+        </section>}
+        <div className="honesty-block"><strong>Truth boundary</strong><p>{paidReview.analysis.claims.filter((claim) => claim.verificationStatus === 'REQUIRES_EXTERNAL_SOURCE' || claim.verificationStatus === 'TOOL_CHECK_REQUIRED').length} claim(s) remain unverified. A source link confirms only the status written above; it does not prove legal applicability, interpretation, or the whole decision.</p></div>
         <div className="result-actions"><button type="button" onClick={downloadCard}>Download card</button><button type="button" onClick={() => void share()}>Share verdict</button>{preflight.profile === 'MONEY' && preflight.detected.contractAddresses.length > 0 && <a href="/check/transaction">Run live onchain checks</a>}<button className="primary" type="button" onClick={reset}>Review another</button></div>
         {shareFeedback && <p className="share-feedback" aria-live="polite">{shareFeedback}</p>}
         <p className="result-boundary">Record {paidReview.record.recordId} · {paidReview.record.attributionStatus} · signed by {paidReview.record.serviceAttestation.signer.slice(0, 10)}… · {paidReview.analysis.provenance.model}</p>

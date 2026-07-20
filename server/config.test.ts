@@ -73,6 +73,12 @@ describe('loadX402ServerConfig', () => {
     })).toThrow(/exactly/)
   })
 
+  it('loads Tavily authority search only from a server-side key', () => {
+    const configured = loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_TAVILY_API_KEY: 'tvly-test-not-a-real-key-1234567890' })
+    expect(configured.tavily).toEqual({ apiKey: 'tvly-test-not-a-real-key-1234567890', baseUrl: 'https://api.tavily.com' })
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_TAVILY_API_KEY: 'not-a-tavily-key' })).toThrow('Tavily')
+  })
+
   it('does not permit a paid seller to issue unsigned assurance records', () => {
     const { CROSSEXAM_SERVICE_SIGNING_KEY: _signingKey, ...unsigned } = validEnvironment
     expect(() => loadX402ServerConfig(unsigned)).toThrow('SERVICE_SIGNING_KEY')
