@@ -63,8 +63,11 @@ function claimReferences(preflight: ReviewPreflight, claim: ReviewClaim, subject
 
 function queryFor(preflight: ReviewPreflight, claim: ReviewClaim, subject: AuthoritativeSourceCheck['subject']) {
   const references = claimReferences(preflight, claim, subject)
-  if (references.length) return `${references.slice(0, 3).map((item) => `"${item}"`).join(' ')} ${subject === 'LAW' ? '现行有效 效力状态' : subject === 'CASE' ? '裁判文书 判决' : 'official source'}`.slice(0, 600)
-  return claim.text.replace(/\s+/g, ' ').slice(0, 560)
+  // Tavily recommends concise queries below 400 characters. Keeping the
+  // exact citation gives the search engine a stable lookup key without
+  // sending the rest of a potentially sensitive document.
+  if (references.length) return `${references.slice(0, 3).map((item) => `"${item}"`).join(' ')} ${subject === 'LAW' ? '现行有效 效力状态' : subject === 'CASE' ? '裁判文书 判决' : 'official source'}`.slice(0, 380)
+  return claim.text.replace(/\s+/g, ' ').slice(0, 380)
 }
 
 function parseSearchResults(value: unknown, domains: string[]): SearchResult[] {
@@ -158,7 +161,6 @@ export class TavilyAuthoritativeSourceVerifier {
         include_raw_content: 'text',
         include_images: false,
         include_domains: domains,
-        safe_search: true,
       })
       const base = {
         claimId: claim.id,

@@ -48,4 +48,17 @@ describe('authority-domain source verifier', () => {
     expect(checks[0].status).toBe('SEARCH_UNAVAILABLE')
     expect(checks[0].source).toBeUndefined()
   })
+
+  it('uses only documented Tavily search fields and keeps the bounded query below 400 characters', async () => {
+    const preflight = prepareReviewPreflight({ text: `根据《${'中华人民共和国'.repeat(60)}民法典》第五百七十七条，对方必须承担违约责任。`, profile: 'LEGAL' })
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ results: [] }), { status: 200 }))
+
+    await new TavilyAuthoritativeSourceVerifier(config, fetchImpl).verify(preflight)
+
+    const request = fetchImpl.mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as Record<string, unknown>
+    expect(String(body.query).length).toBeLessThanOrEqual(380)
+    expect(body).not.toHaveProperty('safe_search')
+    expect(body).toMatchObject({ search_depth: 'basic', max_results: 5, include_raw_content: 'text' })
+  })
 })
