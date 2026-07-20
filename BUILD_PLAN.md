@@ -106,8 +106,8 @@ Current implementation order for Product V2:
 - [x] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
 - [x] Add authority-domain-restricted public-source checks with explicit law/case degradation semantics.
 - [x] Make the universal paid review probe-first x402/A2MCP compatible and normalize common agent envelopes.
-- [ ] Configure a real server-side search key and pass one paid production source-check acceptance.
-- [ ] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
+- [x] Configure a real server-side search key and pass one paid production source-check acceptance.
+- [x] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
 
 Evidence (2026-07-19, Product V2 intake): `/api/v1/intake/files` is mounted
 before the JSON parser and extracts TXT/Markdown, DOCX (Mammoth), and text-based
@@ -187,6 +187,38 @@ timeout; measured time-to-first-byte was below one second for both methods.
 ASP #6065 remains `Listing under review`, not approved. A real Tavily key and a
 paid production source-check remain deliberately unclaimed and require the
 owner's Railway configuration action.
+
+Evidence (2026-07-20, real authority-search acceptance): the owner configured
+the server-only Tavily key on the Railway API service and production preflight
+reported `authoritySearchAvailable: true`. A fresh paid Legal review settled
+exactly `0.20 USD₮0` on X Layer in transaction
+`0xbd0f8b24d9f8921281a929b3c950b36e581af5bae01f139a19fba3da7fbf42da`.
+All three bounded source searches returned real response hashes rather than
+`SEARCH_UNAVAILABLE`; the deliberately nonexistent case citation was reported
+`NOT_CONFIRMED_IN_PUBLIC_SOURCES` with the required human-verification advice,
+and no law or case was promoted to verified. The run exposed one irrelevant
+official-domain article attached to an uncited instruction sentence. That
+acceptance finding was fixed by requiring exact extracted legal citations,
+matching law title and article separately, accepting low-score results only
+when the exact citation is present, and rejecting authority-domain relevance
+alone. Focused tests now cover the production failure shape and the national
+legal database's explicit `有效` signal. The stored `MODEL_ANALYZED` record
+verified cryptographically against the signer pinned in the live manifest;
+an unpaid exact replay returned HTTP 200 with `Idempotent-Replay: true` and no
+second transaction.
+
+Evidence (2026-07-20, final local and public compatibility pass): all 206 tests,
+TypeScript checking, and the production Vite build pass. Production-only npm
+dependencies report zero vulnerabilities. The public site returns HTTPS 200
+with its canonical title, strict CSP, frame denial, no-referrer policy, and an
+origin-restricted API connection policy. `/health`, `/ready`, and discovery are
+healthy; empty POST probes to the universal review and registered aggregate
+routes return standard x402 v2 `402 Payment Required` challenges on
+`eip155:196`, while a complete free preflight reports its real claim map and
+provider availability. Prior responsive checks at 320, 375, 390, 768, 1024,
+and 1440 CSS pixels found no horizontal overflow, and the public flow exposes
+no private wallet key, payment signature, database credential, or record read
+capability before a paid response.
 
 ## 1. Product decision — do not reinterpret
 

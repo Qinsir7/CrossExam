@@ -20,6 +20,21 @@ describe('authority-domain source verifier', () => {
     expect(checks[0].statement).toContain('status only')
   })
 
+  it('accepts an exact law title plus explicit valid status from the national legal database', async () => {
+    const preflight = prepareReviewPreflight({ text: '根据《中华人民共和国民法典》第五百七十七条，对方必须承担违约责任。', profile: 'LEGAL' })
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ results: [{
+      title: '中华人民共和国民法典-国家法律法规数据库',
+      url: 'https://flk.npc.gov.cn/detail?id=civil-code',
+      content: '中华人民共和国民法典 有效 第五百七十七条',
+      raw_content: '中华人民共和国民法典 有效 第五百七十七条 当事人一方不履行合同义务。',
+      score: 0.12,
+    }] }), { status: 200 }))
+
+    const checks = await new TavilyAuthoritativeSourceVerifier(config, fetchImpl).verify(preflight)
+
+    expect(checks[0]).toMatchObject({ status: 'CURRENT_LAW_CONFIRMED', source: { authorityDomain: 'flk.npc.gov.cn' } })
+  })
+
   it('rejects a convincing result from a non-authority domain', async () => {
     const preflight = prepareReviewPreflight({ text: '根据《中华人民共和国民法典》第五百七十七条，对方必须承担违约责任。', profile: 'LEGAL' })
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ results: [{
@@ -38,6 +53,22 @@ describe('authority-domain source verifier', () => {
 
     expect(checks[0]).toMatchObject({ subject: 'CASE', status: 'NOT_CONFIRMED_IN_PUBLIC_SOURCES' })
     expect(checks[0].statement).toContain('Human verification is recommended')
+  })
+
+  it('does not attach an unrelated official legal article when a legal claim has no exact citation', async () => {
+    const preflight = prepareReviewPreflight({ text: '请核验法条是否仍然有效，并攻击从这些材料直接推出立即和解的逻辑。', profile: 'LEGAL' })
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ results: [{
+      title: '数字检察应用中心成为数字化办案中枢',
+      url: 'https://www.spp.gov.cn/spp/example.shtml',
+      content: '检察机关研发法律监督模型。',
+      raw_content: '检察机关研发法律监督模型，与合同和解无关。',
+      score: 0.98,
+    }] }), { status: 200 }))
+
+    const checks = await new TavilyAuthoritativeSourceVerifier(config, fetchImpl).verify(preflight)
+
+    expect(checks[0]).toMatchObject({ status: 'NOT_CONFIRMED_IN_PUBLIC_SOURCES', subject: 'LAW' })
+    expect(checks[0].source).toBeUndefined()
   })
 
   it('fails closed when search is unavailable', async () => {

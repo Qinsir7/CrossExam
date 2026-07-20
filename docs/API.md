@@ -55,8 +55,10 @@ current law, citation, external source, number, or dedicated tool are forced to
 When `CROSSEXAM_TAVILY_API_KEY` is configured, eligible Legal, citation, and
 quantitative claims receive a bounded `sourceChecks` entry. Search is restricted
 to a jurisdiction-sensitive allowlist of government, legislature, and official
-court domains; returned URLs are post-filtered by hostname and matched to the
-exact extracted reference. Statutes are labeled `CURRENT_LAW_CONFIRMED` only
+court domains; returned URLs are post-filtered by hostname. Legal sources are
+attached only when the exact extracted case citation is present, or when both
+the extracted law title and article are present—an official hostname or search
+score alone is never enough. Statutes are labeled `CURRENT_LAW_CONFIRMED` only
 when the matched official page contains an explicit current/in-force signal.
 Cases are labeled `CASE_PUBLIC_SOURCE_CONFIRMED` only when the exact citation is
 found on an official public court source. Otherwise the API reports status

@@ -57,7 +57,11 @@ function subjectFor(claim: ReviewClaim): AuthoritativeSourceCheck['subject'] {
 }
 
 function claimReferences(preflight: ReviewPreflight, claim: ReviewClaim, subject: AuthoritativeSourceCheck['subject']) {
-  const references = subject === 'CASE' ? preflight.detected.caseReferences : preflight.detected.legalReferences
+  const references = subject === 'CASE'
+    ? preflight.detected.caseReferences
+    : subject === 'LAW'
+      ? preflight.detected.legalReferences
+      : preflight.detected.urls
   return references.filter((reference) => claim.text.includes(reference))
 }
 
@@ -66,7 +70,7 @@ function queryFor(preflight: ReviewPreflight, claim: ReviewClaim, subject: Autho
   // Tavily recommends concise queries below 400 characters. Keeping the
   // exact citation gives the search engine a stable lookup key without
   // sending the rest of a potentially sensitive document.
-  if (references.length) return `${references.slice(0, 3).map((item) => `"${item}"`).join(' ')} ${subject === 'LAW' ? '现行有效 效力状态' : subject === 'CASE' ? '裁判文书 判决' : 'official source'}`.slice(0, 380)
+  if (references.length) return `${references.slice(0, 3).map((item) => item.replace(/[《》“”"']/g, ' ')).join(' ')} ${subject === 'LAW' ? '现行有效 效力状态' : subject === 'CASE' ? '裁判文书 判决' : 'official source'}`.replace(/\s+/g, ' ').trim().slice(0, 380)
   return claim.text.replace(/\s+/g, ' ').slice(0, 380)
 }
 
@@ -85,7 +89,6 @@ function parseSearchResults(value: unknown, domains: string[]): SearchResult[] {
     const authorityDomain = domains.find((domain) => exactOrSubdomain(hostname, domain))
     if (url.protocol !== 'https:' || !authorityDomain) continue
     const score = typeof candidate.score === 'number' && Number.isFinite(candidate.score) ? candidate.score : 0
-    if (score < 0.25) continue
     parsed.push({
       title: candidate.title.trim().slice(0, 300),
       url: url.toString(),
@@ -98,12 +101,23 @@ function parseSearchResults(value: unknown, domains: string[]): SearchResult[] {
   return parsed
 }
 
-function bestMatchingResult(results: SearchResult[], references: string[]) {
-  if (!references.length) return results[0]
-  const normalizedReferences = references.map(normalized).filter((item) => item.length >= 4)
+function bestMatchingResult(results: SearchResult[], references: string[], subject: AuthoritativeSourceCheck['subject']) {
+  // A legal result must contain the exact extracted citation. An authority
+  // hostname and a relevance score alone are not enough: generic legal search
+  // terms otherwise attach unrelated government articles to the verdict.
+  if (!references.length && (subject === 'LAW' || subject === 'CASE')) return undefined
+  if (!references.length) return results.find((result) => result.score >= 0.5)
   return results.find((result) => {
-    const haystack = normalized(`${result.title}\n${result.rawContent || result.content}`)
-    return normalizedReferences.some((reference) => haystack.includes(reference))
+    const haystack = normalized(`${result.title}\n${result.url}\n${result.rawContent || result.content}`)
+    return references.some((reference) => {
+      if (subject === 'LAW') {
+        const lawTitle = reference.match(/《([^》]{2,100})》/)?.[1]
+        const article = reference.match(/第[一二三四五六七八九十百千万零〇两\d]+条/)?.[0]
+        if (lawTitle && article) return haystack.includes(normalized(lawTitle)) && haystack.includes(normalized(article))
+      }
+      const exact = normalized(reference)
+      return exact.length >= 4 && haystack.includes(exact)
+    })
   })
 }
 
@@ -129,7 +143,11 @@ function classify(subject: AuthoritativeSourceCheck['subject'], result: SearchRe
   if (subject === 'CASE') return { status: 'CASE_PUBLIC_SOURCE_CONFIRMED' as const, statement: 'A matching case record was located on a public official court source. This confirms public-source existence, not legal applicability or precedential weight.' }
   if (subject === 'PRIMARY_SOURCE') return { status: 'AUTHORITATIVE_SOURCE_LOCATED' as const, statement: 'A relevant authoritative source was located. The link is evidence provenance, not automatic proof of the full claim.' }
   if (REPEALED_STATUS.test(sourceText)) return { status: 'REPEALED_OR_SUPERSEDED' as const, statement: 'The official source contains an explicit repealed, invalid, or superseded status signal. The cited rule must not be treated as current without date-specific legal review.' }
-  if (CURRENT_STATUS.test(sourceText)) return { status: 'CURRENT_LAW_CONFIRMED' as const, statement: 'The matching official source contains an explicit current or in-force status signal. This confirms source status only, not jurisdiction, applicability, interpretation, or outcome.' }
+  const nationalDatabaseCurrent = result.domain === 'flk.npc.gov.cn' && references.some((reference) => {
+    const lawTitle = reference.match(/《([^》]{2,100})》/)?.[1]
+    return lawTitle ? normalized(sourceText).includes(`${normalized(lawTitle)}有效`) : false
+  })
+  if (CURRENT_STATUS.test(sourceText) || nationalDatabaseCurrent) return { status: 'CURRENT_LAW_CONFIRMED' as const, statement: 'The matching official source contains an explicit current or in-force status signal. This confirms source status only, not jurisdiction, applicability, interpretation, or outcome.' }
   return { status: 'OFFICIAL_SOURCE_FOUND_STATUS_UNCLEAR' as const, statement: `A matching official source was found${references.length ? '' : ', but the exact cited provision was not extracted'}. Its current force was not explicit in the retrieved text, so status remains unresolved.` }
 }
 
@@ -183,7 +201,7 @@ export class TavilyAuthoritativeSourceVerifier {
         if (!response.ok) throw new Error(`Search API returned HTTP ${response.status}.`)
         let envelope: unknown
         try { envelope = JSON.parse(raw) } catch { throw new Error('Search API returned malformed JSON.') }
-        const result = bestMatchingResult(parseSearchResults(envelope, domains), references)
+        const result = bestMatchingResult(parseSearchResults(envelope, domains), references, subject)
         const classified = classify(subject, result, references)
         return {
           ...base,

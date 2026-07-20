@@ -10,6 +10,11 @@ The human product is one three-stage flow: input text or a TXT/Markdown/DOCX/PDF
 
 The same general flow is callable at `POST /api/v1/reviews`: an unpaid request receives the standard x402 challenge; after payment, CrossExam runs the configured DeepSeek adversarial examiner and, when configured, searches a jurisdiction-sensitive allowlist of public official sources through Tavily. Search results are re-validated by hostname, matched back to the cited reference, and classified as current law, repeal signal, official source with unclear status, confirmed public case record, or not confirmed. The signed `MODEL_ANALYZED` record preserves every boundary: locating a source never becomes proof of legal applicability or of the whole claim. The separate Transaction Preflight route remains the evidence-backed path for exact supported X Layer trades.
 
+For Legal reviews, an official-domain result is not attached unless it contains
+the exact extracted case citation or both the extracted law title and article.
+This prevents a generic government article from being presented as relevant
+authority merely because the search provider ranked it highly.
+
 ## Why
 
 Autonomous agents can spend, trade, publish, deploy, approve, and hire other agents. Most systems optimize for producing an answer or completing an action. Few create an independent economic incentive to find evidence that the proposed action is wrong.
