@@ -103,7 +103,7 @@ Current implementation order for Product V2:
 - [x] Add profile-specific verification routing with honest unsupported states.
 - [x] Add the three-stage responsive UI and remove the old transaction form from the public entry.
 - [x] Add concise verdict image export and sanitized share flow.
-- [ ] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
+- [x] Expose the generic paid review through API/MCP without changing the registered legacy endpoint.
 - [ ] Pass local, production-unpaid, accessibility, privacy, and x402 compatibility acceptance.
 
 Evidence (2026-07-19, Product V2 intake): `/api/v1/intake/files` is mounted
@@ -143,6 +143,20 @@ and verification boundary. Local visual inspection passed the input and claim
 map hierarchy; 194 tests, type-checking, and the production build pass. The new
 paid endpoint and its standard production 402 remain unchecked until the
 deployed route is probed after this commit.
+
+Evidence (2026-07-20, Product V2 production paid acceptance): production
+preflight advertised the DeepSeek-backed `0.20 USDT0` review and the manifest
+published the additive `/api/v1/reviews` capability. Its unpaid POST returned a
+standard OKX x402 v2 challenge on X Layer while the registered aggregate route
+continued returning its unchanged standard challenge. A fresh real PLAN request
+settled `0.20 USDT0` successfully, invoked `deepseek-v4-pro`, returned two
+claim-level results (`UNRESOLVED` for the externally factual claim and
+`SURVIVED` only for a model-reasoning claim), and persisted a
+`MODEL_ANALYZED` record. The complete stored record signature verified locally
+against the manifest signer. Replaying the exact input and idempotency key
+without another payment returned HTTP 200, `Idempotent-Replay: true`, the same
+record ID, and `persistence: EXISTING`. No payer address, access capability,
+payment authorization, or private record URL is retained in this evidence note.
 
 ## 1. Product decision — do not reinterpret
 
