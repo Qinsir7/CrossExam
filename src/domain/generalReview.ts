@@ -43,6 +43,7 @@ export type ReviewPreflight = {
     priceUsd: string
     provider?: 'DEEPSEEK'
     authoritySearchAvailable?: boolean
+    unavailableReason?: string
   }
 }
 
@@ -110,6 +111,7 @@ export type AdversarialReviewResult = {
 }
 
 const MAX_INPUT_CHARACTERS = 200_000
+export const MAX_PAID_REVIEW_CHARACTERS = 120_000
 const MAX_CLAIMS = 30
 const MAX_CLAIM_CHARACTERS = 560
 

@@ -62,7 +62,7 @@ The live homepage is not a fixed demo trade. Its general input supports Legal, M
 
 Agents can discover its capabilities at `/.well-known/crossexam.json`.
 
-Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.
+Paid clients can attach an `Idempotency-Key` to safely recover a completed record after a timeout or network retry, without buying the exact same aggregation twice. The server binds that key to the canonical request body and rejects reuse for different work. Source retrieval and adversarial reasoning run concurrently so the public proxy is bounded by the slower operation rather than their sum. If the examiner exceeds its 90-second deadline, the API returns `504 ADVERSARIAL_REVIEW_TIMEOUT`; the official x402 middleware does not settle a failed handler response and no signed record is created. Each paid record is also EIP-191-attested by CrossExam's configured service signer; execution clients can verify the issuer before trusting the record.
 
 `POST /api/v1/assurance/verify` and `CrossExamClient.verifyRecord(...)` verify a record against an issuer address that the caller has independently pinned, the exact proposed action, and the execution policy. Private read capabilities and API-envelope metadata are never part of the signed record payload.
 

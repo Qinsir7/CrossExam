@@ -45,6 +45,24 @@ function profileCopy(profile: ReviewProfile) {
   return profiles.find((item) => item.id === profile) ?? profiles[3]
 }
 
+function reviewWaitMessage(seconds: number) {
+  if (seconds < 20) return 'Authorization received. The adversarial review and any eligible source checks are running.'
+  if (seconds < 60) return 'Still working. Longer documents and official-source checks can take about a minute.'
+  return 'Still working—keep this tab open. If the request fails, x402 does not settle the failed response and you can retry.'
+}
+
+function reviewErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : 'The paid review could not be completed.'
+  if (/aborted due to timeout|timed? out|timeout|failed \(504\)/i.test(message)) {
+    return 'The examiner did not finish before the request deadline. No signed record was created, and x402 does not settle failed responses. Your material is still here—try the same review again.'
+  }
+  return message
+}
+
+function elapsedLabel(seconds: number) {
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+}
+
 const sourceStatusCopy: Record<AuthoritativeSourceCheckStatus, { label: string; tone: 'confirmed' | 'warning' | 'unknown' }> = {
   CURRENT_LAW_CONFIRMED: { label: 'Current status confirmed', tone: 'confirmed' },
   REPEALED_OR_SUPERSEDED: { label: 'Repeal signal found', tone: 'warning' },
@@ -279,6 +297,7 @@ const { analysis, record } = await response.json()`
           <p>Send the same material to the paid route. The first call returns the standard x402 challenge. An x402-capable client authorizes the quoted USDT0 amount on X Layer and retries the identical request.</p>
           <CodeBlock label="JavaScript · payment handoff" code={paidFetch} />
           <div className="callout"><strong>Never send a private key to CrossExam.</strong><p>The buyer signs through its own wallet or agent payment client. CrossExam receives the x402 payment proof, not the buyer's signing key.</p></div>
+          <div className="callout warning"><strong>Allow up to 90 seconds for a full review.</strong><p>Adversarial reasoning and eligible source retrieval run concurrently. Reuse the same idempotency key after a network interruption. A failed HTTP response does not settle through the x402 middleware; only a successful review returns a signed record.</p></div>
         </section>
 
         <section className="docs-section" id="endpoints">
@@ -338,7 +357,10 @@ export default function AppV2() {
   const [preflight, setPreflight] = useState<ReviewPreflight | null>(null)
   const [paidReview, setPaidReview] = useState<PaidAdversarialReviewResponse | null>(null)
   const [busy, setBusy] = useState(false)
+  const [busyLabel, setBusyLabel] = useState('Reading your material and mapping its claims…')
   const [paidState, setPaidState] = useState<'IDLE' | 'WALLET' | 'ANALYZING'>('IDLE')
+  const [analysisStartedAt, setAnalysisStartedAt] = useState<number | null>(null)
+  const [analysisSeconds, setAnalysisSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [shareFeedback, setShareFeedback] = useState<string | null>(null)
@@ -349,6 +371,14 @@ export default function AppV2() {
   const sourceRequired = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'SOURCE_REQUIRED') ?? [], [preflight])
   const toolReady = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'TOOL_READY') ?? [], [preflight])
   const attackOnly = useMemo(() => preflight?.claims.filter((claim) => claim.verificationRoute === 'ARGUMENT_ONLY') ?? [], [preflight])
+  useEffect(() => {
+    if (paidState !== 'ANALYZING' || analysisStartedAt === null) return
+    const update = () => setAnalysisSeconds(Math.max(0, Math.floor((Date.now() - analysisStartedAt) / 1_000)))
+    update()
+    const timer = window.setInterval(update, 1_000)
+    return () => window.clearInterval(timer)
+  }, [paidState, analysisStartedAt])
+
   const runPaidReview = async () => {
     if (!preflight?.paidReview?.available) return
     setError(null)
@@ -360,20 +390,26 @@ export default function AppV2() {
         preflight.paidReview.priceUsd,
         async (preview) => {
           const approved = window.confirm(`Authorize ${displayUsdt0(preview.amountAtomic)} USDT0 on X Layer for one full CrossExam review?\n\nRecipient: ${preview.payTo}\n\nYour wallet will show the final authorization before signing.`)
-          if (approved) setPaidState('ANALYZING')
+          if (approved) {
+            setAnalysisSeconds(0)
+            setAnalysisStartedAt(Date.now())
+            setPaidState('ANALYZING')
+          }
           return approved
         },
       )
       setPaidReview(result)
       setStage('RESULT')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The paid review could not be completed.')
+      setError(reviewErrorMessage(caught))
     } finally {
       setPaidState('IDLE')
+      setAnalysisStartedAt(null)
     }
   }
 
   const runPreflight = async (material = text, name = filename, nextStage = false) => {
+    setBusyLabel('Reading your material and mapping its claims…')
     setBusy(true)
     setError(null)
     try {
@@ -392,6 +428,7 @@ export default function AppV2() {
 
   const handleFile = async (file?: File) => {
     if (!file) return
+    setBusyLabel('Extracting the file, then mapping claims and verification routes…')
     setBusy(true)
     setError(null)
     try {
@@ -480,6 +517,7 @@ export default function AppV2() {
           </div>
 
           {preflight && <div className="preflight-echo" aria-live="polite"><span>Understood</span><strong>{preflight.inferredDocumentType}</strong><b>{preflight.claimCount} claims</b><b>{preflight.verifiableClaimCount} potentially verifiable</b></div>}
+          {busy && <div className="intake-loading" role="status" aria-live="polite"><span aria-hidden="true" /><div><strong>{busyLabel}</strong><p>Keep this tab open. Free preflight does not request payment.</p></div></div>}
           {error && <p className="intake-error" role="alert">{error}</p>}
           <div className="intake-note"><p>{copy.hint}</p><span>{copy.preview}</span></div>
           <button className="survive-button" type="button" disabled={busy || text.trim().length < 20} onClick={() => void runPreflight(text, filename, true)}>{busy ? 'Reading your material…' : 'Make it survive'}<span>↗</span></button>
@@ -497,6 +535,11 @@ export default function AppV2() {
       </section>
       <section className="process-card" aria-live="polite" aria-busy={paidState === 'ANALYZING'}>
         <div className={`process-summary ${paidState === 'ANALYZING' ? 'running' : ''}`}><span className="process-pulse">{paidState === 'ANALYZING' ? '×' : '✓'}</span><div><strong>{paidState === 'ANALYZING' ? 'Cross-examination in progress' : 'Material understood'}</strong><p>{paidState === 'ANALYZING' ? (preflight.paidReview?.authoritySearchAvailable ? 'Attacking every claim and checking eligible citations against public official sources.' : 'Attacking every claim and preserving every unsupported fact as unresolved.') : 'Claims, hidden premises, and verification routes are mapped.'}</p></div></div>
+        {paidState !== 'IDLE' && <div className="review-wait-card" role="status" aria-live="polite">
+          <div className="wait-clock"><span aria-hidden="true" />{paidState === 'WALLET' ? 'Wallet' : elapsedLabel(analysisSeconds)}</div>
+          <div><strong>{paidState === 'WALLET' ? 'Waiting for your wallet' : 'Real review in progress'}</strong><p>{paidState === 'WALLET' ? 'Check the payment details, then approve or reject in your wallet. Nothing is charged before a successful response.' : reviewWaitMessage(analysisSeconds)}</p></div>
+          {paidState === 'ANALYZING' && <ol aria-label="Review execution stages"><li className="done">Claim map ready</li><li className="active">Adversarial analysis running</li>{preflight.paidReview?.authoritySearchAvailable && <li className="active">Eligible source checks running</li>}<li>Signed record after completion</li></ol>}
+        </div>}
         <ol className="claim-process">
           {preflight.claims.map((claim) => <li key={claim.id}>
             <span className={`route-dot ${claim.verificationRoute.toLowerCase()}`} aria-hidden="true" />
@@ -505,10 +548,11 @@ export default function AppV2() {
           </li>)}
         </ol>
         <div className="truth-line"><span>{toolReady.length} tool checks</span><span>{sourceRequired.length} source checks</span><span>{attackOnly.length} logic attacks</span>{preflight.paidReview?.authoritySearchAvailable && <span className="truth-ready">Official-source search ready</span>}</div>
-        {error && <p className="intake-error review-error" role="alert">{error}</p>}
+        {error && <div className="intake-error review-error" role="alert"><strong>Review did not complete</strong><p>{error}</p></div>}
         <button className="survive-button compact" type="button" disabled={!preflight.paidReview?.available || paidState !== 'IDLE'} onClick={() => void runPaidReview()}>
-          {paidState === 'WALLET' ? 'Waiting for wallet…' : paidState === 'ANALYZING' ? 'Cross-examining every claim…' : preflight.paidReview?.available ? `Run full cross-examination · ${preflight.paidReview.priceUsd} USDT0` : 'Full review temporarily unavailable'}<span>→</span>
+          {paidState === 'WALLET' ? 'Waiting for wallet…' : paidState === 'ANALYZING' ? `Review running · ${elapsedLabel(analysisSeconds)}` : preflight.paidReview?.available ? `Run full cross-examination · ${preflight.paidReview.priceUsd} USDT0` : 'Full review unavailable'}<span>→</span>
         </button>
+        {!preflight.paidReview?.available && preflight.paidReview?.unavailableReason && <p className="paid-unavailable" role="note">{preflight.paidReview.unavailableReason}</p>}
         <p className="paid-note">Paid review sends the material to DeepSeek and eligible citation excerpts to Tavily when source search is enabled. The signed result is stored.</p>
       </section>
     </main>}

@@ -6,8 +6,8 @@ describe('ReviewJobClient', () => {
     expect(resolveCrossExamApiUrl(undefined, 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/review-service')
     expect(resolveCrossExamApiUrl('https://stale-preview.example/', 'https://www.cross-exam.xyz')).toBe('https://www.cross-exam.xyz/review-service')
     expect(resolveCrossExamApiUrl(undefined, 'https://cross-exam-git-main-qinsir7.vercel.app')).toBe('https://cross-exam-git-main-qinsir7.vercel.app/review-service')
-    expect(resolveCrossExamApiUrl('https://configured.example/', 'http://localhost:5173')).toBe('https://configured.example')
-    expect(resolveCrossExamApiUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:5173')
+    expect(resolveCrossExamApiUrl('https://configured.example/', 'http://localhost:5173')).toBe('http://localhost:5173/review-service')
+    expect(resolveCrossExamApiUrl(undefined, 'http://localhost:5173')).toBe('http://localhost:5173/review-service')
   })
 
   it('removes the blocked public API path segment when using the same-origin proxy', async () => {

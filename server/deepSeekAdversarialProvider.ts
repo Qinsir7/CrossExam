@@ -1,10 +1,23 @@
 import { createHash } from 'node:crypto'
-import type { AdversarialClaimResult, AdversarialReviewResult, AuthoritativeSourceCheck, ReviewPreflight } from '../src/domain/generalReview'
+import { MAX_PAID_REVIEW_CHARACTERS, type AdversarialClaimResult, type AdversarialReviewResult, type AuthoritativeSourceCheck, type ReviewPreflight } from '../src/domain/generalReview'
 
 export type DeepSeekProviderConfig = {
   apiKey: string
   baseUrl: 'https://api.deepseek.com'
   model: string
+}
+
+export class AdversarialReviewTimeoutError extends Error {
+  constructor() {
+    super('The adversarial examiner did not finish within 90 seconds. No signed review record was created.')
+    this.name = 'AdversarialReviewTimeoutError'
+  }
+}
+
+function isRequestTimeout(error: Error) {
+  return error.name === 'TimeoutError'
+    || error.name === 'AbortError'
+    || /aborted due to timeout|timed? out|timeout/i.test(error.message)
 }
 
 type ModelClaim = {
@@ -170,7 +183,7 @@ export class DeepSeekAdversarialProvider {
   }
 
   async review(text: string, preflight: ReviewPreflight, sourceChecks: AuthoritativeSourceCheck[] = []): Promise<AdversarialReviewResult> {
-    if (text.length > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
+    if (text.length > MAX_PAID_REVIEW_CHARACTERS) throw new Error(`Paid adversarial review currently accepts at most ${MAX_PAID_REVIEW_CHARACTERS.toLocaleString('en-US')} extracted characters.`)
     const body = JSON.stringify({
       model: this.config.model,
       messages: [
@@ -230,6 +243,7 @@ export class DeepSeekAdversarialProvider {
         }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('DeepSeek adversarial review failed.')
+        if (isRequestTimeout(lastError)) throw new AdversarialReviewTimeoutError()
         if (attempt === 0 && /empty JSON|malformed JSON|invalid review object|address every claim|did not address/.test(lastError.message)) continue
         throw lastError
       }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Finding, CrossExamResult, DecisionPackage } from '../src/domain/types'
-import { prepareReviewPreflight, type AdversarialReviewResult, type AuthoritativeSourceCheck, type ReviewPreflightInput } from '../src/domain/generalReview'
+import { MAX_PAID_REVIEW_CHARACTERS, prepareReviewPreflight, type AdversarialReviewResult, type AuthoritativeSourceCheck, type ReviewPreflightInput } from '../src/domain/generalReview'
 import type { ReviewDispatch } from '../src/network/reviewNetwork'
 import { issueDecisionAssuranceRecord } from './assuranceRecord'
 
@@ -22,6 +22,34 @@ function actionFor(analysis: AdversarialReviewResult): CrossExamResult['action']
   return 'PROCEED'
 }
 
+function mergeSourceChecks(analysis: AdversarialReviewResult, sourceChecks: AuthoritativeSourceCheck[]): AdversarialReviewResult {
+  if (!sourceChecks.length) return analysis
+  const confirmedStatuses = new Set([
+    'CURRENT_LAW_CONFIRMED',
+    'REPEALED_OR_SUPERSEDED',
+    'CASE_PUBLIC_SOURCE_CONFIRMED',
+    'AUTHORITATIVE_SOURCE_LOCATED',
+  ])
+  return {
+    ...analysis,
+    claims: analysis.claims.map((claim) => ({
+      ...claim,
+      ...(confirmedStatuses.has(sourceChecks.find((check) => check.claimId === claim.claimId)?.status ?? '')
+        ? { verificationStatus: 'AUTHORITATIVE_SOURCE_PARTIAL' as const }
+        : {}),
+    })),
+    sources: sourceChecks.flatMap((check) => check.source ? [{
+      label: check.source.label,
+      url: check.source.url,
+      verifiedAt: check.checkedAt,
+      claimId: check.claimId,
+      authorityDomain: check.source.authorityDomain,
+      status: check.status,
+    }] : []),
+    sourceChecks,
+  }
+}
+
 /**
  * Converts a bounded model-only adversarial pass into a signed assurance
  * record without laundering model reasoning into independently verified
@@ -34,9 +62,16 @@ export async function preparePaidAdversarialReview(
   sourceVerifier?: AuthoritativeSourceVerifier,
 ) {
   const preflight = prepareReviewPreflight(input)
-  if (preflight.characterCount > 120_000) throw new Error('Paid adversarial review currently accepts at most 120,000 extracted characters.')
-  const sourceChecks = sourceVerifier ? await sourceVerifier.verify(preflight) : []
-  const analysis = await provider.review(input.text, preflight, sourceChecks)
+  if (preflight.characterCount > MAX_PAID_REVIEW_CHARACTERS) throw new Error(`Paid adversarial review currently accepts at most ${MAX_PAID_REVIEW_CHARACTERS.toLocaleString('en-US')} extracted characters.`)
+  // Source retrieval and adversarial reasoning are independent evidence
+  // producers. Run them together so the public proxy is bounded by the slower
+  // operation rather than their sum, then merge the attributed source slice
+  // without presenting it as model knowledge or full-claim verification.
+  const [sourceChecks, modelAnalysis] = await Promise.all([
+    sourceVerifier ? sourceVerifier.verify(preflight) : Promise.resolve([]),
+    provider.review(input.text, preflight, []),
+  ])
+  const analysis = mergeSourceChecks(modelAnalysis, sourceChecks)
   const decisionId = stableId('DP-GENERAL', `${preflight.profile}\n${preflight.title}\n${input.text}`)
   const decision: DecisionPackage = {
     id: decisionId,

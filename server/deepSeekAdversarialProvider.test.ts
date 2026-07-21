@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { prepareReviewPreflight } from '../src/domain/generalReview'
-import { DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
+import { AdversarialReviewTimeoutError, DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
 
 const config = { apiKey: ['sk', 'test', 'not-a-real-key', '1234567890'].join('-'), baseUrl: 'https://api.deepseek.com' as const, model: 'deepseek-v4-pro' }
 
@@ -50,5 +50,14 @@ describe('DeepSeek adversarial provider', () => {
     const preflight = prepareReviewPreflight({ text: 'We should launch next quarter because customer demand is strong and the architecture is ready.', profile: 'PLAN' })
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"headline":"bad","claims":[]}' } }] }), { status: 200 }))
     await expect(new DeepSeekAdversarialProvider(config, fetchImpl).review('We should launch next quarter because customer demand is strong and the architecture is ready.', preflight)).rejects.toThrow(/address every claim/)
+  })
+
+  it('normalizes platform abort text into a stable timeout error', async () => {
+    const preflight = prepareReviewPreflight({ text: 'We should launch because demand is strong and the architecture is ready.', profile: 'PLAN' })
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(timeout)
+
+    await expect(new DeepSeekAdversarialProvider(config, fetchImpl).review('We should launch because demand is strong and the architecture is ready.', preflight)).rejects.toBeInstanceOf(AdversarialReviewTimeoutError)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })

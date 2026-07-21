@@ -107,7 +107,7 @@ export function resolveCrossExamApiUrl(configuredUrl?: string, browserOrigin?: s
       // The public web app reaches the API through Vercel's same-origin
       // rewrite. This eliminates browser CORS/extension interference while
       // Vercel forwards the request to the canonical API over HTTPS.
-      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz' || host.endsWith('.vercel.app')) return `${origin.origin}/review-service`
+      if (host === 'cross-exam.xyz' || host === 'www.cross-exam.xyz' || host.endsWith('.vercel.app') || host === 'localhost' || host === '127.0.0.1') return `${origin.origin}/review-service`
     } catch {
       // A configured URL below can still support unusual local environments.
     }
@@ -196,7 +196,11 @@ export class ReviewJobClient {
       usdt0Atomic(priceUsd),
     )
     const body = await response.json().catch(() => null) as ({ message?: unknown } & Partial<PaidAdversarialReviewResponse>) | null
-    if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : `CrossExam paid review failed (${response.status}).`)
+    if (!response.ok) {
+      if (typeof body?.message === 'string') throw new Error(body.message)
+      if (response.status === 504) throw new Error('The CrossExam review timed out before a signed record was created. The failed response was not settled by x402.')
+      throw new Error(`CrossExam paid review failed (${response.status}).`)
+    }
     if (!body?.preflight || !body.analysis || !body.record?.recordId || !body.record.serviceAttestation) throw new Error('CrossExam returned an incomplete paid-review record.')
     return body as PaidAdversarialReviewResponse
   }

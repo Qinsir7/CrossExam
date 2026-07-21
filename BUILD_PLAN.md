@@ -220,6 +220,21 @@ and 1440 CSS pixels found no horizontal overflow, and the public flow exposes
 no private wallet key, payment signature, database credential, or record read
 capability before a paid response.
 
+Evidence (2026-07-22, review-latency and usability hardening): the universal
+paid route now starts bounded authority-source retrieval and DeepSeek
+adversarial reasoning concurrently, then merges their independently attributed
+artifacts without treating retrieved source status as model knowledge or as
+proof of the full claim. This removes the former ~20-second sequential search
+cost from the request critical path. A normalized model deadline returns HTTP
+504 with no signed record; failed handler responses are not settled by the
+official x402 middleware. The browser preserves the submitted material for a
+retry and shows only real execution state: wallet wait, elapsed wall time,
+claim map complete, reasoning/source work running, and signed record pending.
+Free file/preflight work now has an explicit non-payment status. User-facing
+type was raised across the product and developer surfaces, with no horizontal
+overflow at the checked 390px viewport. Local Vite development now mirrors the
+same-origin production API proxy instead of making a direct cross-origin call.
+
 ## 1. Product decision — do not reinterpret
 
 ### 1.1 Category

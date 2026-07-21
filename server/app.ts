@@ -34,8 +34,8 @@ import { publicRecordProjection } from './publicRecord'
 import { verifyAssuranceRecord } from './assuranceVerification'
 import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
 import { extractDocument } from './documentIntake'
-import { prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
-import { DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
+import { MAX_PAID_REVIEW_CHARACTERS, prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
+import { AdversarialReviewTimeoutError, DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
 import { preparePaidAdversarialReview, type AdversarialReviewProvider, type AuthoritativeSourceVerifier } from './adversarialReview'
 import { TavilyAuthoritativeSourceVerifier } from './authoritativeSourceVerifier'
 
@@ -263,13 +263,16 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   app.post('/api/v1/reviews/preflight', fixedWindowRateLimit({ limit: 30, windowMs: 60_000 }), (request, response) => {
     try {
+      const preflight = prepareReviewPreflight(request.body as ReviewPreflightInput)
+      const withinPaidLimit = preflight.characterCount <= MAX_PAID_REVIEW_CHARACTERS
       response.status(200).json({
-        ...prepareReviewPreflight(request.body as ReviewPreflightInput),
+        ...preflight,
         paidReview: {
-          available: Boolean(adversarialProvider),
+          available: Boolean(adversarialProvider) && withinPaidLimit,
           priceUsd: config.deepReviewPriceUsd,
-          ...(adversarialProvider ? { provider: 'DEEPSEEK' as const } : {}),
+          ...(adversarialProvider && withinPaidLimit ? { provider: 'DEEPSEEK' as const } : {}),
           authoritySearchAvailable: Boolean(sourceVerifier),
+          ...(!withinPaidLimit ? { unavailableReason: `Full review accepts up to ${MAX_PAID_REVIEW_CHARACTERS.toLocaleString('en-US')} extracted characters. Shorten or split this material; free claim mapping remains available.` } : {}),
         },
       })
     } catch (error) {
@@ -950,6 +953,15 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Paid adversarial review could not be issued.'
+      if (error instanceof AdversarialReviewTimeoutError) {
+        // The official x402 middleware settles only successful (<400)
+        // handler responses, so a timed-out upstream never becomes a charge.
+        response.status(504).json({
+          error: 'ADVERSARIAL_REVIEW_TIMEOUT',
+          message: `${message} This failed response is not settled by x402; you can retry the same review.`,
+        })
+        return
+      }
       response.status(422).json({ error: 'ADVERSARIAL_REVIEW_REJECTED', message })
     }
   })
