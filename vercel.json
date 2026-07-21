@@ -16,6 +16,10 @@
     {
       "source": "/review-service/:path*",
       "destination": "https://api.cross-exam.xyz/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
