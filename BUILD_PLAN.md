@@ -1402,6 +1402,19 @@ Acceptance: a developer can understand integration from one code example; verifi
 
 Evidence (2026-07-18): `CrossExamClient` now exposes `prepareAction`, `startDeepReview`, `preflightTransaction`, `checkAsp`, `getReview`, and offline `verifyRecord`, while `ReviewJobClient.verifyAssuranceRecord` drives the free server verifier. `POST /api/v1/assurance/verify`, the SDK, and the result UI require a caller-pinned signer and verify the exact action binding; regression tests cover a wrong signer, substituted action, and a production-shaped result envelope with unsigned read-capability metadata. The landing developer section explains the signed preflight boundary in one executable code block, and `docs/API.md` documents the trust boundary. The claim detail surface now has dialog semantics, Escape close and focus restoration; focus rings and reduced-motion handling are global. Local viewport checks at 320, 375, 390, 768, 1024, and 1440px found no horizontal overflow and confirmed the primary CTA/recovery path. Unused Vite/React/legacy icon assets were removed; the 2048px `logo.jpg` remains the favicon/social source, and title, description, canonical, and Open Graph metadata are set. `git diff --check`, tracked-secret review, `npm audit --omit=dev --audit-level=high` (0 vulnerabilities), lint, 39 test files / 162 tests, and the production build passed.
 
+### Product website maturity pass — 2026-07-21
+
+- [x] Preserve the canonical three-stage review as the primary homepage action instead of turning the product into a static marketing page.
+- [x] Add a concise product narrative, three-step explanation, Legal/Money/Plan/General entry points, buyer-facing capabilities, current usage pricing, and an explicit truth boundary below the working intake.
+- [x] Replace the placeholder API page with a usable developer center containing a free quickstart, copyable examples, current endpoints and prices, the standard x402 lifecycle, idempotency guidance, record verification, privacy, scope limits, manifest, and full-contract links.
+- [x] Make the primary navigation and footer connect Product, Use cases, Pricing, Developers, API health, manifest, GitHub, and verification rather than presenting an isolated API link.
+- [x] Add crawler/social metadata, a sitemap, robots policy, route-specific developer metadata, and the font origins required by the deployed content-security policy.
+- [x] Complete desktop, tablet, and mobile visual acceptance without weakening the existing paid review, transaction preflight, ASP, record, or x402 behavior.
+
+Acceptance: a first-time visitor can understand the category, start the real free preflight, select a deep scenario, see the current paid choices and evidence boundary, or move from the developer navigation directly to an executable free request and the full x402/verification contract. The mobile primary action must fit in the initial 390×844 viewport and no checked viewport may overflow horizontally.
+
+Evidence (2026-07-21, local): the homepage and `/developers` were inspected in the browser at 390, 768, 1280, and 1440 CSS pixels. The 390px homepage showed the entire disabled-until-input `Make it survive` action in the initial viewport, both routes had `scrollWidth === viewport width`, the developer route exposed the correct title and canonical URL, and browser logs contained no application warning or error. The production backend and marketplace contract were not changed. `npm run lint`, all 47 test files / 206 tests, `npm run build`, `npm audit --omit=dev --audit-level=high` (0 vulnerabilities), the tracked environment-file review, and `git diff --check` passed.
+
 ### Day 9 — production economics and end-to-end acceptance
 
 - [x] Deploy additive backend safely.

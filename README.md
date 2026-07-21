@@ -2,7 +2,7 @@
 
 > Before you act, make it survive.
 
-[Live product](https://www.cross-exam.xyz/) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md) · [Build plan](BUILD_PLAN.md)
+[Live product](https://www.cross-exam.xyz/) · [Developer quickstart](https://www.cross-exam.xyz/developers) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md) · [Build plan](BUILD_PLAN.md)
 
 Paste a decision, document, trade thesis, or plan. CrossExam decomposes its material claims, attacks the logic, verifies what real sources can verify, and makes unresolved evidence visible before the user acts. Agents receive the same capability through API/A2MCP: **Before your agent acts, make it survive.**
 

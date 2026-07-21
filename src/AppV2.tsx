@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import type { AdversarialReviewResult, AuthoritativeSourceCheck, AuthoritativeSourceCheckStatus, ReviewPreflight, ReviewProfile } from './domain/generalReview'
 import type { PaidAdversarialReviewResponse } from './domain/assuranceContracts'
 import { ReviewJobClient } from './sdk/reviewJobClient'
@@ -91,23 +91,243 @@ function createVerdictSvg(preflight: ReviewPreflight, analysis: AdversarialRevie
   </svg>`
 }
 
+const productUrl = 'https://www.cross-exam.xyz'
+const apiUrl = 'https://api.cross-exam.xyz'
+const githubUrl = 'https://github.com/Qinsir7/CrossExam'
+
+function Wordmark({ button = false, onClick }: { button?: boolean; onClick?: () => void }) {
+  const content = <>CrossExam<span>×</span></>
+  return button
+    ? <button className="wordmark" type="button" onClick={onClick}>{content}</button>
+    : <a className="wordmark" href="/" aria-label="CrossExam home">{content}</a>
+}
+
+function SiteHeader({ stage, onReset }: { stage?: Stage; onReset?: () => void }) {
+  return <header className="product-header">
+    <Wordmark button={Boolean(onReset)} onClick={onReset} />
+    <nav aria-label="Primary navigation">
+      {stage === 'INPUT' && <>
+        <a className="nav-wide" href="/#product">Product</a>
+        <a className="nav-wide" href="/#use-cases">Use cases</a>
+        <a className="nav-wide" href="/#pricing">Pricing</a>
+      </>}
+      <a href="/developers">Developers</a>
+      {stage && stage !== 'INPUT'
+        ? <button className="nav-cta" type="button" onClick={onReset}>New review</button>
+        : <a className="nav-cta" href="/#review">Start a review</a>}
+    </nav>
+  </header>
+}
+
+function SiteFooter() {
+  return <footer className="site-footer">
+    <div className="footer-brand"><Wordmark /><p>Adversarial review before consequential action.</p></div>
+    <div className="footer-links">
+      <div><strong>Product</strong><a href="/#review">Start a review</a><a href="/#use-cases">Use cases</a><a href="/#pricing">Pricing</a></div>
+      <div><strong>Developers</strong><a href="/developers">Documentation</a><a href={`${apiUrl}/.well-known/crossexam.json`}>Service manifest</a><a href={githubUrl}>GitHub</a></div>
+      <div><strong>Trust</strong><a href={`${apiUrl}/health`}>API health</a><a href="/developers#security">Security boundary</a><a href="/developers#verification">Verify records</a></div>
+    </div>
+    <div className="footer-bottom"><span>© 2026 CrossExam</span><span>Evidence, not confidence.</span></div>
+  </footer>
+}
+
+function MarketingSections({ selectProfile }: { selectProfile: (profile: ReviewProfile) => void }) {
+  const choose = (nextProfile: ReviewProfile) => {
+    selectProfile(nextProfile)
+    document.getElementById('review')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  return <div className="marketing-sections">
+    <section className="trust-strip" aria-label="Product facts">
+      <span><b>01</b> Free claim preflight</span>
+      <span><b>02</b> Official-source checks where available</span>
+      <span><b>03</b> Signed verdict records</span>
+      <span><b>04</b> x402 on X Layer</span>
+    </section>
+
+    <section className="marketing-section product-story" id="product">
+      <div className="section-intro"><p className="overline">What CrossExam does</p><h2>Your proposal gets a hostile reading<br />before reality gives it one.</h2><p>CrossExam turns a document or decision into material claims, attacks each premise, verifies bounded facts with real sources, and returns one clear verdict. Missing evidence stays missing.</p></div>
+      <div className="steps-grid" id="how-it-works">
+        <article><span>01</span><h3>Decompose</h3><p>Extract the claims, dependencies, citations, numbers, and hidden assumptions that the decision relies on.</p></article>
+        <article><span>02</span><h3>Attack & verify</h3><p>Build the strongest opposing case. Route checkable facts to available tools and authoritative public sources.</p></article>
+        <article><span>03</span><h3>Decide</h3><p>Get a signed verdict with the strongest attack, unresolved premises, and exactly what would change the result.</p></article>
+      </div>
+    </section>
+
+    <section className="marketing-section" id="use-cases">
+      <div className="section-heading"><div><p className="overline">Deep review profiles</p><h2>One engine. Four ways in.</h2></div><p>Start with whatever you have. CrossExam asks for missing material in the verdict instead of blocking the review.</p></div>
+      <div className="use-case-grid">
+        <button type="button" onClick={() => choose('LEGAL')}><span>Legal</span><h3>Documents & contracts</h3><p>Challenge pleadings, appeals, opinions, and contract drafts. Check exact cited authorities against public official sources where available.</p><b>Review a document →</b></button>
+        <button type="button" onClick={() => choose('MONEY')}><span>Money</span><h3>Investments & trades</h3><p>Attack the reason for a move. When a supported X Layer contract is present, continue into live onchain evidence.</p><b>Test a thesis →</b></button>
+        <button type="button" onClick={() => choose('PLAN')}><span>Plan</span><h3>Plans & proposals</h3><p>Expose brittle assumptions, missing dependencies, incentives, timing risks, and reversal conditions before execution.</p><b>Stress-test a plan →</b></button>
+        <button type="button" onClick={() => choose('GENERAL')}><span>Anything</span><h3>Consequential decisions</h3><p>Use the same adversarial structure on any material. Unsupported facts remain clearly marked as argument-only.</p><b>Start from anything →</b></button>
+      </div>
+    </section>
+
+    <section className="marketing-section capability-section">
+      <div className="section-heading"><div><p className="overline">Built for people and agents</p><h2>One assurance layer,<br />at every decision boundary.</h2></div><p>The browser product, paid API, signed record, and execution gate use the same truth boundary.</p></div>
+      <div className="capability-grid">
+        <article><div className="capability-icon">T</div><h3>Universal review</h3><p>Paste text or upload TXT, Markdown, DOCX, or text-based PDF. Watch the claim map, then buy the full adversarial pass.</p><a href="/#review">Open the reviewer →</a></article>
+        <article><div className="capability-icon">↯</div><h3>Transaction preflight</h3><p>Bind a supported exact X Layer trade to live liquidity and token-risk evidence. Ambiguity fails closed.</p><a href="/check/transaction">Review an onchain action →</a></article>
+        <article><div className="capability-icon">{'{ }'}</div><h3>Agent API</h3><p>Call the same capability over HTTP. Standard x402 challenges let agents pay per review without subscriptions or API keys.</p><a href="/developers">Read the quickstart →</a></article>
+        <article><div className="capability-icon">✓</div><h3>Signed records</h3><p>Verify the service signature, exact action binding, freshness, and execution gate before an agent or wallet acts.</p><a href="/developers#verification">See verification →</a></article>
+      </div>
+    </section>
+
+    <section className="marketing-section pricing-section" id="pricing">
+      <div className="section-heading"><div><p className="overline">Simple usage pricing</p><h2>Pay for the challenge,<br />not another dashboard.</h2></div><p>No account or subscription is required for the public flow. Paid requests use USDT0 on X Layer through x402.</p></div>
+      <div className="pricing-grid">
+        <article><span>Understand</span><div><strong>Free</strong></div><p>File extraction, document detection, claim map, verification routes, and a bounded review preview.</p><a href="/#review">Run a preflight</a></article>
+        <article className="featured"><span>Cross-examine</span><div><strong>0.20</strong><small>USDT0 / review</small></div><p>Full model-based adversarial review, eligible official-source checks, signed verdict, export, and share.</p><a href="/#review">Make it survive</a></article>
+        <article><span>Protect an action</span><div><strong>0.02</strong><small>USDT0 / check</small></div><p>Transaction Preflight or Agent endpoint check with an action-bound signed result. Supported scopes only.</p><a href="/developers#endpoints">View paid endpoints</a></article>
+      </div>
+    </section>
+
+    <section className="marketing-section truth-section">
+      <div><p className="overline">The promise is bounded</p><h2>CrossExam shows what survived.<br />It does not pretend uncertainty disappeared.</h2></div>
+      <div className="truth-points"><p><span>Verified</span> means a named source or deterministic tool supports the exact stated fact.</p><p><span>Unresolved</span> means the available material cannot establish a material premise.</p><p><span>Signed</span> means the record is attributable to CrossExam—not that every claim is true.</p><p><span>Review</span> is an adversarial evidence layer, not a substitute for licensed legal, financial, or security advice.</p></div>
+    </section>
+
+    <section className="marketing-cta">
+      <p className="overline">The cost of being wrong is usually larger</p>
+      <h2>Put the decision on the stand.</h2>
+      <a href="/#review">Make it survive <span>↗</span></a>
+    </section>
+  </div>
+}
+
+function CodeBlock({ label, code }: { label: string; code: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
+  }
+  return <div className="code-block">
+    <div><span>{label}</span><button type="button" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></div>
+    <pre><code>{code}</code></pre>
+  </div>
+}
+
 function DeveloperPage() {
-  return <main className="developer-page">
-    <a className="wordmark" href="/">CrossExam<span>×</span></a>
-    <section>
-      <p className="overline">For agents</p>
-      <h1>Before your agent acts,<br /><em>make it survive.</em></h1>
-        <p>One adversarial-review primitive for agents and people: structured inputs, explicit evidence boundaries, signed records, and standard OKX x402 payment on X Layer.</p>
-      <pre><code>{`const verdict = await crossExam.preflightTransaction(tx, {
-  intent: "Buy only if the thesis survives",
-  valueAtRiskUsd: 5000,
+  useEffect(() => {
+    document.title = 'CrossExam Developers — API, x402 and signed verdicts'
+    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    if (description) description.content = 'Integrate CrossExam adversarial review, x402 payment, signed assurance records, and fail-closed action verification.'
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+    if (canonical) canonical.href = `${productUrl}/developers`
+  }, [])
+
+  const preflightCurl = `curl -X POST ${apiUrl}/api/v1/reviews/preflight \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "profile": "PLAN",
+    "text": "We should ship this migration on Friday because rollback is straightforward and demand is proven."
+  }'`
+  const paidFetch = `const response = await fetch("${apiUrl}/api/v1/reviews", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Idempotency-Key": crypto.randomUUID(),
+  },
+  body: JSON.stringify({ profile: "PLAN", text: proposal }),
 })
 
-if (!verdict.canExecute) throw new Error(verdict.reason)
-await wallet.sendTransaction(tx)`}</code></pre>
-      <div className="developer-actions"><a href="https://api.cross-exam.xyz/.well-known/crossexam.json">Service manifest</a><a href="https://github.com/Qinsir7/CrossExam">GitHub</a></div>
-    </section>
-  </main>
+// Unpaid requests return 402 + PAYMENT-REQUIRED.
+// Your x402 client signs, pays on X Layer, and retries this request.
+if (response.status === 402) handleX402Challenge(response)
+const { analysis, record } = await response.json()`
+  const verifyCurl = `curl -X POST ${apiUrl}/api/v1/assurance/verify \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "record": { "...": "complete signed record" },
+    "expectedServiceSigner": "0x independently-pinned signer",
+    "intent": { "...": "exact action intent" }
+  }'`
+
+  return <div className="docs-page">
+    <SiteHeader />
+    <main className="docs-layout">
+      <aside className="docs-sidebar" aria-label="Developer documentation">
+        <p>Documentation</p>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#endpoints">Endpoints</a>
+        <a href="#payments">x402 payment</a>
+        <a href="#verification">Verification</a>
+        <a href="#security">Security & privacy</a>
+        <span />
+        <a href={`${apiUrl}/.well-known/crossexam.json`}>Service manifest ↗</a>
+        <a href={`${githubUrl}/blob/main/docs/API.md`}>Full API contract ↗</a>
+        <a href={githubUrl}>GitHub ↗</a>
+      </aside>
+
+      <div className="docs-content">
+        <section className="docs-hero">
+          <p className="overline">CrossExam for agents</p>
+          <h1>Before your agent acts,<br /><em>make it survive.</em></h1>
+          <p>CrossExam is a paid decision-assurance API. It decomposes consequential inputs, attacks material premises, preserves evidence boundaries, and returns signed verdicts an agent can verify before execution.</p>
+          <div className="docs-hero-actions"><a className="primary" href="#quickstart">Run the quickstart</a><a href={`${apiUrl}/.well-known/crossexam.json`}>Open manifest</a></div>
+          <div className="api-origin"><span>Production API</span><code>{apiUrl}</code><b>Production</b></div>
+        </section>
+
+        <section className="docs-section" id="quickstart">
+          <div className="docs-section-heading"><span>01</span><div><p className="overline">Quickstart</p><h2>Map a decision for free.</h2></div></div>
+          <p>Start with the free preflight. It infers the review profile, extracts material claims, and tells you what can be checked—without creating a record or charging a wallet.</p>
+          <CodeBlock label="Shell" code={preflightCurl} />
+          <div className="response-preview"><span>Returns</span><code>profile</code><code>claims[]</code><code>verificationRoute</code><code>limitations[]</code><code>paidReview</code></div>
+          <h3>Run the full paid review</h3>
+          <p>Send the same material to the paid route. The first call returns the standard x402 challenge. An x402-capable client authorizes the quoted USDT0 amount on X Layer and retries the identical request.</p>
+          <CodeBlock label="JavaScript · payment handoff" code={paidFetch} />
+          <div className="callout"><strong>Never send a private key to CrossExam.</strong><p>The buyer signs through its own wallet or agent payment client. CrossExam receives the x402 payment proof, not the buyer's signing key.</p></div>
+        </section>
+
+        <section className="docs-section" id="endpoints">
+          <div className="docs-section-heading"><span>02</span><div><p className="overline">Endpoint reference</p><h2>Use the narrowest service that fits.</h2></div></div>
+          <p>CrossExam refuses known-unsupported paid scopes before payment. Use Universal Review for documents and reasoning; use Transaction Preflight only for its explicitly supported exact X Layer trade scope.</p>
+          <div className="endpoint-table" role="table" aria-label="CrossExam endpoints">
+            <div className="endpoint-row heading" role="row"><span>Method & path</span><span>Purpose</span><span>Price</span></div>
+            <div className="endpoint-row" role="row"><code><b>POST</b> /api/v1/reviews/preflight</code><span>Claim map and review preview</span><strong>Free</strong></div>
+            <div className="endpoint-row" role="row"><code><b>POST</b> /api/v1/reviews</code><span>Universal adversarial review</span><strong>0.20 USDT0</strong></div>
+            <div className="endpoint-row" role="row"><code><b>POST</b> /api/v1/preflight/transaction</code><span>Exact supported X Layer trade preflight</span><strong>0.02 USDT0</strong></div>
+            <div className="endpoint-row" role="row"><code><b>POST</b> /api/v1/preflight/asp</code><span>Passive ASP endpoint purchase check</span><strong>0.02 USDT0</strong></div>
+            <div className="endpoint-row" role="row"><code><b>POST</b> /api/v1/assurance/verify</code><span>Signature, binding, freshness, and gate</span><strong>Free</strong></div>
+            <div className="endpoint-row" role="row"><code><b>GET · POST</b> /api/v1/assurance/aggregate</code><span>Registered A2MCP assurance service</span><strong>0.02 USDT0</strong></div>
+          </div>
+          <p className="docs-detail">Every paid POST should carry a stable <code>Idempotency-Key</code> of 32–200 URL-safe characters. Reuse it only for an exact retry. A completed replay returns the persisted result without a second purchase; the same key with changed input is rejected.</p>
+        </section>
+
+        <section className="docs-section" id="payments">
+          <div className="docs-section-heading"><span>03</span><div><p className="overline">x402 payment</p><h2>Payment is the authorization layer.</h2></div></div>
+          <div className="payment-flow">
+            <article><span>1</span><div><h3>Request</h3><p>Call a paid endpoint without a payment signature.</p></div><code>HTTP 402</code></article>
+            <article><span>2</span><div><h3>Authorize</h3><p>Read <code>PAYMENT-REQUIRED</code>, verify asset, chain, amount, and recipient, then sign locally.</p></div><code>eip155:196</code></article>
+            <article><span>3</span><div><h3>Retry</h3><p>Repeat the identical request with the signed x402 payment header.</p></div><code>exact</code></article>
+            <article><span>4</span><div><h3>Receive</h3><p>Get the analysis and service-attested record only after settlement verification.</p></div><code>signed record</code></article>
+          </div>
+          <div className="callout warning"><strong>Inspect every challenge before signing.</strong><p>The current production rail is USDT0 on X Layer (<code>eip155:196</code>). A client should reject any unexpected network, asset, amount, or recipient.</p></div>
+        </section>
+
+        <section className="docs-section" id="verification">
+          <div className="docs-section-heading"><span>04</span><div><p className="overline">Verification</p><h2>Trust the record only after you verify it.</h2></div></div>
+          <p>Verification is free and stateless. Pin the expected CrossExam service signer independently, provide the complete signed record, and bind it to the exact intended action. Never use the signer declared by an untrusted record as its own trust anchor.</p>
+          <CodeBlock label="Shell · free verifier" code={verifyCurl} />
+          <div className="verify-grid"><article><span>01</span><h3>Service signature</h3><p>EIP-191 attestation matches the complete canonical record.</p></article><article><span>02</span><h3>Exact action</h3><p>Target, parameters, chain, and value-at-risk match what was reviewed.</p></article><article><span>03</span><h3>Execution gate</h3><p>Contradictions, unresolved material premises, and stale evidence fail closed.</p></article></div>
+        </section>
+
+        <section className="docs-section" id="security">
+          <div className="docs-section-heading"><span>05</span><div><p className="overline">Security & privacy</p><h2>Know the boundary before integrating.</h2></div></div>
+          <div className="security-list">
+            <article><h3>Input handling</h3><p>Free file preflight extracts supported files in memory and does not persist the original upload. A paid universal review sends submitted material to DeepSeek; bounded eligible citation text can be sent to Tavily when source search is enabled.</p></article>
+            <article><h3>Evidence semantics</h3><p>A located source supports only the exact status stated in the result. Missing, stale, ambiguous, or inapplicable evidence remains unresolved and cannot become a favorable signal.</p></article>
+            <article><h3>Private records</h3><p>Paid records are private by default and accessed through time-limited bearer capabilities. Public share links expose a sanitized allowlist, never raw action parameters, payments, wallet addresses, or access tokens.</p></article>
+            <article><h3>Scope limits</h3><p>CrossExam is an adversarial assurance layer—not legal advice, investment advice, or a comprehensive smart-contract audit. Read each endpoint's explicit coverage before paying.</p></article>
+          </div>
+          <div className="docs-links"><a href={`${githubUrl}/blob/main/docs/API.md`}>Read the complete API contract ↗</a><a href={`${githubUrl}/blob/main/docs/DEPLOYMENT.md`}>Deployment and operations ↗</a><a href={`${apiUrl}/.well-known/crossexam.json`}>Machine-readable discovery ↗</a></div>
+        </section>
+      </div>
+    </main>
+    <SiteFooter />
+  </div>
 }
 
 export default function AppV2() {
@@ -233,38 +453,40 @@ export default function AppV2() {
   if (window.location.pathname.startsWith('/developers')) return <DeveloperPage />
 
   return <div className={`product-shell stage-${stage.toLowerCase()}`}>
-    <header className="product-header">
-      <button className="wordmark" type="button" onClick={reset}>CrossExam<span>×</span></button>
-      <nav><a href="/developers">API</a>{stage !== 'INPUT' && <button type="button" onClick={reset}>New review</button>}</nav>
-    </header>
+    <SiteHeader stage={stage} onReset={reset} />
 
-    {stage === 'INPUT' && <main className="input-screen">
-      <section className="intro-copy">
-        <p className="overline">Cross-examine before committing</p>
-        <h1>Before you act,<br /><em>make it survive.</em></h1>
-        <p>Paste the thing you are about to rely on. Get one clear verdict, the strongest attack, and the evidence still missing.</p>
-      </section>
+    {stage === 'INPUT' && <main className="landing-main">
+      <section className="input-screen" id="review">
+        <section className="intro-copy">
+          <p className="overline">Adversarial review before commitment</p>
+          <h1>Before you act,<br /><em>make it survive.</em></h1>
+          <p>Put a decision, document, thesis, or plan on the stand. CrossExam finds the strongest case against it—and shows what the evidence can actually prove.</p>
+          <div className="hero-proof"><span><b>Free</b> preflight</span><span><b>0.20 USDT0</b> full review</span><span><b>No account</b> required</span></div>
+        </section>
 
-      <section className="intake-card" aria-label="Start a CrossExam review">
-        <div className="profile-tabs" role="tablist" aria-label="Review type">
-          {profiles.map((item) => <button key={item.id} role="tab" aria-selected={profile === item.id} className={profile === item.id ? 'active' : ''} type="button" onClick={() => { setProfile(item.id); setPreflight(null) }}>{item.label}</button>)}
-        </div>
-        <div className={`drop-surface ${dragging ? 'dragging' : ''}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={drop}>
-          <div className="input-heading"><span>{copy.title}</span>{filename && <button type="button" onClick={() => { setFilename(undefined); setText(''); setPreflight(null) }}>Remove {filename}</button>}</div>
-          <textarea value={text} onChange={(event) => { setText(event.target.value); setFilename(undefined); setPreflight(null); setError(null) }} placeholder={copy.placeholder} aria-label="Material to cross-examine" rows={11} />
-          <div className="upload-row">
-            <input id="cross-exam-file" ref={fileInput} aria-label="Upload TXT, Markdown, DOCX, or PDF" disabled={busy} type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void handleFile(event.target.files?.[0])} />
-            <label htmlFor="cross-exam-file" aria-disabled={busy}><span>＋</span> Upload TXT, MD, DOCX, or PDF</label>
-            <small>{text.length.toLocaleString()} / 200,000</small>
+        <section className="intake-card" aria-label="Start a CrossExam review">
+          <div className="intake-label"><span>New review</span><b>Free preflight</b></div>
+          <div className="profile-tabs" role="tablist" aria-label="Review type">
+            {profiles.map((item) => <button key={item.id} role="tab" aria-selected={profile === item.id} className={profile === item.id ? 'active' : ''} type="button" onClick={() => { setProfile(item.id); setPreflight(null) }}>{item.label}</button>)}
           </div>
-        </div>
+          <div className={`drop-surface ${dragging ? 'dragging' : ''}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={drop}>
+            <div className="input-heading"><span>{copy.title}</span>{filename && <button type="button" onClick={() => { setFilename(undefined); setText(''); setPreflight(null) }}>Remove {filename}</button>}</div>
+            <textarea value={text} onChange={(event) => { setText(event.target.value); setFilename(undefined); setPreflight(null); setError(null) }} placeholder={copy.placeholder} aria-label="Material to cross-examine" rows={11} />
+            <div className="upload-row">
+              <input id="cross-exam-file" ref={fileInput} aria-label="Upload TXT, Markdown, DOCX, or PDF" disabled={busy} type="file" accept=".txt,.md,.markdown,.docx,.pdf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void handleFile(event.target.files?.[0])} />
+              <label htmlFor="cross-exam-file" aria-disabled={busy}><span>＋</span> Upload TXT, MD, DOCX, or PDF</label>
+              <small>{text.length.toLocaleString()} / 200,000</small>
+            </div>
+          </div>
 
-        {preflight && <div className="preflight-echo" aria-live="polite"><span>Understood</span><strong>{preflight.inferredDocumentType}</strong><b>{preflight.claimCount} claims</b><b>{preflight.verifiableClaimCount} potentially verifiable</b></div>}
-        {error && <p className="intake-error" role="alert">{error}</p>}
-        <div className="intake-note"><p>{copy.hint}</p><span>{copy.preview}</span></div>
-        <button className="survive-button" type="button" disabled={busy || text.trim().length < 20} onClick={() => void runPreflight(text, filename, true)}>{busy ? 'Reading your material…' : 'Make it survive'}<span>↗</span></button>
-        <p className="privacy-note">Files are extracted in memory and are not stored during preflight.</p>
+          {preflight && <div className="preflight-echo" aria-live="polite"><span>Understood</span><strong>{preflight.inferredDocumentType}</strong><b>{preflight.claimCount} claims</b><b>{preflight.verifiableClaimCount} potentially verifiable</b></div>}
+          {error && <p className="intake-error" role="alert">{error}</p>}
+          <div className="intake-note"><p>{copy.hint}</p><span>{copy.preview}</span></div>
+          <button className="survive-button" type="button" disabled={busy || text.trim().length < 20} onClick={() => void runPreflight(text, filename, true)}>{busy ? 'Reading your material…' : 'Make it survive'}<span>↗</span></button>
+          <p className="privacy-note">Files are extracted in memory and are not stored during preflight.</p>
+        </section>
       </section>
+      <MarketingSections selectProfile={(nextProfile) => { setProfile(nextProfile); setPreflight(null) }} />
     </main>}
 
     {stage === 'REVIEW' && preflight && <main className="review-screen">
@@ -326,6 +548,6 @@ export default function AppV2() {
       </section>
     </main>}
 
-    <footer className="product-footer"><span>CrossExam</span><span>Evidence, not confidence.</span></footer>
+    {stage === 'INPUT' ? <SiteFooter /> : <footer className="product-footer"><span>CrossExam</span><span>Evidence, not confidence.</span></footer>}
   </div>
 }
