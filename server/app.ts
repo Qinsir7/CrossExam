@@ -35,7 +35,7 @@ import { verifyAssuranceRecord } from './assuranceVerification'
 import { requestOkxDexQuote, type OkxDexQuoteRequest } from './okxDexQuote'
 import { extractDocument } from './documentIntake'
 import { MAX_PAID_REVIEW_CHARACTERS, prepareReviewPreflight, type ReviewPreflightInput } from '../src/domain/generalReview'
-import { AdversarialReviewTimeoutError, DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
+import { ADVERSARIAL_REVIEW_DEADLINE_MS, AdversarialReviewTimeoutError, DeepSeekAdversarialProvider } from './deepSeekAdversarialProvider'
 import { preparePaidAdversarialReview, type AdversarialReviewProvider, type AuthoritativeSourceVerifier } from './adversarialReview'
 import { TavilyAuthoritativeSourceVerifier } from './authoritativeSourceVerifier'
 
@@ -270,6 +270,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
         paidReview: {
           available: Boolean(adversarialProvider) && withinPaidLimit,
           priceUsd: config.deepReviewPriceUsd,
+          responseBudgetMs: ADVERSARIAL_REVIEW_DEADLINE_MS,
           ...(adversarialProvider && withinPaidLimit ? { provider: 'DEEPSEEK' as const } : {}),
           authoritySearchAvailable: Boolean(sourceVerifier),
           ...(!withinPaidLimit ? { unavailableReason: `Full review accepts up to ${MAX_PAID_REVIEW_CHARACTERS.toLocaleString('en-US')} extracted characters. Shorten or split this material; free claim mapping remains available.` } : {}),

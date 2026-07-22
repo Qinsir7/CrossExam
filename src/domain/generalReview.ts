@@ -41,6 +41,7 @@ export type ReviewPreflight = {
   paidReview?: {
     available: boolean
     priceUsd: string
+    responseBudgetMs?: number
     provider?: 'DEEPSEEK'
     authoritySearchAvailable?: boolean
     unavailableReason?: string

@@ -43,7 +43,7 @@ type DeepSeekEnvelope = {
   usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
 }
 
-const REVIEW_DEADLINE_MS = 24_000
+export const ADVERSARIAL_REVIEW_DEADLINE_MS = 24_000
 const MAX_CONTEXT_CHARACTERS = 12_000
 
 function completionTokenBudget(claimCount: number) {
@@ -205,7 +205,7 @@ export class DeepSeekAdversarialProvider {
       max_tokens: completionTokenBudget(preflight.claims.length),
       stream: false,
     })
-    const deadline = Date.now() + REVIEW_DEADLINE_MS
+    const deadline = Date.now() + ADVERSARIAL_REVIEW_DEADLINE_MS
     let lastError: Error | undefined
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
