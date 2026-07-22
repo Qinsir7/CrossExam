@@ -259,6 +259,21 @@ explicit not-confirmed state without spending a search call. Focused regression
 tests cover the production drift shape, and the full suite now contains 209
 passing tests alongside passing type-check and production build.
 
+Evidence (2026-07-22, registered ASP endpoint paid replay): a fresh call to the
+exact service registered on ASP #6065 (`GET /api/v1/assurance/aggregate`)
+received the standard 0.02 USD₮0 quote, settled successfully on X Layer in
+transaction `0x90d33ee61395740c7a5c99cd4ca0c5078bdf601ceb4b942657b9d234cbdc7cf5`,
+and returned a persisted EIP-191-signed record in the same synchronous call.
+The unverified high-value-transfer premise remained `UNRESOLVED`; the action
+was correctly `HOLD`, with an explicit reversal condition requiring an
+independently attributable evidence dispatch. X Layer's public RPC returned a
+successful receipt (`status: 0x1`) whose USD₮0 transfer amount was exactly
+20,000 atomic units to the production recipient. No record access capability,
+payment authorization, payer address or private URL is retained here. A
+read-only identity query still reports ASP #6065 as `Listing under review`
+and `not listed`; the prior rejection remark remains attached as history, so
+no duplicate activation/resubmission was made while review is pending.
+
 ## 1. Product decision — do not reinterpret
 
 ### 1.1 Category
