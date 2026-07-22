@@ -71,8 +71,17 @@ describe('authority-domain source verifier', () => {
     expect(checks[0].source).toBeUndefined()
   })
 
-  it('fails closed when search is unavailable', async () => {
+  it('does not search for an unattributed quantitative claim', async () => {
     const preflight = prepareReviewPreflight({ text: '数据显示该项目将在一年内增长30%，因此现在应当投资。', profile: 'MONEY' })
+    const fetchImpl = vi.fn<typeof fetch>()
+    const checks = await new TavilyAuthoritativeSourceVerifier(config, fetchImpl).verify(preflight)
+
+    expect(checks).toEqual([])
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when an exact legal-source search is unavailable', async () => {
+    const preflight = prepareReviewPreflight({ text: '根据《中华人民共和国民法典》第五百七十七条，对方必须承担违约责任。', profile: 'LEGAL' })
     const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error('timeout'))
     const checks = await new TavilyAuthoritativeSourceVerifier(config, fetchImpl).verify(preflight)
 

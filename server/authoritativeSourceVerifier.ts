@@ -48,7 +48,12 @@ function jurisdictionDomains(text: string) {
 }
 
 function eligible(claim: ReviewClaim) {
-  return claim.kind === 'LEGAL_CITATION' || claim.kind === 'SOURCE_CITATION' || claim.kind === 'QUANTITATIVE'
+  // A bare number or an unattributed "report says" statement has no stable
+  // lookup key. Searching generic government domains for it can attach a
+  // high-scoring but unrelated page. Only explicit legal/case references or
+  // caller-supplied URLs are eligible for this authority-domain verifier.
+  return claim.kind === 'LEGAL_CITATION'
+    || (claim.kind === 'SOURCE_CITATION' && /https?:\/\//i.test(claim.text))
 }
 
 function subjectFor(claim: ReviewClaim): AuthoritativeSourceCheck['subject'] {
@@ -187,6 +192,15 @@ export class TavilyAuthoritativeSourceVerifier {
         provider: 'TAVILY' as const,
         authorityDomains: domains,
         requestHash: hash(body),
+      }
+      if (!references.length) {
+        return {
+          ...base,
+          status: 'NOT_CONFIRMED_IN_PUBLIC_SOURCES' as const,
+          statement: subject === 'CASE'
+            ? 'This case could not be confirmed because no exact case reference was supplied. Human verification is recommended.'
+            : 'No exact citation or source URL was supplied, so no authoritative public source can be bound to this claim. Treat it as unresolved.',
+        }
       }
       try {
         const response = await this.fetchImpl(`${this.config.baseUrl}/search`, {

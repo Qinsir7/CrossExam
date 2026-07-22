@@ -4,7 +4,7 @@
 >
 > Last planned: 2026-07-18 (Asia/Shanghai)
 >
-> Last independently audited: 2026-07-18 (Asia/Shanghai), after the first real paid deep-review acceptance run.
+> Last independently audited: 2026-07-22 (Asia/Shanghai), after a fresh paid universal-review acceptance run.
 >
 > Competition deadline: 2026-07-27 23:59 UTC
 >
@@ -234,6 +234,30 @@ Free file/preflight work now has an explicit non-payment status. User-facing
 type was raised across the product and developer surfaces, with no horizontal
 overflow at the checked 390px viewport. Local Vite development now mirrors the
 same-origin production API proxy instead of making a direct cross-origin call.
+
+Evidence (2026-07-22, fresh universal-review production acceptance): the live
+preflight exposed a 24-second model response budget and `NON_THINKING` mode;
+the unpaid route returned the official OKX SDK's x402 v2 challenge with the
+canonical HTTPS resource, X Layer, official USD₮0 asset metadata, exact 0.20
+amount and production recipient. A fresh PLAN request completed through the
+OKX Agent Payments Protocol in 17.2 seconds, settled transaction
+`0x50bcbf361e4080cc836af2aab12e0dbcc85475923d8d27c244544daf6dd278e4`,
+ran `deepseek-v4-pro` against three extracted claims, returned an honest
+`UNRESOLVED` verdict, persisted signed `MODEL_ANALYZED` record
+`dar_a5544e00f75217aa12a67a0f`, and included request/response hashes and token
+usage. Earlier invalid, transport-timeout and model-timeout probes all returned
+`txHash: null`; the explicit 504 stated that no signed record was created and
+the failed response was not settled. No access capability, payment signature,
+payer address or private record URL is retained here.
+
+That live run also exposed an irrelevant government result attached to an
+unattributed CAC number. The source verifier now sends only explicit legal/case
+references or caller-supplied URLs to authority-domain search; bare numbers
+and unattributed report language remain source-required without a decorative
+search result. A generic legal request without an exact citation returns an
+explicit not-confirmed state without spending a search call. Focused regression
+tests cover the production drift shape, and the full suite now contains 209
+passing tests alongside passing type-check and production build.
 
 ## 1. Product decision — do not reinterpret
 

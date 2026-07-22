@@ -43,6 +43,7 @@ export type ReviewPreflight = {
     priceUsd: string
     responseBudgetMs?: number
     reasoningMode?: 'NON_THINKING'
+    sourceSearchPolicy?: 'EXPLICIT_REFERENCES_ONLY'
     provider?: 'DEEPSEEK'
     authoritySearchAvailable?: boolean
     unavailableReason?: string
