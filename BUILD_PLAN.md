@@ -1559,6 +1559,8 @@ Evidence (2026-07-18): `docs/ASP_SERVICE_UPDATE_CARD.md` captures the live ASP `
 
 Strategic hold (2026-07-18): the current identity is online but remains `not listed` / `Listing under review`, and the marketplace currently exposes only the legacy `Decision Assurance API`. Do not add the prepared services while that review is pending. The update card is retained as a post-approval/rejection option, not as the next action.
 
+Production remediation and resubmission evidence (2026-07-22): after the prior review rejection, the existing ASP `#6065` and existing service `34604` were updated in place—no duplicate identity or service was created. The registered `Decision Assurance API` endpoint is now `https://www.cross-exam.xyz/review-service/api/v1/assurance/aggregate`, a stable Vercel edge proxy to the Railway API. An unpaid POST returned `HTTP 402` with a v2 `PAYMENT-REQUIRED` challenge whose `resource.url` exactly matched that endpoint, using X Layer `eip155:196`, official USD₮0 `0x779ded0c9e1022225f8e0630b35a9b54be713736`, amount `20000`, the configured receiving wallet, and the required token metadata. The official Onchain OS buyer flow completed a real 0.02 USD₮0 payment and replay, returning persisted signed record `dar_8aad224bd97bbd6803ce1845`; X Layer transaction `0xb6950f757973a2254b073b41f5a1a16a3d4c6151ba020db1c27f49624fd87be2` has receipt status `0x1` and an ERC-20 transfer of `20000` atomic units to the receiving wallet. The service update was recorded in transaction `0x165605acef60b965bb8093e69c705e93b312a8f46a2935ce2d8ad9696db2d4e4`. The subsequent listing activation returned approval status `2` with no rejection reason, so `#6065` is under review; do not repeat activation or poll automatically.
+
 ## 14. Priorities if time slips
 
 ### P0 — must ship
@@ -1646,7 +1648,7 @@ The final product is complete for submission only when all of the following are 
 - [x] No tracked secrets.
 - [x] No production dependency vulnerability at high/critical severity.
 - [x] API and worker health are green.
-- [ ] Every listed paid endpoint passes standard 402 and paid replay acceptance.
+- [x] Every listed paid endpoint passes standard 402 and paid replay acceptance.
 - [x] Existing registered aggregate endpoint remains compatible.
 - [ ] Mobile and desktop primary flows pass visual inspection.
 
