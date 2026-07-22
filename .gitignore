@@ -14,3 +14,9 @@ __pycache__/
 .venv/
 venv/
 .crossexam-data/
+
+# Internal planning, listing, and production-demo evidence. Keep local only.
+BUILD_PLAN.md
+docs/ASP_SERVICE_UPDATE_CARD.md
+docs/CANONICAL_DEMO_TARGET.md
+docs/DEMO_EVIDENCE_NOTE.md

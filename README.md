@@ -2,7 +2,7 @@
 
 > Before you act, make it survive.
 
-[Live product](https://www.cross-exam.xyz/) · [Developer quickstart](https://www.cross-exam.xyz/developers) · [API discovery](https://api.cross-exam.xyz/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md) · [Build plan](BUILD_PLAN.md)
+[Live product](https://www.cross-exam.xyz/) · [Developer quickstart](https://www.cross-exam.xyz/developers) · [API discovery](https://www.cross-exam.xyz/review-service/.well-known/crossexam.json) · [API contract](docs/API.md) · [Product contracts](docs/PRODUCT_CONTRACTS.md)
 
 Paste a decision, document, trade thesis, or plan. CrossExam decomposes its material claims, attacks the logic, verifies what real sources can verify, and makes unresolved evidence visible before the user acts. Agents receive the same capability through API/A2MCP: **Before your agent acts, make it survive.**
 
@@ -98,7 +98,7 @@ dedicated procurement wallet and per-scope policy.
 
 ## Live implementation
 
-Live on [cross-exam.xyz](https://www.cross-exam.xyz/) with its API at [api.cross-exam.xyz](https://api.cross-exam.xyz/.well-known/crossexam.json): durable paid review jobs, real OKX Onchain OS liquidity evidence, independent GoPlus X Layer token-security evidence, provenance-qualified signed records, commercial ledgers, dynamic x402 quotes, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Paid downstream providers can be added without changing the customer flow when a chain-compatible API service is available.
+Live on [cross-exam.xyz](https://www.cross-exam.xyz/) with its stable public [API discovery endpoint](https://www.cross-exam.xyz/review-service/.well-known/crossexam.json): durable paid review jobs, real OKX Onchain OS liquidity evidence, independent GoPlus X Layer token-security evidence, provenance-qualified signed records, commercial ledgers, dynamic x402 quotes, action-bound execution gates, authority-signed outcomes, and reproducible reviewer reliability. Paid downstream providers can be added without changing the customer flow when a chain-compatible API service is available.
 
 ## North star
 
