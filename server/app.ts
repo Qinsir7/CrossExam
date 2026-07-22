@@ -271,6 +271,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
           available: Boolean(adversarialProvider) && withinPaidLimit,
           priceUsd: config.deepReviewPriceUsd,
           responseBudgetMs: ADVERSARIAL_REVIEW_DEADLINE_MS,
+          reasoningMode: 'NON_THINKING' as const,
           ...(adversarialProvider && withinPaidLimit ? { provider: 'DEEPSEEK' as const } : {}),
           authoritySearchAvailable: Boolean(sourceVerifier),
           ...(!withinPaidLimit ? { unavailableReason: `Full review accepts up to ${MAX_PAID_REVIEW_CHARACTERS.toLocaleString('en-US')} extracted characters. Shorten or split this material; free claim mapping remains available.` } : {}),

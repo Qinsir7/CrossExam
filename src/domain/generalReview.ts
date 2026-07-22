@@ -42,6 +42,7 @@ export type ReviewPreflight = {
     available: boolean
     priceUsd: string
     responseBudgetMs?: number
+    reasoningMode?: 'NON_THINKING'
     provider?: 'DEEPSEEK'
     authoritySearchAvailable?: boolean
     unavailableReason?: string
