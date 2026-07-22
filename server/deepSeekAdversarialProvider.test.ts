@@ -16,6 +16,10 @@ describe('DeepSeek adversarial provider', () => {
     expect(result.sources).toEqual([])
     expect(result.provenance).toMatchObject({ provider: 'DEEPSEEK', model: 'deepseek-v4-pro', inputTokens: 100 })
     expect(fetchImpl).toHaveBeenCalledWith('https://api.deepseek.com/chat/completions', expect.objectContaining({ method: 'POST' }))
+    const requestBody = JSON.parse(fetchImpl.mock.calls[0][1]!.body as string) as { max_tokens: number; messages: Array<{ content: string }> }
+    expect(requestBody.max_tokens).toBe(1200)
+    expect(JSON.parse(requestBody.messages[1].content)).toMatchObject({ submittedMaterialExcerpt: expect.any(String) })
+    expect(requestBody.messages[1].content).not.toContain('"submittedMaterial":')
   })
 
   it('accepts a logical refutation only for argument-only claims', async () => {

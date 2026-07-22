@@ -9,7 +9,7 @@ export type DeepSeekProviderConfig = {
 
 export class AdversarialReviewTimeoutError extends Error {
   constructor() {
-    super('The adversarial examiner did not finish within 90 seconds. No signed review record was created.')
+    super('The adversarial examiner did not finish within 24 seconds. No signed review record was created.')
     this.name = 'AdversarialReviewTimeoutError'
   }
 }
@@ -41,6 +41,13 @@ type DeepSeekEnvelope = {
   id?: unknown
   choices?: unknown
   usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
+}
+
+const REVIEW_DEADLINE_MS = 24_000
+const MAX_CONTEXT_CHARACTERS = 12_000
+
+function completionTokenBudget(claimCount: number) {
+  return Math.min(4_200, Math.max(1_200, 650 + claimCount * 140))
 }
 
 function hash(value: string): `0x${string}` {
@@ -110,7 +117,7 @@ Verdicts:
 Output JSON exactly in this shape:
 {"headline":"short verdict headline","strongestAttack":"single decision-changing attack","claims":[{"claimId":"C-001","verdict":"SURVIVED|REFUTED|UNRESOLVED","strongestAttack":"...","reasoning":"...","blindSpot":"...","evidenceNeeded":"optional exact material needed"}],"blindSpots":["..."],"nextActions":["..."]}
 
-Address every supplied claim exactly once, using only its supplied claimId. Keep the response concise and decision-useful.`
+Address every supplied claim exactly once, using only its supplied claimId. Use one compact sentence per strongestAttack, reasoning, and blindSpot. Return at most six blindSpots and six nextActions. Keep the response concise and decision-useful.`
 }
 
 function userPrompt(text: string, preflight: ReviewPreflight, sourceChecks: AuthoritativeSourceCheck[]) {
@@ -135,7 +142,10 @@ function userPrompt(text: string, preflight: ReviewPreflight, sourceChecks: Auth
       statement: check.statement,
       ...(check.source ? { source: check.source } : {}),
     })),
-    submittedMaterial: text,
+    // The normalized claim map is the review contract. Keep only a bounded
+    // context excerpt instead of resending a potentially 120k-character
+    // document beside the same extracted claims.
+    submittedMaterialExcerpt: text.slice(0, MAX_CONTEXT_CHARACTERS),
   })
 }
 
@@ -192,17 +202,20 @@ export class DeepSeekAdversarialProvider {
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2,
-      max_tokens: 6_000,
+      max_tokens: completionTokenBudget(preflight.claims.length),
       stream: false,
     })
+    const deadline = Date.now() + REVIEW_DEADLINE_MS
     let lastError: Error | undefined
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
+        const remainingMs = deadline - Date.now()
+        if (remainingMs < 1_000) throw new AdversarialReviewTimeoutError()
         const response = await this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: { authorization: `Bearer ${this.config.apiKey}`, 'content-type': 'application/json' },
           body,
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(remainingMs),
         })
         const raw = await response.text()
         if (raw.length > 1_000_000) throw new Error('DeepSeek response exceeded the 1 MB safety limit.')
