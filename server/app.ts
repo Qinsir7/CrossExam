@@ -108,6 +108,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   const adversarialProvider = dependencies.adversarialProvider ?? (config.deepSeek ? new DeepSeekAdversarialProvider(config.deepSeek) : undefined)
   const sourceVerifier = dependencies.sourceVerifier ?? (config.tavily ? new TavilyAuthoritativeSourceVerifier(config.tavily) : undefined)
+  const externalResource = (path: string) => config.externalApiUrl ? { resource: `${config.externalApiUrl}${path}` } : {}
 
   const reviewAuthorizationAmountAtomic = (job: NonNullable<Awaited<ReturnType<ReviewJobStore['findJob']>>>) => BigInt(Math.round(job.quote.authorizationPriceUsdt * 1_000_000)).toString()
 
@@ -236,7 +237,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
     }
   })
   app.get('/.well-known/crossexam.json', (_request, response) => {
-    response.json(createServiceManifest(config.publicUrl, config.serviceSignerAddress))
+    response.json(createServiceManifest(config.externalApiUrl ?? config.publicUrl, config.serviceSignerAddress))
   })
   app.post('/api/v1/assurance/verify', async (request, response) => {
     try {
@@ -584,6 +585,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   })
   const assurancePaidRoutes = {
     [assuranceGetRoute]: {
+      ...externalResource('/api/v1/assurance/aggregate'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -595,6 +597,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       mimeType: 'application/json',
     },
     [assuranceRoute]: {
+      ...externalResource('/api/v1/assurance/aggregate'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -606,6 +609,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       mimeType: 'application/json',
     },
     [networkAssuranceRoute]: {
+      ...externalResource('/api/v1/assurance/network-aggregate'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -617,6 +621,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       mimeType: 'application/json',
     },
     [transactionPreflightRoute]: {
+      ...externalResource('/api/v1/preflight/transaction'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -628,6 +633,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       mimeType: 'application/json',
     },
     [aspTrustRoute]: {
+      ...externalResource('/api/v1/preflight/asp'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -639,6 +645,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
       mimeType: 'application/json',
     },
     [paidReviewRoute]: {
+      ...externalResource('/api/v1/reviews'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,
@@ -652,6 +659,7 @@ export function createCrossExamX402App(config: X402ServerConfig, dependencies: {
   }
   const fundingPaidRoutes = {
     [reviewFundingRoute]: {
+      ...externalResource('/api/v1/review-jobs/authorize'),
       accepts: {
         scheme: 'exact' as const,
         network: 'eip155:196' as const,

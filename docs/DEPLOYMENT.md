@@ -32,6 +32,7 @@ Do not configure a shared network filesystem as a substitute for PostgreSQL: con
 ## Required production settings
 
 - `CROSSEXAM_PAY_TO`: a real X Layer receiving wallet.
+- `CROSSEXAM_EXTERNAL_API_URL`: the canonical stable HTTPS API base advertised in service discovery and every x402 `resource.url`. For the production Vercel proxy use exactly `https://www.cross-exam.xyz/review-service` (no trailing slash). The endpoint registered on OKX.AI must be this base plus the service path.
 - `CROSSEXAM_SERVICE_SIGNING_KEY`: a dedicated 32-byte EVM private key for issuing assurance records. It is mandatory when the paid x402 service is enabled; publish only its derived public address in service discovery.
 - `CROSSEXAM_TRANSACTION_PREFLIGHT_PRICE_USD`: the fixed buyer price for `POST /api/v1/preflight/transaction` (default `0.02`). It is deliberately separate from the legacy aggregate price. Add it to Railway only in the same authorized deployment as the new route.
 - `CROSSEXAM_ASP_TRUST_PRICE_USD`: the fixed buyer price for `POST /api/v1/preflight/asp` (default `0.02`). The passive probe performs no target payment; do not enable a paid target-service call through this setting.
@@ -64,7 +65,7 @@ Run one recoverable pass with `npm run x402:procure`, or run the production loop
 
 ## HTTPS and exposure
 
-Place the container behind an HTTPS reverse proxy and expose a public domain. OKX.AI validates a paid A2MCP endpoint by calling it without a payment header; a live endpoint must answer `402` and include the `PAYMENT-REQUIRED` header. Do not expose the service directly through an unauthenticated development tunnel in production.
+Place the container behind an HTTPS reverse proxy and expose a public domain. OKX.AI validates a paid A2MCP endpoint by calling it without a payment header; a live endpoint must answer `402` and include the `PAYMENT-REQUIRED` header. The production ASP endpoint is `https://www.cross-exam.xyz/review-service/api/v1/assurance/aggregate`; Vercel forwards that path to the Railway API while retaining the stable URL in the x402 challenge through `CROSSEXAM_EXTERNAL_API_URL`. Validate the exact registered URL, not only the Railway origin or a different application route. Do not expose the service directly through an unauthenticated development tunnel in production.
 
 ## Operational notes
 

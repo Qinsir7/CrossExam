@@ -32,6 +32,19 @@ describe('loadX402ServerConfig', () => {
     expect(config.allowedOrigins).toEqual(['https://cross-exam.xyz', 'https://www.cross-exam.xyz'])
   })
 
+  it('uses a canonical public proxy base for manifests and x402 resource URLs', () => {
+    const config = loadX402ServerConfig({
+      ...validEnvironment,
+      CROSSEXAM_EXTERNAL_API_URL: 'https://www.cross-exam.xyz/review-service/',
+    })
+    expect(config.externalApiUrl).toBe('https://www.cross-exam.xyz/review-service')
+  })
+
+  it('rejects an unsafe or ambiguous external API base URL', () => {
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_EXTERNAL_API_URL: 'http://www.cross-exam.xyz/review-service' })).toThrow('public HTTPS')
+    expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_EXTERNAL_API_URL: 'https://www.cross-exam.xyz/review-service?target=other' })).toThrow('canonical')
+  })
+
   it('rejects a CORS allowlist entry with a path instead of an origin', () => {
     expect(() => loadX402ServerConfig({ ...validEnvironment, CROSSEXAM_ALLOWED_ORIGINS: 'https://cross-exam.xyz/path' })).toThrow('origins')
   })

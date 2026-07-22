@@ -31,6 +31,7 @@ export type X402ServerConfig = {
   recordAccessTtlSeconds: number
   databaseUrl?: string
   publicUrl?: string
+  externalApiUrl?: string
   allowedOrigins: string[]
   deepSeek?: {
     apiKey: string
@@ -258,6 +259,21 @@ function allowedOrigins(value: string | undefined) {
   return [...new Set(origins)]
 }
 
+function externalApiUrl(value: string | undefined) {
+  const candidate = value?.trim().replace(/\/$/, '')
+  if (!candidate) return undefined
+  let parsed: URL
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    throw new Error('CROSSEXAM_EXTERNAL_API_URL must be a valid public HTTPS URL.')
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.toString().replace(/\/$/, '') !== candidate) {
+    throw new Error('CROSSEXAM_EXTERNAL_API_URL must be a canonical public HTTPS base URL without credentials, query, hash, or trailing slash.')
+  }
+  return candidate
+}
+
 function deepSeekConfig(env: Environment): X402ServerConfig['deepSeek'] {
   const apiKey = env.CROSSEXAM_DEEPSEEK_API_KEY?.trim()
   const baseUrl = env.CROSSEXAM_DEEPSEEK_BASE_URL?.trim()
@@ -361,6 +377,7 @@ export function loadX402ServerConfig(env: Environment = process.env): X402Server
     recordAccessTtlSeconds: recordAccessTtl(env.CROSSEXAM_RECORD_ACCESS_TTL_SECONDS),
     databaseUrl: databaseUrl(env.CROSSEXAM_DATABASE_URL),
     publicUrl: env.CROSSEXAM_PUBLIC_URL?.trim() || undefined,
+    externalApiUrl: externalApiUrl(env.CROSSEXAM_EXTERNAL_API_URL),
     allowedOrigins: allowedOrigins(env.CROSSEXAM_ALLOWED_ORIGINS),
     deepSeek: deepSeekConfig(env),
     tavily: tavilyConfig(env),
