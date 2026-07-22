@@ -200,6 +200,11 @@ export class DeepSeekAdversarialProvider {
         { role: 'system', content: systemPrompt() },
         { role: 'user', content: userPrompt(text, preflight, sourceChecks) },
       ],
+      // DeepSeek V4 defaults to thinking mode. A paid A2MCP call must return
+      // inside the caller's synchronous window, so use the documented
+      // non-thinking mode and preserve rigor through the explicit claim map,
+      // truth-boundary rules, and strict JSON contract above.
+      thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
       temperature: 0.2,
       max_tokens: completionTokenBudget(preflight.claims.length),
